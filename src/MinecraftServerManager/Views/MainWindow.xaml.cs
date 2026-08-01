@@ -5,6 +5,7 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Windows.Storage.Pickers;
@@ -297,6 +298,22 @@ public sealed partial class MainWindow : Window
 
         args.Handled = true;
         command.Execute(null);
+    }
+
+    private void ResourcePaneSplitter_DragDelta(object sender, DragDeltaEventArgs args)
+    {
+        const double minimumSidebarWidth = 240d;
+        const double minimumConsoleWidth = 320d;
+        const double splitterWidth = 12d;
+
+        var maximumSidebarWidth = Math.Max(
+            minimumSidebarWidth,
+            ConsolePage.ActualWidth - minimumConsoleWidth - splitterWidth);
+        var newWidth = Math.Clamp(
+            ResourceSidebarColumn.ActualWidth - args.HorizontalChange,
+            minimumSidebarWidth,
+            Math.Min(520d, maximumSidebarWidth));
+        ResourceSidebarColumn.Width = new GridLength(newWidth);
     }
 
     private async void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)

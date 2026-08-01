@@ -137,6 +137,7 @@ public sealed class JsonProfileService : IProfileService
 
         profile.ServerDirectory = Environment.ExpandEnvironmentVariables(profile.ServerDirectory);
         profile.JavaExecutable = Environment.ExpandEnvironmentVariables(profile.JavaExecutable);
+        profile.IconPath = FindProfileIcon(profile.ServerDirectory);
         return profile;
     }
 
@@ -174,6 +175,7 @@ public sealed class JsonProfileService : IProfileService
             ForgeVersion = template.ForgeVersion,
             JavaVersion = template.JavaVersion,
             ServerDirectory = folderPath,
+            IconPath = FindProfileIcon(folderPath),
             JavaExecutable = template.JavaExecutable,
             ServerJar = template.ServerJar,
             JavaArguments = template.JavaArguments,
@@ -183,6 +185,46 @@ public sealed class JsonProfileService : IProfileService
             ReadyPatterns = template.ReadyPatterns,
             StopCommand = template.StopCommand,
             StopTimeoutSeconds = template.StopTimeoutSeconds
+        };
+    }
+
+    private static string? FindProfileIcon(string serverDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(serverDirectory) || !Directory.Exists(serverDirectory))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Directory
+                .EnumerateFiles(serverDirectory, "*", SearchOption.TopDirectoryOnly)
+                .Where(path =>
+                {
+                    var extension = Path.GetExtension(path);
+                    return string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(extension, ".ico", StringComparison.OrdinalIgnoreCase);
+                })
+                .OrderBy(ProfileIconPriority)
+                .ThenBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private static int ProfileIconPriority(string path)
+    {
+        return Path.GetFileName(path).ToLowerInvariant() switch
+        {
+            "server-icon.png" => 0,
+            "server-icon.ico" => 1,
+            "icon.png" => 2,
+            "icon.ico" => 3,
+            _ => 4
         };
     }
 

@@ -119,17 +119,14 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <Border
+                                    <controls:ProfileIcon
                                         Width="56"
                                         Height="56"
                                         VerticalAlignment="Top"
-                                        Background="{Binding SelectedProfile.State, Converter={StaticResource ServerStateToBrushConverter}}"
-                                        CornerRadius="28">
-                                        <FontIcon
-                                            FontSize="24"
-                                            Foreground="White"
-                                            Glyph="&#xE768;" />
-                                    </Border>
+                                        AutomationProperties.Name="Selected server icon"
+                                        FallbackGlyph="&#xE768;"
+                                        IconPath="{Binding SelectedProfile.ProfileIconPath, Mode=OneWay}"
+                                        StateBrush="{Binding SelectedProfile.State, Converter={StaticResource ServerStateToBrushConverter}}" />
 
                                     <StackPanel Grid.Column="1" Spacing="5">
                                         <TextBlock
@@ -241,12 +238,21 @@
                         Visibility="Collapsed">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="320" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition
+                                x:Name="ResourceSidebarColumn"
+                                Width="300"
+                                MinWidth="240"
+                                MaxWidth="520" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.ColumnSpan="3" ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -277,32 +283,28 @@
 
                         <Border
                             Grid.Row="1"
-                            Margin="0,20,0,12"
+                            Grid.Column="2"
+                            Margin="0,20,0,0"
+                            Padding="16"
                             Style="{StaticResource AppCardStyle}">
                             <Grid RowSpacing="12">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <Grid ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="3">
                                     <TextBlock FontWeight="SemiBold" Text="Live resource usage" />
                                     <TextBlock
-                                        Grid.Column="1"
                                         FontSize="12"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="{Binding SelectedProfile.ResourceUsageStatus, Mode=OneWay}" />
-                                </Grid>
-                                <Grid Grid.Row="1" ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
+                                        Text="{Binding SelectedProfile.ResourceUsageStatus, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ScrollViewer
+                                    Grid.Row="1"
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Spacing="10">
                                     <Border
                                         Padding="12,9"
                                         Background="{ThemeResource ControlFillColorSecondaryBrush}"
@@ -326,6 +328,7 @@
                                                     FontWeight="SemiBold"
                                                     Text="{Binding SelectedProfile.CpuUsageText, Mode=OneWay}" />
                                                 <controls:ResourceSparkline
+                                                    Height="72"
                                                     Margin="0,4,0,0"
                                                     AutomationProperties.Name="CPU history for the last 60 seconds"
                                                     ItemsSource="{Binding SelectedProfile.CpuHistory, Mode=OneWay}"
@@ -335,7 +338,6 @@
                                         </Grid>
                                     </Border>
                                     <Border
-                                        Grid.Column="1"
                                         Padding="12,9"
                                         Background="{ThemeResource ControlFillColorSecondaryBrush}"
                                         CornerRadius="6">
@@ -362,6 +364,7 @@
                                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                     Text="{Binding SelectedProfile.PrivateMemoryText, Mode=OneWay}" />
                                                 <controls:ResourceSparkline
+                                                    Height="72"
                                                     Margin="0,4,0,0"
                                                     AutomationProperties.Name="Memory history for the last 60 seconds"
                                                     ItemsSource="{Binding SelectedProfile.MemoryHistory, Mode=OneWay}"
@@ -370,64 +373,78 @@
                                             </StackPanel>
                                         </Grid>
                                     </Border>
-                                    <Border
-                                        Grid.Column="2"
-                                        Padding="12,9"
-                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                        CornerRadius="6">
                                         <Grid ColumnSpacing="10">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <FontIcon
-                                                VerticalAlignment="Center"
-                                                Foreground="{StaticResource AppAccentBrush}"
-                                                Glyph="&#xE716;" />
-                                            <StackPanel Grid.Column="1" Spacing="1">
-                                                <TextBlock
-                                                    FontSize="11"
-                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                    Text="Threads" />
-                                                <TextBlock
-                                                    FontSize="17"
-                                                    FontWeight="SemiBold"
-                                                    Text="{Binding SelectedProfile.ThreadCountText, Mode=OneWay}" />
-                                            </StackPanel>
+                                            <Border
+                                                Padding="10,9"
+                                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                CornerRadius="6">
+                                                <StackPanel Spacing="3">
+                                                    <FontIcon
+                                                        HorizontalAlignment="Left"
+                                                        Foreground="{StaticResource AppAccentBrush}"
+                                                        Glyph="&#xE716;" />
+                                                    <TextBlock
+                                                        FontSize="11"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="Threads" />
+                                                    <TextBlock
+                                                        FontSize="17"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding SelectedProfile.ThreadCountText, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border
+                                                Grid.Column="1"
+                                                Padding="10,9"
+                                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                CornerRadius="6">
+                                                <StackPanel Spacing="3">
+                                                    <FontIcon
+                                                        HorizontalAlignment="Left"
+                                                        Foreground="{StaticResource AppAccentBrush}"
+                                                        Glyph="&#xE823;" />
+                                                    <TextBlock
+                                                        FontSize="11"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="Uptime" />
+                                                    <TextBlock
+                                                        FontSize="17"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding SelectedProfile.UptimeText, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </Border>
                                         </Grid>
-                                    </Border>
-                                    <Border
-                                        Grid.Column="3"
-                                        Padding="12,9"
-                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                        CornerRadius="6">
-                                        <Grid ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <FontIcon
-                                                VerticalAlignment="Center"
-                                                Foreground="{StaticResource AppAccentBrush}"
-                                                Glyph="&#xE823;" />
-                                            <StackPanel Grid.Column="1" Spacing="1">
-                                                <TextBlock
-                                                    FontSize="11"
-                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                    Text="Uptime" />
-                                                <TextBlock
-                                                    FontSize="17"
-                                                    FontWeight="SemiBold"
-                                                    Text="{Binding SelectedProfile.UptimeText, Mode=OneWay}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
                             </Grid>
                         </Border>
 
+                        <Thumb
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Margin="0,20,0,0"
+                            AutomationProperties.Name="Resize resource sidebar"
+                            DragDelta="ResourcePaneSplitter_DragDelta">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="Thumb">
+                                    <Grid Background="Transparent">
+                                        <Border
+                                            Width="2"
+                                            HorizontalAlignment="Center"
+                                            Background="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                            CornerRadius="1" />
+                                    </Grid>
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+
                         <Border
-                            Grid.Row="2"
+                            Grid.Row="1"
+                            Margin="0,20,0,0"
                             Background="#111318"
                             CornerRadius="6">
                             <Grid>
@@ -536,7 +553,11 @@
                             </Grid>
                         </Border>
 
-                        <Grid Grid.Row="3" Margin="0,12,0,0" ColumnSpacing="8">
+                        <Grid
+                            Grid.Row="2"
+                            Grid.ColumnSpan="3"
+                            Margin="0,12,0,0"
+                            ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -713,7 +734,7 @@
                                             Text="{Binding ProfileCountText, Mode=OneWay}" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Select a row to view its console and files. Tick profiles to run them together." />
+                                            Text="Click a row to open it. The small check includes it in Start selected and Stop selected." />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="8">
                                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
@@ -753,23 +774,39 @@
                                         <DataTemplate>
                                             <Grid MinHeight="76" Padding="8" ColumnSpacing="12">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="36" />
+                                                    <ColumnDefinition Width="32" />
                                                     <ColumnDefinition Width="44" />
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <CheckBox
+                                                    Width="24"
+                                                    MinWidth="0"
+                                                    Padding="0"
+                                                    HorizontalAlignment="Center"
                                                     VerticalAlignment="Center"
+                                                    AutomationProperties.Name="Include profile in multi-server actions"
                                                     IsChecked="{Binding IsSelectedForBulk, Mode=TwoWay}"
-                                                    ToolTipService.ToolTip="Include this profile in Start selected and Stop selected" />
-                                                <Border
+                                                    ToolTipService.ToolTip="Include in Start selected and Stop selected">
+                                                    <CheckBox.Resources>
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#1A60CDFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2860CDFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#3560CDFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#60CDFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#8ADBFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#B8E9FF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#60CDFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#8ADBFF" />
+                                                        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#B8E9FF" />
+                                                    </CheckBox.Resources>
+                                                </CheckBox>
+                                                <controls:ProfileIcon
                                                     Grid.Column="1"
                                                     Width="40"
                                                     Height="40"
-                                                    Background="{Binding State, Converter={StaticResource ServerStateToBrushConverter}}"
-                                                    CornerRadius="20">
-                                                    <FontIcon Foreground="White" Glyph="&#xE8D4;" />
-                                                </Border>
+                                                    AutomationProperties.Name="{Binding DisplayName}"
+                                                    IconPath="{Binding ProfileIconPath, Mode=OneWay}"
+                                                    StateBrush="{Binding State, Converter={StaticResource ServerStateToBrushConverter}}" />
                                                 <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="3">
                                                     <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
                                                     <StackPanel Orientation="Horizontal" Spacing="8">

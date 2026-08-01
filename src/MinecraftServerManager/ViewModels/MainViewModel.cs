@@ -212,7 +212,7 @@ public sealed class MainViewModel : BindableBase
         get
         {
             var count = Profiles.Count(profile => profile.IsSelectedForBulk);
-            return count == 1 ? "1 selected" : $"{count} selected";
+            return count == 1 ? "1 included" : $"{count} included";
         }
     }
 

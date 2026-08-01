@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MinecraftServerManager.Models;
 
 public sealed class ServerProfile
@@ -15,6 +17,9 @@ public sealed class ServerProfile
     public string JavaVersion { get; init; } = string.Empty;
 
     public string ServerDirectory { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string? IconPath { get; set; }
 
     public string JavaExecutable { get; set; } = string.Empty;
 

@@ -79,6 +79,8 @@ public sealed class ServerSessionViewModel : BindableBase
 
     public string ServerDirectory => Profile.ServerDirectory;
 
+    public string? ProfileIconPath => Profile.IconPath;
+
     public string ProfileDetails =>
         $"{Profile.ServerType} • Minecraft {Profile.MinecraftVersion} • Forge {Profile.ForgeVersion}";
 

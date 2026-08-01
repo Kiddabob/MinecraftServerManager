@@ -5,8 +5,8 @@
     IsHitTestVisible="False">
     <Grid
         x:Name="ChartRoot"
-        Height="44"
         MinWidth="48"
+        MinHeight="44"
         SizeChanged="ChartRoot_SizeChanged">
         <Canvas x:Name="ChartCanvas" Margin="0,1,0,10">
             <Line
