@@ -34,6 +34,9 @@
   "readyPatterns": [
     "Done \\([^)]+\\)!"
   ],
+  "listPlayersCommand": "list",
+  "broadcastCommandPrefix": "say ",
+  "saveCommand": "save-all",
   "stopCommand": "stop",
   "stopTimeoutSeconds": 60
 }

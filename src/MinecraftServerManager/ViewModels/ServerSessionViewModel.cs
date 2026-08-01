@@ -60,6 +60,12 @@ public sealed class ServerSessionViewModel : BindableBase
         StartCommand = new AsyncRelayCommand(StartAsync, () => CanStart);
         StopCommand = new AsyncRelayCommand(async () => { await StopAsync(); }, () => CanStop);
         SendCommand = new AsyncRelayCommand(SendCommandAsync, CanSend);
+        ListPlayersCommand = new AsyncRelayCommand(
+            () => SendProfileCommandAsync(Profile.ListPlayersCommand),
+            () => CanSendProfileCommand(Profile.ListPlayersCommand));
+        SaveNowCommand = new AsyncRelayCommand(
+            () => SendProfileCommandAsync(Profile.SaveCommand),
+            () => CanSendProfileCommand(Profile.SaveCommand));
 
         _processService.OutputReceived += OnOutputReceived;
         _processService.Exited += OnProcessExited;
@@ -185,11 +191,19 @@ public sealed class ServerSessionViewModel : BindableBase
 
     public bool CanSendCommands => _state is ServerState.Running or ServerState.Ready;
 
+    public bool CanBroadcast => CanSendProfileCommand(Profile.BroadcastCommandPrefix);
+
+    public bool CanEmergencyStop => CanStop;
+
     public AsyncRelayCommand StartCommand { get; }
 
     public AsyncRelayCommand StopCommand { get; }
 
     public AsyncRelayCommand SendCommand { get; }
+
+    public AsyncRelayCommand ListPlayersCommand { get; }
+
+    public AsyncRelayCommand SaveNowCommand { get; }
 
     public async Task StartAsync()
     {
@@ -280,7 +294,44 @@ public sealed class ServerSessionViewModel : BindableBase
         }
     }
 
+    public bool PrepareBroadcast()
+    {
+        if (!CanBroadcast)
+        {
+            return false;
+        }
+
+        CommandText = Profile.BroadcastCommandPrefix;
+        return true;
+    }
+
+    public async Task EmergencyStopAsync()
+    {
+        if (!CanEmergencyStop)
+        {
+            return;
+        }
+
+        SetState(ServerState.Stopping, "Force-stopping Java without waiting for a world save…");
+        AppendManagerMessage(
+            "Emergency stop requested. Recent world changes may be lost.",
+            ServerLogLevel.Warning);
+
+        try
+        {
+            await _processService.ForceKillAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        {
+            SetState(ServerState.Running, exception.Message);
+            AppendManagerMessage($"Emergency stop failed: {exception.Message}", ServerLogLevel.Error);
+        }
+    }
+
     private bool CanSend() => CanSendCommands && !string.IsNullOrWhiteSpace(CommandText);
+
+    private bool CanSendProfileCommand(string command) =>
+        CanSendCommands && !string.IsNullOrWhiteSpace(command);
 
     private async Task SendCommandAsync()
     {
@@ -295,6 +346,25 @@ public sealed class ServerSessionViewModel : BindableBase
             await _processService.SendCommandAsync(command);
             AppendManagerMessage(command, ServerLogLevel.Command, "Command");
             CommandText = string.Empty;
+        }
+        catch (InvalidOperationException exception)
+        {
+            AppendManagerMessage($"Command failed: {exception.Message}", ServerLogLevel.Error);
+            StatusMessage = exception.Message;
+        }
+    }
+
+    private async Task SendProfileCommandAsync(string command)
+    {
+        if (!CanSendProfileCommand(command))
+        {
+            return;
+        }
+
+        try
+        {
+            await _processService.SendCommandAsync(command);
+            AppendManagerMessage(command, ServerLogLevel.Command, "Quick action");
         }
         catch (InvalidOperationException exception)
         {
@@ -321,10 +391,22 @@ public sealed class ServerSessionViewModel : BindableBase
             ProcessInfo = $"Last process: PID {args.ProcessId} • Exit {args.ExitCode} • Runtime {runtime:hh\\:mm\\:ss}";
             AppendManagerMessage(
                 $"Java exited with code {args.ExitCode}.",
-                args.ExitCode == 0 ? ServerLogLevel.Manager : ServerLogLevel.Error);
-            ResetResourceUsage("Server process stopped");
+                args.ForceKillWasRequested
+                    ? ServerLogLevel.Warning
+                    : args.ExitCode == 0
+                        ? ServerLogLevel.Manager
+                        : ServerLogLevel.Error);
+            ResetResourceUsage(args.ForceKillWasRequested
+                ? "Server was force-stopped"
+                : "Server process stopped");
 
-            if (args.StopWasRequested && args.ExitCode == 0)
+            if (args.ForceKillWasRequested)
+            {
+                SetState(
+                    ServerState.Stopped,
+                    $"{DisplayName} was force-stopped. Recent world changes may not have been saved.");
+            }
+            else if (args.StopWasRequested && args.ExitCode == 0)
             {
                 SetState(ServerState.Stopped, $"{DisplayName} stopped safely.");
             }
@@ -507,9 +589,13 @@ public sealed class ServerSessionViewModel : BindableBase
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(CanStop));
         OnPropertyChanged(nameof(CanSendCommands));
+        OnPropertyChanged(nameof(CanBroadcast));
+        OnPropertyChanged(nameof(CanEmergencyStop));
         StartCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         SendCommand.NotifyCanExecuteChanged();
+        ListPlayersCommand.NotifyCanExecuteChanged();
+        SaveNowCommand.NotifyCanExecuteChanged();
     }
 
     private readonly record struct PendingConsoleLine(

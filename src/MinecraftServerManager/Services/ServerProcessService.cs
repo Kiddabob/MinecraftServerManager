@@ -17,6 +17,7 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
     private TimeSpan _lastProcessorTime;
     private int? _processId;
     private bool _stopWasRequested;
+    private bool _forceKillWasRequested;
 
     public event EventHandler<ServerOutputEventArgs>? OutputReceived;
 
@@ -151,6 +152,7 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
                 _process = process;
                 _exitCompletion = exitCompletion;
                 _stopWasRequested = false;
+                _forceKillWasRequested = false;
                 _startedAt = DateTimeOffset.Now;
                 _processId = null;
             }
@@ -254,6 +256,49 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
         return false;
     }
 
+    public async Task ForceKillAsync(CancellationToken cancellationToken = default)
+    {
+        await _lifecycleGate.WaitAsync(cancellationToken);
+        Task<int>? exitTask;
+        Process process;
+
+        try
+        {
+            lock (_sync)
+            {
+                process = IsProcessRunning(_process)
+                    ? _process!
+                    : throw new InvalidOperationException("The server process is not running.");
+                _stopWasRequested = true;
+                _forceKillWasRequested = true;
+                exitTask = _exitCompletion?.Task;
+            }
+
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+            {
+                if (IsRunning)
+                {
+                    throw new InvalidOperationException(
+                        $"Unable to force-stop the Java process: {exception.Message}",
+                        exception);
+                }
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+
+        if (exitTask is not null)
+        {
+            await exitTask.WaitAsync(cancellationToken);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (IsRunning)
@@ -278,6 +323,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
             _startedAt = null;
             _lastCpuSampleAt = null;
             _lastProcessorTime = TimeSpan.Zero;
+            _stopWasRequested = false;
+            _forceKillWasRequested = false;
         }
 
         if (process is not null)
@@ -331,6 +378,7 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
         int processId;
         DateTimeOffset startedAt;
         bool stopWasRequested;
+        bool forceKillWasRequested;
         TaskCompletionSource<int>? exitCompletion;
 
         lock (_sync)
@@ -343,6 +391,7 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
             processId = _processId ?? 0;
             startedAt = _startedAt ?? DateTimeOffset.Now;
             stopWasRequested = _stopWasRequested;
+            forceKillWasRequested = _forceKillWasRequested;
             exitCompletion = _exitCompletion;
 
             _process = null;
@@ -352,6 +401,7 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
             _lastCpuSampleAt = null;
             _lastProcessorTime = TimeSpan.Zero;
             _stopWasRequested = false;
+            _forceKillWasRequested = false;
         }
 
         exitCompletion?.TrySetResult(exitCode);
@@ -365,7 +415,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
                 exitCode,
                 startedAt,
                 DateTimeOffset.Now,
-                stopWasRequested));
+                stopWasRequested,
+                forceKillWasRequested));
     }
 
     private void CleanupFailedStart(Process process)
@@ -381,6 +432,7 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
                 _lastCpuSampleAt = null;
                 _lastProcessorTime = TimeSpan.Zero;
                 _stopWasRequested = false;
+                _forceKillWasRequested = false;
             }
         }
 

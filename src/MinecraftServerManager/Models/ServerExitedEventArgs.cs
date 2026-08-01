@@ -7,13 +7,15 @@ public sealed class ServerExitedEventArgs : EventArgs
         int exitCode,
         DateTimeOffset startedAt,
         DateTimeOffset exitedAt,
-        bool stopWasRequested)
+        bool stopWasRequested,
+        bool forceKillWasRequested)
     {
         ProcessId = processId;
         ExitCode = exitCode;
         StartedAt = startedAt;
         ExitedAt = exitedAt;
         StopWasRequested = stopWasRequested;
+        ForceKillWasRequested = forceKillWasRequested;
     }
 
     public int ProcessId { get; }
@@ -25,4 +27,6 @@ public sealed class ServerExitedEventArgs : EventArgs
     public DateTimeOffset ExitedAt { get; }
 
     public bool StopWasRequested { get; }
+
+    public bool ForceKillWasRequested { get; }
 }

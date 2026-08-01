@@ -24,4 +24,6 @@ public interface IServerProcessService
         string stopCommand,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
+
+    Task ForceKillAsync(CancellationToken cancellationToken = default);
 }

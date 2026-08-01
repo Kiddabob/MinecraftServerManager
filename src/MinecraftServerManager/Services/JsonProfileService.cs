@@ -46,16 +46,19 @@ public sealed class JsonProfileService : IProfileService
         CancellationToken cancellationToken = default)
     {
         var profilesById = new Dictionary<string, ServerProfile>(StringComparer.OrdinalIgnoreCase);
+        var packagedProfiles = new List<ServerProfile>();
 
         foreach (var profilePath in EnumerateProfileFiles(PackagedProfilesDirectory))
         {
             var profile = await LoadProfileFileAsync(profilePath, cancellationToken);
+            packagedProfiles.Add(profile);
             profilesById[profile.Id] = profile;
         }
 
         foreach (var profilePath in EnumerateProfileFiles(UserProfilesDirectory))
         {
             var profile = await LoadProfileFileAsync(profilePath, cancellationToken);
+            InheritMissingQuickCommands(profile, packagedProfiles);
             profilesById[profile.Id] = profile;
         }
 
@@ -183,9 +186,39 @@ public sealed class JsonProfileService : IProfileService
             RequiredFiles = template.RequiredFiles,
             RequiredDirectories = template.RequiredDirectories,
             ReadyPatterns = template.ReadyPatterns,
+            ListPlayersCommand = template.ListPlayersCommand,
+            BroadcastCommandPrefix = template.BroadcastCommandPrefix,
+            SaveCommand = template.SaveCommand,
             StopCommand = template.StopCommand,
             StopTimeoutSeconds = template.StopTimeoutSeconds
         };
+    }
+
+    private static void InheritMissingQuickCommands(
+        ServerProfile profile,
+        IReadOnlyList<ServerProfile> packagedProfiles)
+    {
+        var template = packagedProfiles.FirstOrDefault(candidate =>
+            profile.Id.StartsWith($"{candidate.Id}-", StringComparison.OrdinalIgnoreCase));
+        if (template is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.ListPlayersCommand))
+        {
+            profile.ListPlayersCommand = template.ListPlayersCommand;
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.BroadcastCommandPrefix))
+        {
+            profile.BroadcastCommandPrefix = template.BroadcastCommandPrefix;
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.SaveCommand))
+        {
+            profile.SaveCommand = template.SaveCommand;
+        }
     }
 
     private static string? FindProfileIcon(string serverDirectory)

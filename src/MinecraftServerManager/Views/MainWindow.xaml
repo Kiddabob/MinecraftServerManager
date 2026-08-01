@@ -553,27 +553,54 @@
                             </Grid>
                         </Border>
 
-                        <Grid
+                        <StackPanel
                             Grid.Row="2"
                             Grid.ColumnSpan="3"
                             Margin="0,12,0,0"
-                            ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox
-                                x:Name="CommandTextBox"
-                                IsEnabled="{Binding SelectedProfile.CanSendCommands, Mode=OneWay}"
-                                KeyDown="CommandTextBox_KeyDown"
-                                PlaceholderText="Enter a server command, for example: list"
-                                Text="{Binding SelectedProfile.CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button
-                                Grid.Column="1"
-                                Command="{Binding SelectedProfile.SendCommand}"
-                                Content="Send"
-                                Style="{StaticResource AppAccentButtonStyle}" />
-                        </Grid>
+                            Spacing="8">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    x:Name="CommandTextBox"
+                                    IsEnabled="{Binding SelectedProfile.CanSendCommands, Mode=OneWay}"
+                                    KeyDown="CommandTextBox_KeyDown"
+                                    PlaceholderText="Enter a server command, for example: list"
+                                    Text="{Binding SelectedProfile.CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Button
+                                    Grid.Column="1"
+                                    Command="{Binding SelectedProfile.SendCommand}"
+                                    Content="Send"
+                                    Style="{StaticResource AppAccentButtonStyle}" />
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    Command="{Binding SelectedProfile.ListPlayersCommand}"
+                                    Content="List players"
+                                    ToolTipService.ToolTip="Run this profile's list-players command" />
+                                <Button
+                                    Click="BroadcastButton_Click"
+                                    Content="Broadcast…"
+                                    IsEnabled="{Binding SelectedProfile.CanBroadcast, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Prepare this profile's broadcast command" />
+                                <Button
+                                    Command="{Binding SelectedProfile.SaveNowCommand}"
+                                    Content="Save now"
+                                    ToolTipService.ToolTip="Ask the server to save immediately" />
+                                <Button
+                                    Command="{Binding SelectedProfile.StopCommand}"
+                                    Content="Stop safely"
+                                    ToolTipService.ToolTip="Save and stop using this profile's stop command" />
+                                <Button
+                                    Click="EmergencyStopButton_Click"
+                                    Foreground="#FF6B6B"
+                                    IsEnabled="{Binding SelectedProfile.CanEmergencyStop, Mode=OneWay}"
+                                    Content="Emergency stop…"
+                                    ToolTipService.ToolTip="Immediately terminate Java without waiting for a save" />
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
 
                     <Grid

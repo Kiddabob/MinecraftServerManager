@@ -300,6 +300,44 @@ public sealed partial class MainWindow : Window
         command.Execute(null);
     }
 
+    private void BroadcastButton_Click(object sender, RoutedEventArgs args)
+    {
+        if (ViewModel.SelectedProfile?.PrepareBroadcast() != true)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            CommandTextBox.Focus(FocusState.Programmatic);
+            CommandTextBox.SelectionStart = CommandTextBox.Text.Length;
+        });
+    }
+
+    private async void EmergencyStopButton_Click(object sender, RoutedEventArgs args)
+    {
+        var profile = ViewModel.SelectedProfile;
+        if (profile?.CanEmergencyStop != true)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Emergency stop this server?",
+            Content = "This immediately terminates Java without asking the server to save. Recent world changes can be lost or corrupted. Use Stop safely whenever possible.",
+            PrimaryButtonText = "Force stop without saving",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await profile.EmergencyStopAsync();
+        }
+    }
+
     private void ResourcePaneSplitter_DragDelta(object sender, DragDeltaEventArgs args)
     {
         const double minimumSidebarWidth = 240d;

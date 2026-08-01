@@ -11,7 +11,8 @@ namespace MinecraftServerManager.Controls;
 
 public sealed partial class ResourceSparkline : UserControl
 {
-    private static readonly TimeSpan AnimationDuration = TimeSpan.FromMilliseconds(320);
+    private const int SampleCapacity = 60;
+    private static readonly TimeSpan AnimationDuration = TimeSpan.FromMilliseconds(850);
 
     public static readonly DependencyProperty ItemsSourceProperty = DependencyProperty.Register(
         nameof(ItemsSource),
@@ -39,10 +40,19 @@ public sealed partial class ResourceSparkline : UserControl
 
     private readonly DispatcherQueueTimer _animationTimer;
     private INotifyCollectionChanged? _observedCollection;
+    private IReadOnlyList<double> _displayValues = Array.Empty<double>();
     private IReadOnlyList<double> _animationStart = Array.Empty<double>();
     private IReadOnlyList<double> _animationTarget = Array.Empty<double>();
-    private IReadOnlyList<double> _displayValues = Array.Empty<double>();
     private DateTimeOffset _animationStartedAt;
+    private double _animationProgress;
+    private double _displayScaleMinimum;
+    private double _displayScaleMaximum = 1d;
+    private double _startScaleMinimum;
+    private double _startScaleMaximum = 1d;
+    private double _targetScaleMinimum;
+    private double _targetScaleMaximum = 1d;
+    private bool _refreshQueued;
+    private bool _isAppendAnimation;
 
     public ResourceSparkline()
     {
@@ -82,12 +92,14 @@ public sealed partial class ResourceSparkline : UserControl
         var graph = (ResourceSparkline)dependencyObject;
         graph.DetachCollection();
         graph.AttachCollection(args.NewValue);
-        graph.BeginAnimationToCurrentValues();
+        graph.SetCurrentValuesImmediately();
     }
 
     private static void OnScaleChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
     {
-        ((ResourceSparkline)dependencyObject).RenderValues();
+        var graph = (ResourceSparkline)dependencyObject;
+        (graph._displayScaleMinimum, graph._displayScaleMaximum) = graph.GetScale(graph._displayValues);
+        graph.RenderCurrentFrame();
     }
 
     private static void OnLineBrushChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
@@ -115,49 +127,93 @@ public sealed partial class ResourceSparkline : UserControl
         }
     }
 
-    private void ObservedCollection_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void ObservedCollection_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs args)
     {
-        BeginAnimationToCurrentValues();
+        if (_refreshQueued)
+        {
+            return;
+        }
+
+        _refreshQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            _refreshQueued = false;
+            BeginAnimationToCurrentValues();
+        }))
+        {
+            _refreshQueued = false;
+            SetCurrentValuesImmediately();
+        }
+    }
+
+    private void SetCurrentValuesImmediately()
+    {
+        _animationTimer.Stop();
+        _isAppendAnimation = false;
+        _animationProgress = 1d;
+        _displayValues = ReadValues();
+        (_displayScaleMinimum, _displayScaleMaximum) = GetScale(_displayValues);
+        RenderValues(_displayValues, _displayScaleMinimum, _displayScaleMaximum);
     }
 
     private void BeginAnimationToCurrentValues()
     {
         var target = ReadValues();
-        if (_displayValues.Count == 0 || target.Count == 0)
+        if (_displayValues.Count == 0 || target.Count == 0 || !IsSingleAppend(_displayValues, target))
         {
             _displayValues = target;
             _animationTimer.Stop();
-            RenderValues();
+            _isAppendAnimation = false;
+            (_displayScaleMinimum, _displayScaleMaximum) = GetScale(target);
+            RenderValues(target, _displayScaleMinimum, _displayScaleMaximum);
             return;
         }
 
-        _animationStart = AlignValues(_displayValues, target.Count);
+        _animationStart = _displayValues;
         _animationTarget = target;
+        _startScaleMinimum = _displayScaleMinimum;
+        _startScaleMaximum = _displayScaleMaximum;
+        (_targetScaleMinimum, _targetScaleMaximum) = GetScale(target);
+        _animationProgress = 0d;
         _animationStartedAt = DateTimeOffset.UtcNow;
+        _isAppendAnimation = true;
         _animationTimer.Start();
+        RenderCurrentFrame();
     }
 
     private void AnimationTimer_Tick(DispatcherQueueTimer sender, object args)
     {
         var elapsed = DateTimeOffset.UtcNow - _animationStartedAt;
-        var progress = Math.Clamp(elapsed.TotalMilliseconds / AnimationDuration.TotalMilliseconds, 0d, 1d);
-        var easedProgress = 1d - Math.Pow(1d - progress, 3d);
-        var values = new double[_animationTarget.Count];
+        _animationProgress = Math.Clamp(
+            elapsed.TotalMilliseconds / AnimationDuration.TotalMilliseconds,
+            0d,
+            1d);
+        RenderCurrentFrame();
 
-        for (var index = 0; index < values.Length; index++)
+        if (_animationProgress < 1d)
         {
-            values[index] = _animationStart[index]
-                + ((_animationTarget[index] - _animationStart[index]) * easedProgress);
+            return;
         }
 
-        _displayValues = values;
-        RenderValues();
+        sender.Stop();
+        _isAppendAnimation = false;
+        _displayValues = _animationTarget;
+        _displayScaleMinimum = _targetScaleMinimum;
+        _displayScaleMaximum = _targetScaleMaximum;
+        RenderValues(_displayValues, _displayScaleMinimum, _displayScaleMaximum);
+    }
 
-        if (progress >= 1d)
+    private void RenderCurrentFrame()
+    {
+        if (!_isAppendAnimation)
         {
-            sender.Stop();
-            _displayValues = _animationTarget;
+            RenderValues(_displayValues, _displayScaleMinimum, _displayScaleMaximum);
+            return;
         }
+
+        var scaleMinimum = Lerp(_startScaleMinimum, _targetScaleMinimum, _animationProgress);
+        var scaleMaximum = Lerp(_startScaleMaximum, _targetScaleMaximum, _animationProgress);
+        RenderAppendFrame(scaleMinimum, scaleMaximum, _animationProgress);
     }
 
     private IReadOnlyList<double> ReadValues()
@@ -171,34 +227,23 @@ public sealed partial class ResourceSparkline : UserControl
             .Cast<object?>()
             .Select(value => value is null ? 0d : Convert.ToDouble(value))
             .Where(double.IsFinite)
+            .TakeLast(SampleCapacity)
             .ToArray();
     }
 
-    private static IReadOnlyList<double> AlignValues(IReadOnlyList<double> values, int targetCount)
+    private static bool IsSingleAppend(IReadOnlyList<double> previous, IReadOnlyList<double> current)
     {
-        if (values.Count == targetCount)
+        if (previous.Count < SampleCapacity && current.Count == previous.Count + 1)
         {
-            return values;
+            return previous.SequenceEqual(current.Take(previous.Count));
         }
 
-        if (values.Count > targetCount)
-        {
-            return values.Skip(values.Count - targetCount).ToArray();
-        }
-
-        var result = new double[targetCount];
-        var padValue = values.Count == 0 ? 0d : values[0];
-        var padding = targetCount - values.Count;
-        Array.Fill(result, padValue, 0, padding);
-        for (var index = 0; index < values.Count; index++)
-        {
-            result[index + padding] = values[index];
-        }
-
-        return result;
+        return previous.Count == SampleCapacity
+            && current.Count == SampleCapacity
+            && previous.Skip(1).SequenceEqual(current.Take(SampleCapacity - 1));
     }
 
-    private void RenderValues()
+    private void RenderValues(IReadOnlyList<double> values, double minimum, double maximum)
     {
         var width = ChartCanvas.ActualWidth;
         var height = ChartCanvas.ActualHeight;
@@ -208,25 +253,72 @@ public sealed partial class ResourceSparkline : UserControl
         }
 
         UpdateGuides(width, height);
-
-        if (_displayValues.Count == 0)
+        if (values.Count == 0)
         {
             HistoryLine.Data = null;
             HistoryArea.Data = null;
             return;
         }
 
-        var (minimum, maximum) = GetScale(_displayValues);
-        var usableHeight = Math.Max(1d, height - 4d);
-        var points = new Point[_displayValues.Count];
-
+        var slotWidth = width / (SampleCapacity - 1d);
+        var startSlot = SampleCapacity - values.Count;
+        var points = new Point[values.Count];
         for (var index = 0; index < points.Length; index++)
         {
-            var x = points.Length == 1 ? width : width * index / (points.Length - 1d);
-            var normalized = Math.Clamp((_displayValues[index] - minimum) / (maximum - minimum), 0d, 1d);
-            points[index] = new Point(x, 2d + ((1d - normalized) * usableHeight));
+            points[index] = CreatePoint(
+                (startSlot + index) * slotWidth,
+                values[index],
+                minimum,
+                maximum,
+                height);
         }
 
+        SetGeometry(points, height);
+    }
+
+    private void RenderAppendFrame(double minimum, double maximum, double progress)
+    {
+        var width = ChartCanvas.ActualWidth;
+        var height = ChartCanvas.ActualHeight;
+        if (width <= 0 || height <= 0 || _animationStart.Count == 0)
+        {
+            return;
+        }
+
+        UpdateGuides(width, height);
+        var slotWidth = width / (SampleCapacity - 1d);
+        var startSlot = SampleCapacity - _animationStart.Count;
+        var points = new Point[_animationStart.Count + 1];
+
+        for (var index = 0; index < _animationStart.Count; index++)
+        {
+            points[index] = CreatePoint(
+                (startSlot + index - progress) * slotWidth,
+                _animationStart[index],
+                minimum,
+                maximum,
+                height);
+        }
+
+        var incomingValue = Lerp(_animationStart[^1], _animationTarget[^1], progress);
+        points[^1] = CreatePoint(width, incomingValue, minimum, maximum, height);
+        SetGeometry(points, height);
+    }
+
+    private static Point CreatePoint(
+        double x,
+        double value,
+        double minimum,
+        double maximum,
+        double height)
+    {
+        var usableHeight = Math.Max(1d, height - 4d);
+        var normalized = Math.Clamp((value - minimum) / Math.Max(0.0001d, maximum - minimum), 0d, 1d);
+        return new Point(x, 2d + ((1d - normalized) * usableHeight));
+    }
+
+    private void SetGeometry(IReadOnlyList<Point> points, double height)
+    {
         HistoryLine.Data = CreateSmoothGeometry(points, closeToBottom: false, height);
         HistoryArea.Data = CreateSmoothGeometry(points, closeToBottom: true, height);
     }
@@ -238,12 +330,20 @@ public sealed partial class ResourceSparkline : UserControl
             return (0d, Maximum);
         }
 
+        if (values.Count == 0)
+        {
+            return (0d, Math.Max(1d, MinimumRange));
+        }
+
         var minimum = values.Min();
         var maximum = values.Max();
         var range = Math.Max(maximum - minimum, Math.Max(1d, MinimumRange));
         var padding = range * 0.12d;
         return (Math.Max(0d, minimum - padding), maximum + padding);
     }
+
+    private static double Lerp(double start, double end, double progress) =>
+        start + ((end - start) * progress);
 
     private static PathGeometry CreateSmoothGeometry(IReadOnlyList<Point> points, bool closeToBottom, double height)
     {
@@ -292,14 +392,18 @@ public sealed partial class ResourceSparkline : UserControl
         }
     }
 
-    private void ChartRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void ChartRoot_SizeChanged(object sender, SizeChangedEventArgs args)
     {
-        ChartCanvas.Width = e.NewSize.Width;
-        ChartCanvas.Height = Math.Max(0d, e.NewSize.Height - 10d);
-        RenderValues();
+        ChartCanvas.Width = args.NewSize.Width;
+        ChartCanvas.Height = Math.Max(0d, args.NewSize.Height - 10d);
+        ChartCanvas.Clip = new RectangleGeometry
+        {
+            Rect = new Rect(0d, 0d, ChartCanvas.Width, ChartCanvas.Height)
+        };
+        RenderCurrentFrame();
     }
 
-    private void ResourceSparkline_Unloaded(object sender, RoutedEventArgs e)
+    private void ResourceSparkline_Unloaded(object sender, RoutedEventArgs args)
     {
         _animationTimer.Stop();
         DetachCollection();

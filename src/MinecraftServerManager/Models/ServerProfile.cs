@@ -35,6 +35,12 @@ public sealed class ServerProfile
 
     public IReadOnlyList<string> ReadyPatterns { get; init; } = [];
 
+    public string ListPlayersCommand { get; set; } = string.Empty;
+
+    public string BroadcastCommandPrefix { get; set; } = string.Empty;
+
+    public string SaveCommand { get; set; } = string.Empty;
+
     public string StopCommand { get; init; } = "stop";
 
     public int StopTimeoutSeconds { get; init; } = 60;
