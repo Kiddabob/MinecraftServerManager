@@ -1,0 +1,39 @@
+{
+  "id": "tekkit-1.6.4",
+  "displayName": "Tekkit",
+  "serverType": "Forge",
+  "minecraftVersion": "1.6.4",
+  "forgeVersion": "9.11.1.965",
+  "javaVersion": "Java 8",
+  "serverDirectory": "%USERPROFILE%\\OneDrive\\Tekkit Server",
+  "javaExecutable": "%USERPROFILE%\\OneDrive\\jre-legacy\\bin\\java.exe",
+  "serverJar": "TekkitServer.jar",
+  "javaArguments": [
+    "-server",
+    "-Xms4G",
+    "-Xmx6G",
+    "-XX:+UseConcMarkSweepGC",
+    "-XX:+CMSParallelRemarkEnabled",
+    "-XX:+CMSClassUnloadingEnabled",
+    "-XX:+ExplicitGCInvokesConcurrent",
+    "-XX:CMSInitiatingOccupancyFraction=70",
+    "-XX:+UseCMSInitiatingOccupancyOnly",
+    "-XX:+ParallelRefProcEnabled"
+  ],
+  "serverArguments": [
+    "nogui"
+  ],
+  "requiredFiles": [
+    "eula.txt",
+    "server.properties"
+  ],
+  "requiredDirectories": [
+    "config",
+    "mods"
+  ],
+  "readyPatterns": [
+    "Done \\([^)]+\\)!"
+  ],
+  "stopCommand": "stop",
+  "stopTimeoutSeconds": 60
+}

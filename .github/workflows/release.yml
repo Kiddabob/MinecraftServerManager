@@ -1,0 +1,62 @@
+name: Build and publish installer
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional semantic version, for example 0.2.0
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Select release version
+        id: release-version
+        shell: pwsh
+        run: |
+          $requestedVersion = '${{ inputs.version }}'
+          $version = if ([string]::IsNullOrWhiteSpace($requestedVersion)) {
+            '0.1.${{ github.run_number }}'
+          } else {
+            $requestedVersion
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Configure this GitHub repository as the update source
+        shell: pwsh
+        run: |
+          $settingsPath = 'src/MinecraftServerManager/UpdateSettings.json'
+          $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+          $settings.githubRepositoryUrl = 'https://github.com/${{ github.repository }}'
+          $settings | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding utf8NoBOM
+
+      - name: Download previous release metadata
+        continue-on-error: true
+        run: dotnet tool run vpk download github --repoUrl https://github.com/${{ github.repository }} --outputDir artifacts/releases --token ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build installer and update package
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Version '${{ steps.release-version.outputs.version }}'
+
+      - name: Publish GitHub Release
+        run: dotnet tool run vpk upload github --repoUrl https://github.com/${{ github.repository }} --outputDir artifacts/releases --token ${{ secrets.GITHUB_TOKEN }} --publish --releaseName "Minecraft Server Manager ${{ steps.release-version.outputs.version }}" --tag "v${{ steps.release-version.outputs.version }}"
