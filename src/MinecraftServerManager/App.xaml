@@ -43,6 +43,7 @@
             <SolidColorBrush x:Key="CheckBoxBackgroundCheckedPressed" Color="#CC60CDFF" />
             <SolidColorBrush x:Key="CheckBoxBackgroundCheckedDisabled" Color="#6660CDFF" />
             <infrastructure:ServerStateToBrushConverter x:Key="ServerStateToBrushConverter" />
+            <infrastructure:ServerLogLevelToBrushConverter x:Key="ServerLogLevelToBrushConverter" />
 
             <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI Variable Display" />

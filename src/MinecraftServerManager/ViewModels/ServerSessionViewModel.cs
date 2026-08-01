@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using System.Text;
+using System.Collections.ObjectModel;
 using MinecraftServerManager.Infrastructure;
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
@@ -8,7 +8,8 @@ namespace MinecraftServerManager.ViewModels;
 
 public sealed class ServerSessionViewModel : BindableBase
 {
-    private const int MaximumConsoleCharacters = 250_000;
+    private const int MaximumConsoleEntries = 5_000;
+    private const int MaximumResourceHistorySamples = 60;
 
     private readonly IProfileValidator _profileValidator;
     private readonly IServerLaunchRequestFactory _launchRequestFactory;
@@ -16,17 +17,22 @@ public sealed class ServerSessionViewModel : BindableBase
     private readonly IServerProcessService _processService;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly ConcurrentQueue<PendingConsoleLine> _pendingConsoleLines = new();
-    private readonly StringBuilder _consoleBuffer = new();
 
     private IServerConsoleParser _consoleParser;
+    private CancellationTokenSource? _resourceMonitorCancellation;
     private ServerState _state;
     private int _consoleDrainScheduled;
     private bool _isSelectedForBulk;
     private string _statusMessage;
     private string _validationText;
     private string _processInfo = "No server process";
-    private string _consoleText = string.Empty;
     private string _commandText = string.Empty;
+    private string _resourceUsageStatus = "Starts with the Java process";
+    private string _cpuUsageText = "—";
+    private string _workingSetText = "—";
+    private string _privateMemoryText = "Private: —";
+    private string _threadCountText = "—";
+    private string _uptimeText = "—";
 
     public ServerSessionViewModel(
         ServerProfile profile,
@@ -60,6 +66,12 @@ public sealed class ServerSessionViewModel : BindableBase
     }
 
     public ServerProfile Profile { get; }
+
+    public ObservableCollection<ServerLogEntry> ConsoleEntries { get; } = [];
+
+    public ObservableCollection<double> CpuHistory { get; } = [];
+
+    public ObservableCollection<double> MemoryHistory { get; } = [];
 
     public string Id => Profile.Id;
 
@@ -105,10 +117,40 @@ public sealed class ServerSessionViewModel : BindableBase
         private set => SetProperty(ref _processInfo, value);
     }
 
-    public string ConsoleText
+    public string ResourceUsageStatus
     {
-        get => _consoleText;
-        private set => SetProperty(ref _consoleText, value);
+        get => _resourceUsageStatus;
+        private set => SetProperty(ref _resourceUsageStatus, value);
+    }
+
+    public string CpuUsageText
+    {
+        get => _cpuUsageText;
+        private set => SetProperty(ref _cpuUsageText, value);
+    }
+
+    public string WorkingSetText
+    {
+        get => _workingSetText;
+        private set => SetProperty(ref _workingSetText, value);
+    }
+
+    public string PrivateMemoryText
+    {
+        get => _privateMemoryText;
+        private set => SetProperty(ref _privateMemoryText, value);
+    }
+
+    public string ThreadCountText
+    {
+        get => _threadCountText;
+        private set => SetProperty(ref _threadCountText, value);
+    }
+
+    public string UptimeText
+    {
+        get => _uptimeText;
+        private set => SetProperty(ref _uptimeText, value);
     }
 
     public string CommandText
@@ -162,13 +204,14 @@ public sealed class ServerSessionViewModel : BindableBase
             return;
         }
 
-        _consoleBuffer.Clear();
-        ConsoleText = string.Empty;
-        AppendConsoleLine(new PendingConsoleLine(
+        StopResourceMonitoring();
+        ConsoleEntries.Clear();
+        CpuHistory.Clear();
+        MemoryHistory.Clear();
+        AppendManagerMessage(
             $"Starting {DisplayName} with profile '{Id}'.",
-            ServerOutputStream.StandardOutput,
-            false,
-            true));
+            ServerLogLevel.Manager);
+        ResetResourceUsage("Starting Java…");
 
         _consoleParser = _consoleParserFactory.Create(Profile);
         SetState(ServerState.Starting, "Starting the Java process…");
@@ -182,6 +225,7 @@ public sealed class ServerSessionViewModel : BindableBase
             ProcessInfo = processId is null || startedAt is null
                 ? "Java process started"
                 : $"PID {processId} • Started {startedAt.Value:dd MMM yyyy, HH:mm:ss}";
+            StartResourceMonitoring();
 
             if (_state == ServerState.Starting)
             {
@@ -191,8 +235,9 @@ public sealed class ServerSessionViewModel : BindableBase
         catch (Exception exception) when (
             exception is InvalidOperationException or UnauthorizedAccessException or IOException)
         {
-            AppendSystemMessage($"Start failed: {exception.Message}", isError: true);
+            AppendManagerMessage($"Start failed: {exception.Message}", ServerLogLevel.Error);
             ProcessInfo = "No server process";
+            ResetResourceUsage("Process failed to start");
             SetState(ServerState.Failed, exception.Message);
         }
     }
@@ -205,7 +250,7 @@ public sealed class ServerSessionViewModel : BindableBase
         }
 
         SetState(ServerState.Stopping, $"Sending '{Profile.StopCommand}' and waiting for the server to save and exit…");
-        AppendSystemMessage($"Sending safe stop command: {Profile.StopCommand}");
+        AppendManagerMessage($"Sending safe stop command: {Profile.StopCommand}", ServerLogLevel.Command);
 
         try
         {
@@ -218,7 +263,9 @@ public sealed class ServerSessionViewModel : BindableBase
                 SetState(
                     ServerState.Running,
                     $"The server did not exit within {Profile.StopTimeoutSeconds} seconds. It was not force-killed.");
-                AppendSystemMessage("Safe stop timed out; the Java process is still running.", isError: true);
+                AppendManagerMessage(
+                    "Safe stop timed out; the Java process is still running.",
+                    ServerLogLevel.Warning);
             }
 
             return stopped;
@@ -226,7 +273,7 @@ public sealed class ServerSessionViewModel : BindableBase
         catch (Exception exception) when (exception is InvalidOperationException or IOException)
         {
             SetState(ServerState.Running, exception.Message);
-            AppendSystemMessage($"Stop failed: {exception.Message}", isError: true);
+            AppendManagerMessage($"Stop failed: {exception.Message}", ServerLogLevel.Error);
             return false;
         }
     }
@@ -244,20 +291,22 @@ public sealed class ServerSessionViewModel : BindableBase
         try
         {
             await _processService.SendCommandAsync(command);
-            AppendSystemMessage($"> {command}");
+            AppendManagerMessage(command, ServerLogLevel.Command, "Command");
             CommandText = string.Empty;
         }
         catch (InvalidOperationException exception)
         {
-            AppendSystemMessage($"Command failed: {exception.Message}", isError: true);
+            AppendManagerMessage($"Command failed: {exception.Message}", ServerLogLevel.Error);
             StatusMessage = exception.Message;
         }
     }
 
     private void OnOutputReceived(object? sender, ServerOutputEventArgs args)
     {
-        var isReady = _consoleParser.Parse(args.Line) == ServerConsoleSignal.Ready;
-        _pendingConsoleLines.Enqueue(new PendingConsoleLine(args.Line, args.Stream, isReady, false));
+        var parsed = _consoleParser.Parse(args.Line, args.Stream);
+        _pendingConsoleLines.Enqueue(new PendingConsoleLine(
+            parsed.Entry,
+            parsed.Signal == ServerConsoleSignal.Ready));
         ScheduleConsoleDrain();
     }
 
@@ -265,9 +314,13 @@ public sealed class ServerSessionViewModel : BindableBase
     {
         _uiDispatcher.TryEnqueue(() =>
         {
+            StopResourceMonitoring();
             var runtime = args.ExitedAt - args.StartedAt;
             ProcessInfo = $"Last process: PID {args.ProcessId} • Exit {args.ExitCode} • Runtime {runtime:hh\\:mm\\:ss}";
-            AppendSystemMessage($"Java exited with code {args.ExitCode}.", args.ExitCode != 0);
+            AppendManagerMessage(
+                $"Java exited with code {args.ExitCode}.",
+                args.ExitCode == 0 ? ServerLogLevel.Manager : ServerLogLevel.Error);
+            ResetResourceUsage("Server process stopped");
 
             if (args.StopWasRequested && args.ExitCode == 0)
             {
@@ -302,7 +355,7 @@ public sealed class ServerSessionViewModel : BindableBase
         var sawReadySignal = false;
         while (_pendingConsoleLines.TryDequeue(out var pendingLine))
         {
-            AppendConsoleLine(pendingLine);
+            AppendConsoleEntry(pendingLine.Entry);
             sawReadySignal |= pendingLine.IsReadySignal;
         }
 
@@ -318,37 +371,128 @@ public sealed class ServerSessionViewModel : BindableBase
         }
     }
 
-    private void AppendSystemMessage(string message, bool isError = false)
+    private void AppendManagerMessage(
+        string message,
+        ServerLogLevel level,
+        string source = "Manager")
     {
-        AppendConsoleLine(new PendingConsoleLine(
-            message,
-            isError ? ServerOutputStream.StandardError : ServerOutputStream.StandardOutput,
-            false,
-            true));
+        AppendConsoleEntry(new ServerLogEntry(
+            DateTime.Now.ToString("HH:mm:ss"),
+            level,
+            source,
+            level == ServerLogLevel.Command ? $"> {message}" : message));
     }
 
-    private void AppendConsoleLine(PendingConsoleLine pendingLine)
+    private void AppendConsoleEntry(ServerLogEntry entry)
     {
-        var prefix = pendingLine.IsSystemMessage
-            ? "[manager] "
-            : pendingLine.Stream == ServerOutputStream.StandardError
-                ? "[stderr] "
-                : string.Empty;
-
-        _consoleBuffer.Append('[')
-            .Append(DateTime.Now.ToString("HH:mm:ss"))
-            .Append("] ")
-            .Append(prefix)
-            .AppendLine(pendingLine.Line);
-
-        if (_consoleBuffer.Length > MaximumConsoleCharacters)
+        ConsoleEntries.Add(entry);
+        while (ConsoleEntries.Count > MaximumConsoleEntries)
         {
-            var removeCount = _consoleBuffer.Length - MaximumConsoleCharacters;
-            var nextLineBreak = IndexOfLineBreak(_consoleBuffer, removeCount);
-            _consoleBuffer.Remove(0, nextLineBreak < 0 ? removeCount : nextLineBreak + Environment.NewLine.Length);
+            ConsoleEntries.RemoveAt(0);
+        }
+    }
+
+    private void StartResourceMonitoring()
+    {
+        StopResourceMonitoring();
+        ResourceUsageStatus = "Live • updates every second";
+
+        var cancellation = new CancellationTokenSource();
+        _resourceMonitorCancellation = cancellation;
+        _ = Task.Run(() => MonitorResourceUsageAsync(cancellation.Token), cancellation.Token);
+    }
+
+    private void StopResourceMonitoring()
+    {
+        var cancellation = _resourceMonitorCancellation;
+        _resourceMonitorCancellation = null;
+        if (cancellation is null)
+        {
+            return;
         }
 
-        ConsoleText = _consoleBuffer.ToString();
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private async Task MonitorResourceUsageAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            QueueResourceUsageUpdate(cancellationToken);
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                QueueResourceUsageUpdate(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal when the process exits or a profile restarts.
+        }
+    }
+
+    private void QueueResourceUsageUpdate(CancellationToken cancellationToken)
+    {
+        var usage = _processService.GetResourceUsage();
+        if (usage is null || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                ApplyResourceUsage(usage);
+            }
+        });
+    }
+
+    private void ApplyResourceUsage(ServerResourceUsage usage)
+    {
+        CpuUsageText = $"{usage.CpuPercent:0.0}%";
+        WorkingSetText = FormatBytes(usage.WorkingSetBytes);
+        PrivateMemoryText = $"Private: {FormatBytes(usage.PrivateMemoryBytes)}";
+        ThreadCountText = usage.ThreadCount.ToString("N0");
+        UptimeText = FormatUptime(usage.Uptime);
+        AppendResourceSample(CpuHistory, usage.CpuPercent);
+        AppendResourceSample(MemoryHistory, usage.WorkingSetBytes / 1024d / 1024d);
+    }
+
+    private static void AppendResourceSample(ObservableCollection<double> history, double value)
+    {
+        history.Add(value);
+        while (history.Count > MaximumResourceHistorySamples)
+        {
+            history.RemoveAt(0);
+        }
+    }
+
+    private void ResetResourceUsage(string status)
+    {
+        ResourceUsageStatus = status;
+        CpuUsageText = "—";
+        WorkingSetText = "—";
+        PrivateMemoryText = "Private: —";
+        ThreadCountText = "—";
+        UptimeText = "—";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        const double megabyte = 1024d * 1024d;
+        const double gigabyte = 1024d * 1024d * 1024d;
+        return bytes >= gigabyte
+            ? $"{bytes / gigabyte:0.00} GB"
+            : $"{bytes / megabyte:0} MB";
+    }
+
+    private static string FormatUptime(TimeSpan uptime)
+    {
+        return uptime.TotalDays >= 1
+            ? $"{(int)uptime.TotalDays}d {uptime.Hours:00}:{uptime.Minutes:00}:{uptime.Seconds:00}"
+            : $"{uptime.Hours:00}:{uptime.Minutes:00}:{uptime.Seconds:00}";
     }
 
     private void SetState(ServerState state, string statusMessage)
@@ -366,22 +510,7 @@ public sealed class ServerSessionViewModel : BindableBase
         SendCommand.NotifyCanExecuteChanged();
     }
 
-    private static int IndexOfLineBreak(StringBuilder builder, int startIndex)
-    {
-        for (var index = Math.Max(0, startIndex); index < builder.Length; index++)
-        {
-            if (builder[index] == '\n')
-            {
-                return index;
-            }
-        }
-
-        return -1;
-    }
-
     private readonly record struct PendingConsoleLine(
-        string Line,
-        ServerOutputStream Stream,
-        bool IsReadySignal,
-        bool IsSystemMessage);
+        ServerLogEntry Entry,
+        bool IsReadySignal);
 }

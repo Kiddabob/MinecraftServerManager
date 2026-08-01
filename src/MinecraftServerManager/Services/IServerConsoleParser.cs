@@ -4,5 +4,5 @@ namespace MinecraftServerManager.Services;
 
 public interface IServerConsoleParser
 {
-    ServerConsoleSignal Parse(string line);
+    ServerConsoleParseResult Parse(string line, ServerOutputStream stream);
 }

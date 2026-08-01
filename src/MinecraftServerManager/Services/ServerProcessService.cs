@@ -13,6 +13,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
     private Process? _process;
     private TaskCompletionSource<int>? _exitCompletion;
     private DateTimeOffset? _startedAt;
+    private DateTimeOffset? _lastCpuSampleAt;
+    private TimeSpan _lastProcessorTime;
     private int? _processId;
     private bool _stopWasRequested;
 
@@ -49,6 +51,55 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
             lock (_sync)
             {
                 return _startedAt;
+            }
+        }
+    }
+
+    public ServerResourceUsage? GetResourceUsage()
+    {
+        lock (_sync)
+        {
+            if (!IsProcessRunning(_process) || _startedAt is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var process = _process!;
+                process.Refresh();
+
+                var sampledAt = DateTimeOffset.UtcNow;
+                var processorTime = process.TotalProcessorTime;
+                var cpuPercent = 0d;
+                if (_lastCpuSampleAt is not null)
+                {
+                    var elapsedMilliseconds = (sampledAt - _lastCpuSampleAt.Value).TotalMilliseconds;
+                    var processorMilliseconds = (processorTime - _lastProcessorTime).TotalMilliseconds;
+                    if (elapsedMilliseconds > 0)
+                    {
+                        cpuPercent = processorMilliseconds
+                            / (elapsedMilliseconds * Environment.ProcessorCount)
+                            * 100d;
+                    }
+                }
+
+                _lastCpuSampleAt = sampledAt;
+                _lastProcessorTime = processorTime;
+
+                return new ServerResourceUsage(
+                    Math.Clamp(cpuPercent, 0d, 100d),
+                    process.WorkingSet64,
+                    process.PrivateMemorySize64,
+                    process.Threads.Count,
+                    DateTimeOffset.Now - _startedAt.Value);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException
+                    or ObjectDisposedException
+                    or Win32Exception)
+            {
+                return null;
             }
         }
     }
@@ -114,6 +165,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
                 lock (_sync)
                 {
                     _processId = process.Id;
+                    _lastCpuSampleAt = DateTimeOffset.UtcNow;
+                    _lastProcessorTime = process.TotalProcessorTime;
                 }
 
                 process.BeginOutputReadLine();
@@ -223,6 +276,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
             _exitCompletion = null;
             _processId = null;
             _startedAt = null;
+            _lastCpuSampleAt = null;
+            _lastProcessorTime = TimeSpan.Zero;
         }
 
         if (process is not null)
@@ -294,6 +349,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
             _exitCompletion = null;
             _processId = null;
             _startedAt = null;
+            _lastCpuSampleAt = null;
+            _lastProcessorTime = TimeSpan.Zero;
             _stopWasRequested = false;
         }
 
@@ -321,6 +378,8 @@ public sealed class ServerProcessService : IServerProcessService, IAsyncDisposab
                 _exitCompletion = null;
                 _processId = null;
                 _startedAt = null;
+                _lastCpuSampleAt = null;
+                _lastProcessorTime = TimeSpan.Zero;
                 _stopWasRequested = false;
             }
         }

@@ -2,6 +2,7 @@
     x:Class="MinecraftServerManager.Views.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:MinecraftServerManager.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -255,6 +256,11 @@
                                 <TextBlock
                                     Style="{StaticResource BodySecondaryTextStyle}"
                                     Text="Live Java output and server commands for the selected profile." />
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding SelectedProfile.StatusMessage, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
                             </StackPanel>
                             <StackPanel
                                 Grid.Column="1"
@@ -272,27 +278,263 @@
                         <Border
                             Grid.Row="1"
                             Margin="0,20,0,12"
-                            Padding="12,8"
-                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                            CornerRadius="6">
-                            <TextBlock Text="{Binding SelectedProfile.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                            Style="{StaticResource AppCardStyle}">
+                            <Grid RowSpacing="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock FontWeight="SemiBold" Text="Live resource usage" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding SelectedProfile.ResourceUsageStatus, Mode=OneWay}" />
+                                </Grid>
+                                <Grid Grid.Row="1" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Padding="12,9"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="6">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource AppAccentBrush}"
+                                                Glyph="&#xE9D9;" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="CPU" />
+                                                <TextBlock
+                                                    FontSize="17"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding SelectedProfile.CpuUsageText, Mode=OneWay}" />
+                                                <controls:ResourceSparkline
+                                                    Margin="0,4,0,0"
+                                                    AutomationProperties.Name="CPU history for the last 60 seconds"
+                                                    ItemsSource="{Binding SelectedProfile.CpuHistory, Mode=OneWay}"
+                                                    LineBrush="#60CDFF"
+                                                    Maximum="100" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                    <Border
+                                        Grid.Column="1"
+                                        Padding="12,9"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="6">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource AppAccentBrush}"
+                                                Glyph="&#xE950;" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="Memory" />
+                                                <TextBlock
+                                                    FontSize="17"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding SelectedProfile.WorkingSetText, Mode=OneWay}" />
+                                                <TextBlock
+                                                    FontSize="10"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{Binding SelectedProfile.PrivateMemoryText, Mode=OneWay}" />
+                                                <controls:ResourceSparkline
+                                                    Margin="0,4,0,0"
+                                                    AutomationProperties.Name="Memory history for the last 60 seconds"
+                                                    ItemsSource="{Binding SelectedProfile.MemoryHistory, Mode=OneWay}"
+                                                    LineBrush="#A78BFA"
+                                                    MinimumRange="256" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                    <Border
+                                        Grid.Column="2"
+                                        Padding="12,9"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="6">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource AppAccentBrush}"
+                                                Glyph="&#xE716;" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="Threads" />
+                                                <TextBlock
+                                                    FontSize="17"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding SelectedProfile.ThreadCountText, Mode=OneWay}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                    <Border
+                                        Grid.Column="3"
+                                        Padding="12,9"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="6">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource AppAccentBrush}"
+                                                Glyph="&#xE823;" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="Uptime" />
+                                                <TextBlock
+                                                    FontSize="17"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding SelectedProfile.UptimeText, Mode=OneWay}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
                         </Border>
 
-                        <TextBox
-                            x:Name="ConsoleTextBox"
+                        <Border
                             Grid.Row="2"
-                            AcceptsReturn="True"
                             Background="#111318"
-                            BorderThickness="0"
-                            FontFamily="Cascadia Mono, Consolas"
-                            FontSize="13"
-                            Foreground="#E6EDF3"
-                            IsReadOnly="True"
-                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                            ScrollViewer.VerticalScrollBarVisibility="Auto"
-                            Text="{Binding SelectedProfile.ConsoleText, Mode=OneWay}"
-                            TextChanged="ConsoleTextBox_TextChanged"
-                            TextWrapping="NoWrap" />
+                            CornerRadius="6">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid Padding="14,10" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Foreground="#E6EDF3"
+                                        FontWeight="SemiBold"
+                                        Text="Live log" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        FontSize="11"
+                                        Foreground="#9DA7B3"
+                                        Text="Newest messages appear automatically" />
+                                </Grid>
+                                <ListView
+                                    x:Name="ConsoleLogList"
+                                    Grid.Row="1"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    ItemsSource="{Binding SelectedProfile.ConsoleEntries, Mode=OneWay}"
+                                    SelectionMode="None"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="MinHeight" Value="0" />
+                                            <Setter Property="Padding" Value="0" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border
+                                                BorderBrush="#12FFFFFF"
+                                                BorderThickness="0,0,0,1">
+                                                <Grid MinHeight="38" Padding="10,6" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="3" />
+                                                        <ColumnDefinition Width="26" />
+                                                        <ColumnDefinition Width="62" />
+                                                        <ColumnDefinition Width="76" />
+                                                        <ColumnDefinition Width="125" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border
+                                                        Background="{Binding Level, Converter={StaticResource ServerLogLevelToBrushConverter}}"
+                                                        CornerRadius="2" />
+                                                    <Grid
+                                                        Grid.Column="1"
+                                                        Width="24"
+                                                        Height="24"
+                                                        VerticalAlignment="Top">
+                                                        <Border
+                                                            Background="{Binding Level, Converter={StaticResource ServerLogLevelToBrushConverter}}"
+                                                            CornerRadius="12"
+                                                            Opacity="0.18" />
+                                                        <FontIcon
+                                                            FontSize="12"
+                                                            Foreground="{Binding Level, Converter={StaticResource ServerLogLevelToBrushConverter}}"
+                                                            Glyph="{Binding Glyph}" />
+                                                    </Grid>
+                                                    <TextBlock
+                                                        Grid.Column="2"
+                                                        VerticalAlignment="Center"
+                                                        FontFamily="Cascadia Mono, Consolas"
+                                                        FontSize="11"
+                                                        Foreground="#9DA7B3"
+                                                        Text="{Binding TimeText}" />
+                                                    <TextBlock
+                                                        Grid.Column="3"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="11"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="{Binding Level, Converter={StaticResource ServerLogLevelToBrushConverter}}"
+                                                        Text="{Binding LevelText}" />
+                                                    <TextBlock
+                                                        Grid.Column="4"
+                                                        VerticalAlignment="Center"
+                                                        FontFamily="Cascadia Mono, Consolas"
+                                                        FontSize="11"
+                                                        Foreground="#B8C0CA"
+                                                        Text="{Binding Source}"
+                                                        TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock
+                                                        Grid.Column="5"
+                                                        VerticalAlignment="Center"
+                                                        FontFamily="Cascadia Mono, Consolas"
+                                                        FontSize="12"
+                                                        Foreground="#E6EDF3"
+                                                        IsTextSelectionEnabled="True"
+                                                        Text="{Binding Message}"
+                                                        TextWrapping="Wrap" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
 
                         <Grid Grid.Row="3" Margin="0,12,0,0" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>

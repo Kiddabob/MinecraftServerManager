@@ -1,3 +1,6 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -37,6 +40,7 @@ public sealed partial class MainWindow : Window
     private bool _allowClose;
     private bool _stopBeforeCloseInProgress;
     private bool _updatingNavigationSelection;
+    private ObservableCollection<ServerLogEntry>? _observedConsoleEntries;
 
     public MainWindow(MainViewModel viewModel)
     {
@@ -67,6 +71,8 @@ public sealed partial class MainWindow : Window
 
         _initialized = true;
         await ViewModel.InitializeAsync();
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        ObserveSelectedConsole();
         ApplyAppearance();
         UpdatePaneFooterVisibility();
     }
@@ -135,6 +141,11 @@ public sealed partial class MainWindow : Window
         if (destination == "files")
         {
             ViewModel.RefreshFilesCommand.Execute(null);
+        }
+
+        if (destination == "console")
+        {
+            ScrollConsoleToLatest();
         }
     }
 
@@ -233,10 +244,47 @@ public sealed partial class MainWindow : Window
         _ => color
     };
 
-    private void ConsoleTextBox_TextChanged(object sender, TextChangedEventArgs args)
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        ConsoleTextBox.SelectionStart = ConsoleTextBox.Text.Length;
-        ConsoleTextBox.SelectionLength = 0;
+        if (args.PropertyName == nameof(MainViewModel.SelectedProfile))
+        {
+            ObserveSelectedConsole();
+        }
+    }
+
+    private void ObserveSelectedConsole()
+    {
+        if (_observedConsoleEntries is not null)
+        {
+            _observedConsoleEntries.CollectionChanged -= ConsoleEntries_CollectionChanged;
+        }
+
+        _observedConsoleEntries = ViewModel.SelectedProfile?.ConsoleEntries;
+        if (_observedConsoleEntries is not null)
+        {
+            _observedConsoleEntries.CollectionChanged += ConsoleEntries_CollectionChanged;
+        }
+
+        ScrollConsoleToLatest();
+    }
+
+    private void ConsoleEntries_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs args)
+    {
+        ScrollConsoleToLatest();
+    }
+
+    private void ScrollConsoleToLatest()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var entries = ViewModel.SelectedProfile?.ConsoleEntries;
+            if (entries is { Count: > 0 })
+            {
+                ConsoleLogList.ScrollIntoView(
+                    entries[^1],
+                    ScrollIntoViewAlignment.Default);
+            }
+        });
     }
 
     private void CommandTextBox_KeyDown(object sender, KeyRoutedEventArgs args)

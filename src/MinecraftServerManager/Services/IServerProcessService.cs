@@ -14,6 +14,8 @@ public interface IServerProcessService
 
     DateTimeOffset? StartedAt { get; }
 
+    ServerResourceUsage? GetResourceUsage();
+
     Task StartAsync(ServerLaunchRequest request, CancellationToken cancellationToken = default);
 
     Task SendCommandAsync(string command, CancellationToken cancellationToken = default);
