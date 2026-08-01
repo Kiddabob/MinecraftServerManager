@@ -9,11 +9,12 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        WinRT.ComWrappersSupport.InitializeComWrappers();
+
         VelopackApp.Build()
             .SetAutoApplyOnStartup(true)
             .Run();
 
-        WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(callbackParameters =>
         {
             var context = new DispatcherQueueSynchronizationContext(

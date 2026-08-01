@@ -32,4 +32,25 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="CopyGeneratedWinUiResourcesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_GeneratedWinUiPublishFile Include="$(TargetDir)App.xbf">
+        <TargetPath>App.xbf</TargetPath>
+      </_GeneratedWinUiPublishFile>
+      <_GeneratedWinUiPublishFile Include="$(TargetDir)$(AssemblyName).pri">
+        <TargetPath>$(AssemblyName).pri</TargetPath>
+      </_GeneratedWinUiPublishFile>
+      <_GeneratedWinUiView Include="$(TargetDir)Views\**\*.xbf" />
+    </ItemGroup>
+
+    <Copy
+      SourceFiles="@(_GeneratedWinUiPublishFile)"
+      DestinationFiles="@(_GeneratedWinUiPublishFile-&gt;'$(PublishDir)%(TargetPath)')"
+      SkipUnchangedFiles="true" />
+    <Copy
+      SourceFiles="@(_GeneratedWinUiView)"
+      DestinationFiles="@(_GeneratedWinUiView-&gt;'$(PublishDir)Views\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
 </Project>
