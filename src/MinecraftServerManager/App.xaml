@@ -77,6 +77,140 @@
                 <Setter Property="Background" Value="{StaticResource AppAccentBrush}" />
                 <Setter Property="Foreground" Value="White" />
             </Style>
+
+            <Style x:Key="BulkSelectionToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="32" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Grid
+                                x:Name="Root"
+                                Width="32"
+                                Height="32"
+                                Background="Transparent">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Opacity" Value="0.7" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Opacity" Value="0.35" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Checked">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                                <Setter Target="SelectorFrame.Opacity" Value="0.7" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedDisabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                                <Setter Target="Root.Opacity" Value="0.35" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Indeterminate">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="IndeterminatePointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="IndeterminatePressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                                <Setter Target="SelectorFrame.Opacity" Value="0.7" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="IndeterminateDisabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="SelectorFrame.Background" Value="#1460CDFF" />
+                                                <Setter Target="SelectorFrame.BorderBrush" Value="#60CDFF" />
+                                                <Setter Target="CheckGlyph.Opacity" Value="1" />
+                                                <Setter Target="Root.Opacity" Value="0.35" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="FocusStates">
+                                        <VisualState x:Name="Unfocused" />
+                                        <VisualState x:Name="PointerFocused" />
+                                        <VisualState x:Name="Focused">
+                                            <VisualState.Setters>
+                                                <Setter Target="FocusBorder.Opacity" Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border
+                                    x:Name="SelectorFrame"
+                                    Width="26"
+                                    Height="26"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                                    BorderThickness="1.5"
+                                    CornerRadius="6"
+                                    Opacity="0.86">
+                                    <FontIcon
+                                        x:Name="CheckGlyph"
+                                        FontSize="13"
+                                        Foreground="#60CDFF"
+                                        Glyph="&#xE73E;"
+                                        Opacity="0" />
+                                </Border>
+                                <Border
+                                    x:Name="FocusBorder"
+                                    Width="32"
+                                    Height="32"
+                                    BorderBrush="{ThemeResource FocusStrokeColorOuterBrush}"
+                                    BorderThickness="2"
+                                    CornerRadius="8"
+                                    Opacity="0" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

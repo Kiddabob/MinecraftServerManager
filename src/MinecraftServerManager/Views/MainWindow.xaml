@@ -779,27 +779,13 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <CheckBox
-                                                    Width="24"
-                                                    MinWidth="0"
-                                                    Padding="0"
+                                                <ToggleButton
                                                     HorizontalAlignment="Center"
                                                     VerticalAlignment="Center"
                                                     AutomationProperties.Name="Include profile in multi-server actions"
                                                     IsChecked="{Binding IsSelectedForBulk, Mode=TwoWay}"
-                                                    ToolTipService.ToolTip="Include in Start selected and Stop selected">
-                                                    <CheckBox.Resources>
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#1A60CDFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2860CDFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#3560CDFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#60CDFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#8ADBFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#B8E9FF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#60CDFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#8ADBFF" />
-                                                        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#B8E9FF" />
-                                                    </CheckBox.Resources>
-                                                </CheckBox>
+                                                    Style="{StaticResource BulkSelectionToggleStyle}"
+                                                    ToolTipService.ToolTip="Include in Start selected and Stop selected" />
                                                 <controls:ProfileIcon
                                                     Grid.Column="1"
                                                     Width="40"
