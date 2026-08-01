@@ -1,6 +1,6 @@
 # Minecraft Server Manager
 
-An initial WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally limited to the project foundation and the working server-console path.
+A WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally Tekkit-first: profile selection, validation, Java process control, live console output, safe shutdown, in-app server-file browsing, personalisation, and GitHub updates.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ The starter profile is `src/MinecraftServerManager/Profiles/tekkit.json`. It cur
 - Java: `%USERPROFILE%\OneDrive\jre-legacy\bin\java.exe`
 - JAR: `TekkitServer.jar`
 
-Edit that JSON if any of those paths or the memory arguments change, then rebuild so the profile is copied beside the executable.
+You can also choose the folder containing `TekkitServer.jar` from the app's **Profiles** page. The app detects the packaged Tekkit definition and stores the resulting user profile under `%LocalAppData%\Kidda.MinecraftServerManager\UserProfiles`, so an app update does not overwrite it.
 
 ## Build
 
@@ -43,7 +43,9 @@ The one-click installer places the app under `%LocalAppData%\Kidda.MinecraftServ
 
 ## GitHub updates
 
-The installed app checks GitHub Releases on launch and every 15 minutes. When a newer version exists, it downloads the update in the background and enables **Restart to update**. The update experience is controlled from the app; `Update.exe` is only the installed helper that replaces files after the app closes, and you do not need to run it manually. If Tekkit is running, the app sends the safe stop command first and will not apply the update unless the server exits.
+The installed app checks GitHub Releases on launch and then at the interval selected in **Settings** (from 5 minutes to daily). When a newer version exists, it downloads the update in the background and enables **Restart to update**. The update experience is controlled from the app; `Update.exe` is only the installed helper that replaces files after the app closes, and you do not need to run it manually. If Tekkit is running, the app sends the safe stop command first and will not apply the update unless the server exits.
+
+Theme, accent colour, update interval, and last selected profile are stored under `%LocalAppData%\Kidda.MinecraftServerManager` for the current Windows account.
 
 The update source is the public repository at `https://github.com/Kiddabob/MinecraftServerManager`. Raw source commits are not installed directly; the release workflow turns each push to `main` into a versioned Velopack release first.
 

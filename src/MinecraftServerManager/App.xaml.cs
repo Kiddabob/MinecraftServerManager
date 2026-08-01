@@ -29,8 +29,10 @@ public partial class App : Application
     {
         var services = new ServiceCollection();
 
+        services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
         services.AddSingleton<IProfileService, JsonProfileService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
+        services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerLaunchRequestFactory, JavaServerLaunchRequestFactory>();
         services.AddSingleton<IServerConsoleParserFactory, ProfileConsoleParserFactory>();
         services.AddSingleton<IServerProcessService, ServerProcessService>();

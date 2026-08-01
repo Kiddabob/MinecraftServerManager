@@ -9,15 +9,42 @@ public sealed class GitHubAppUpdateService : IAppUpdateService
 {
     private const string SettingsFileName = "UpdateSettings.json";
     private readonly SemaphoreSlim _checkGate = new(1, 1);
+    private readonly SemaphoreSlim _scheduleChanged = new(0, 1);
     private readonly CancellationTokenSource _monitorCancellation = new();
+    private readonly IAppSettingsService _appSettingsService;
 
     private UpdateManager? _updateManager;
     private UpdateInfo? _pendingUpdate;
+    private int _checkIntervalMinutes = 15;
     private int _monitorStarted;
+
+    public GitHubAppUpdateService(IAppSettingsService appSettingsService)
+    {
+        _appSettingsService = appSettingsService;
+    }
 
     public event EventHandler<AppUpdateStatusChangedEventArgs>? StatusChanged;
 
     public bool IsUpdateReady => _pendingUpdate is not null;
+
+    public void SetCheckIntervalMinutes(int minutes)
+    {
+        var normalizedMinutes = Math.Clamp(minutes, 5, 1_440);
+        if (Interlocked.Exchange(ref _checkIntervalMinutes, normalizedMinutes) == normalizedMinutes
+            || Volatile.Read(ref _monitorStarted) == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _scheduleChanged.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // A schedule reset is already waiting to be observed.
+        }
+    }
 
     public void StartMonitoring()
     {
@@ -26,6 +53,7 @@ public sealed class GitHubAppUpdateService : IAppUpdateService
             return;
         }
 
+        SetCheckIntervalMinutes(_appSettingsService.Current.UpdateCheckIntervalMinutes);
         _ = MonitorAsync(_monitorCancellation.Token);
     }
 
@@ -67,12 +95,22 @@ public sealed class GitHubAppUpdateService : IAppUpdateService
             return;
         }
 
-        var intervalMinutes = Math.Clamp(settings.CheckIntervalMinutes, 5, 1_440);
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(intervalMinutes));
-
         await CheckAndDownloadAsync(cancellationToken);
-        while (!IsUpdateReady && await timer.WaitForNextTickAsync(cancellationToken))
+        Task scheduleChanged = _scheduleChanged.WaitAsync(cancellationToken);
+        while (!IsUpdateReady && !cancellationToken.IsCancellationRequested)
         {
+            var delay = Task.Delay(
+                TimeSpan.FromMinutes(Volatile.Read(ref _checkIntervalMinutes)),
+                cancellationToken);
+            var completed = await Task.WhenAny(delay, scheduleChanged);
+            if (completed == scheduleChanged)
+            {
+                await scheduleChanged;
+                scheduleChanged = _scheduleChanged.WaitAsync(cancellationToken);
+                continue;
+            }
+
+            await delay;
             await CheckAndDownloadAsync(cancellationToken);
         }
     }

@@ -8,164 +8,587 @@
 
     <Grid
         x:Name="RootGrid"
-        Padding="24"
-        RowSpacing="16"
         Loaded="RootGrid_Loaded">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        <NavigationView
+            x:Name="MainNavigationView"
+            AlwaysShowHeader="False"
+            IsBackButtonVisible="Collapsed"
+            IsPaneToggleButtonVisible="True"
+            IsSettingsVisible="False"
+            PaneDisplayMode="Auto"
+            PaneTitle="Server Manager"
+            SelectionChanged="MainNavigationView_SelectionChanged">
 
-        <Grid Grid.Row="0" ColumnSpacing="16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <StackPanel Spacing="4">
-                <TextBlock
-                    FontSize="28"
-                    FontWeight="SemiBold"
-                    Text="Minecraft Server Manager" />
-                <TextBlock
-                    Foreground="Gray"
-                    Text="Initial Tekkit server console" />
-            </StackPanel>
-
-            <StackPanel
-                Grid.Column="1"
-                HorizontalAlignment="Right"
-                Spacing="2">
-                <TextBlock
-                    HorizontalAlignment="Right"
-                    FontSize="20"
-                    FontWeight="SemiBold"
-                    Text="{Binding StateText, Mode=OneWay}" />
-                <TextBlock
-                    HorizontalAlignment="Right"
-                    Foreground="Gray"
-                    Text="{Binding ProcessInfo, Mode=OneWay}" />
-            </StackPanel>
-        </Grid>
-
-        <Border
-            Grid.Row="1"
-            Padding="16"
-            BorderBrush="Gray"
-            BorderThickness="1"
-            CornerRadius="8">
-            <Grid ColumnSpacing="24" RowSpacing="7">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <TextBlock FontWeight="SemiBold" Text="Profile" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <TextBlock FontWeight="SemiBold" Text="{Binding ProfileName, Mode=OneWay}" />
-                    <TextBlock Foreground="Gray" Text="{Binding ProfileDetails, Mode=OneWay}" />
+            <NavigationView.PaneHeader>
+                <StackPanel
+                    Margin="0,10,0,14"
+                    Orientation="Horizontal"
+                    Spacing="10">
+                    <Image
+                        Width="32"
+                        Height="32"
+                        Source="/Assets/AppIcon.png" />
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock FontWeight="SemiBold" Text="Minecraft" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Server Manager" />
+                    </StackPanel>
                 </StackPanel>
+            </NavigationView.PaneHeader>
 
-                <TextBlock Grid.Row="1" FontWeight="SemiBold" Text="Server folder" />
-                <TextBlock
-                    Grid.Row="1"
-                    Grid.Column="1"
-                    Text="{Binding ServerDirectory, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
+            <NavigationView.MenuItems>
+                <NavigationViewItem
+                    x:Name="OverviewNavigationItem"
+                    Content="Overview"
+                    IsSelected="True"
+                    Tag="overview">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE80F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Console" Tag="console">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE756;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Server files" Tag="files">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Profiles" Tag="profiles">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8D4;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
 
-                <TextBlock Grid.Row="2" FontWeight="SemiBold" Text="Java" />
-                <TextBlock
-                    Grid.Row="2"
-                    Grid.Column="1"
-                    Text="{Binding JavaDetails, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Settings" Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
 
-                <TextBlock Grid.Row="3" FontWeight="SemiBold" Text="Validation" />
-                <TextBlock
-                    Grid.Row="3"
-                    Grid.Column="1"
-                    Text="{Binding ValidationText, Mode=OneWay}"
-                    TextWrapping="Wrap" />
-
-                <TextBlock Grid.Row="4" FontWeight="SemiBold" Text="Status" />
-                <TextBlock
-                    Grid.Row="4"
-                    Grid.Column="1"
-                    Text="{Binding StatusMessage, Mode=OneWay}"
-                    TextWrapping="Wrap" />
-
-                <TextBlock Grid.Row="5" FontWeight="SemiBold" Text="Updates" />
-                <Grid Grid.Row="5" Grid.Column="1" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+            <NavigationView.PaneFooter>
+                <StackPanel Margin="0,12,0,8" Spacing="6">
                     <TextBlock
-                        VerticalAlignment="Center"
-                        Text="{Binding UpdateStatus, Mode=OneWay}"
-                        TextWrapping="Wrap" />
-                    <Button
-                        Grid.Column="1"
-                        Command="{Binding ApplyUpdateCommand}"
-                        Content="Restart to update" />
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Active profile" />
+                    <ComboBox
+                        Width="250"
+                        DisplayMemberPath="DisplayName"
+                        IsEnabled="{Binding CanSelectProfile, Mode=OneWay}"
+                        ItemsSource="{Binding Profiles, Mode=OneWay}"
+                        SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
+                </StackPanel>
+            </NavigationView.PaneFooter>
+
+            <NavigationView.Content>
+                <Grid>
+                    <ScrollViewer
+                        x:Name="OverviewPage"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel
+                            MaxWidth="1080"
+                            Margin="32,28,32,40"
+                            HorizontalAlignment="Stretch"
+                            Spacing="20">
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Overview" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Start, monitor, and safely stop your selected Minecraft server." />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <Grid ColumnSpacing="20">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border
+                                        Width="56"
+                                        Height="56"
+                                        VerticalAlignment="Top"
+                                        Background="{StaticResource AppAccentBrush}"
+                                        CornerRadius="28">
+                                        <FontIcon
+                                            FontSize="24"
+                                            Foreground="White"
+                                            Glyph="&#xE768;" />
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Spacing="5">
+                                        <TextBlock
+                                            FontSize="24"
+                                            FontWeight="SemiBold"
+                                            Text="{Binding StateText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding StatusMessage, Mode=OneWay}" />
+                                        <TextBlock
+                                            Margin="0,5,0,0"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding ProcessInfo, Mode=OneWay}" />
+                                    </StackPanel>
+
+                                    <StackPanel
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="8">
+                                        <Button
+                                            Command="{Binding StartCommand}"
+                                            Content="Start server"
+                                            Style="{StaticResource AccentButtonStyle}" />
+                                        <Button Command="{Binding StopCommand}" Content="Stop safely" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*" />
+                                    <ColumnDefinition Width="2*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Style="{StaticResource AppCardStyle}">
+                                    <StackPanel Spacing="14">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Selected server" />
+                                        <Grid ColumnSpacing="16" RowSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="110" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Profile" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock FontWeight="SemiBold" Text="{Binding ProfileName, Mode=OneWay}" />
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{Binding ProfileDetails, Mode=OneWay}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Folder" />
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Grid.Column="1"
+                                                Text="{Binding ServerDirectory, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Grid.Row="2"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Java" />
+                                            <TextBlock
+                                                Grid.Row="2"
+                                                Grid.Column="1"
+                                                Text="{Binding JavaDetails, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Grid.Row="3"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Validation" />
+                                            <TextBlock
+                                                Grid.Row="3"
+                                                Grid.Column="1"
+                                                Text="{Binding ValidationText, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1" Style="{StaticResource AppCardStyle}">
+                                    <StackPanel Spacing="14">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="App updates" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding UpdateStatus, Mode=OneWay}" />
+                                        <Button
+                                            HorizontalAlignment="Left"
+                                            Command="{Binding ApplyUpdateCommand}"
+                                            Content="Restart to update" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Grid
+                        x:Name="ConsolePage"
+                        Margin="32,28,32,32"
+                        Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Console" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Live Java output and server commands for the selected profile." />
+                            </StackPanel>
+                            <StackPanel
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                                <Button
+                                    Command="{Binding StartCommand}"
+                                    Content="Start"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                                <Button Command="{Binding StopCommand}" Content="Stop safely" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border
+                            Grid.Row="1"
+                            Margin="0,20,0,12"
+                            Padding="12,8"
+                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                            CornerRadius="6">
+                            <TextBlock Text="{Binding StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                        </Border>
+
+                        <TextBox
+                            x:Name="ConsoleTextBox"
+                            Grid.Row="2"
+                            AcceptsReturn="True"
+                            Background="#111318"
+                            BorderThickness="0"
+                            FontFamily="Cascadia Mono, Consolas"
+                            FontSize="13"
+                            Foreground="#E6EDF3"
+                            IsReadOnly="True"
+                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            Text="{Binding ConsoleText, Mode=OneWay}"
+                            TextChanged="ConsoleTextBox_TextChanged"
+                            TextWrapping="NoWrap" />
+
+                        <Grid Grid.Row="3" Margin="0,12,0,0" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="CommandTextBox"
+                                IsEnabled="{Binding CanSendCommands, Mode=OneWay}"
+                                KeyDown="CommandTextBox_KeyDown"
+                                PlaceholderText="Enter a server command, for example: list"
+                                Text="{Binding CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button
+                                Grid.Column="1"
+                                Command="{Binding SendCommand}"
+                                Content="Send"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </Grid>
+                    </Grid>
+
+                    <Grid
+                        x:Name="FilesPage"
+                        Margin="32,28,32,32"
+                        Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Spacing="5">
+                            <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Server files" />
+                            <TextBlock
+                                Style="{StaticResource BodySecondaryTextStyle}"
+                                Text="Browse the selected profile's server folder without leaving the app." />
+                        </StackPanel>
+
+                        <Grid Grid.Row="1" Margin="0,20,0,12" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                Command="{Binding NavigateUpCommand}"
+                                ToolTipService.ToolTip="Up one folder">
+                                <FontIcon Glyph="&#xE74A;" />
+                            </Button>
+                            <Button
+                                Grid.Column="1"
+                                Command="{Binding RefreshFilesCommand}"
+                                ToolTipService.ToolTip="Refresh">
+                                <FontIcon Glyph="&#xE72C;" />
+                            </Button>
+                            <Border
+                                Grid.Column="2"
+                                Padding="12,7"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                                <TextBlock
+                                    Text="{Binding CurrentFilesPath, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis" />
+                            </Border>
+                        </Grid>
+
+                        <ListView
+                            x:Name="ServerFilesList"
+                            Grid.Row="2"
+                            IsItemClickEnabled="True"
+                            ItemClick="ServerFilesList_ItemClick"
+                            ItemsSource="{Binding ServerFiles, Mode=OneWay}"
+                            SelectionMode="None">
+                            <ListView.Header>
+                                <Grid Height="36" Padding="12,0" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="160" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Name" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" Text="Type" />
+                                    <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="Size" />
+                                    <TextBlock Grid.Column="3" VerticalAlignment="Center" FontWeight="SemiBold" Text="Modified" />
+                                </Grid>
+                            </ListView.Header>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid MinHeight="48" Padding="10,0" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="90" />
+                                            <ColumnDefinition Width="160" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource AppAccentBrush}"
+                                                Glyph="{Binding Glyph}" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Text="{Binding Name}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Kind}" />
+                                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{Binding SizeText}" />
+                                        <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{Binding ModifiedText}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <TextBlock
+                            Grid.Row="3"
+                            Margin="4,10,0,0"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding FilesStatus, Mode=OneWay}" />
+                    </Grid>
+
+                    <ScrollViewer
+                        x:Name="ProfilesPage"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        Visibility="Collapsed">
+                        <StackPanel
+                            MaxWidth="900"
+                            Margin="32,28,32,40"
+                            HorizontalAlignment="Stretch"
+                            Spacing="20">
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Server profiles" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Profiles keep server-specific detection and launch details separate from the app core." />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <Grid ColumnSpacing="20">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Add a Tekkit server" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Choose the folder containing TekkitServer.jar. The app will detect it and create a reusable profile." />
+                                        <TextBlock
+                                            Margin="0,4,0,0"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding ProfileImportStatus, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Click="ChooseServerFolder_Click"
+                                        Content="Choose server folder"
+                                        IsEnabled="{Binding CanSelectProfile, Mode=OneWay}"
+                                        Style="{StaticResource AccentButtonStyle}" />
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Style="{StaticResource SectionTitleTextStyle}"
+                                    Text="{Binding ProfileCountText, Mode=OneWay}" />
+                                <ListView
+                                    ItemsSource="{Binding Profiles, Mode=OneWay}"
+                                    SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
+                                    SelectionMode="Single">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid MinHeight="70" Padding="8" ColumnSpacing="14">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="44" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border
+                                                    Width="40"
+                                                    Height="40"
+                                                    Background="{StaticResource AppAccentBrush}"
+                                                    CornerRadius="8">
+                                                    <FontIcon Foreground="White" Glyph="&#xE8D4;" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="{Binding ServerDirectory}"
+                                                        TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <ScrollViewer
+                        x:Name="SettingsPage"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        Visibility="Collapsed">
+                        <StackPanel
+                            MaxWidth="800"
+                            Margin="32,28,32,40"
+                            HorizontalAlignment="Stretch"
+                            Spacing="20">
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Settings" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Personalise the app and choose how often installed builds check GitHub Releases." />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <Grid ColumnSpacing="24" RowSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="260" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock FontWeight="SemiBold" Text="App theme" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Follow Windows or keep the app light or dark." />
+                                    </StackPanel>
+                                    <ComboBox
+                                        Grid.Column="1"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding ThemeOptions, Mode=OneWay}"
+                                        SelectedItem="{Binding SelectedThemeOption, Mode=TwoWay}"
+                                        SelectionChanged="AppearanceSelectionChanged" />
+                                    <StackPanel Grid.Row="1" Spacing="4">
+                                        <TextBlock FontWeight="SemiBold" Text="Accent colour" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Used for status, profile, and folder highlights." />
+                                    </StackPanel>
+                                    <ComboBox
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding AccentOptions, Mode=OneWay}"
+                                        SelectedItem="{Binding SelectedAccentOption, Mode=TwoWay}"
+                                        SelectionChanged="AppearanceSelectionChanged" />
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <Grid ColumnSpacing="24">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="260" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock FontWeight="SemiBold" Text="Check for updates" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Installed builds check GitHub in the background. Five minutes is the shortest interval." />
+                                    </StackPanel>
+                                    <ComboBox
+                                        Grid.Column="1"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding UpdateIntervalOptions, Mode=OneWay}"
+                                        SelectedItem="{Binding SelectedUpdateIntervalOption, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding SettingsStatus, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    Grid.Column="1"
+                                    Command="{Binding SaveSettingsCommand}"
+                                    Content="Save settings"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
-            </Grid>
-        </Border>
-
-        <StackPanel
-            Grid.Row="2"
-            Orientation="Horizontal"
-            Spacing="8">
-            <Button
-                Command="{Binding StartCommand}"
-                Content="Start Tekkit" />
-            <Button
-                Command="{Binding StopCommand}"
-                Content="Stop safely" />
-        </StackPanel>
-
-        <TextBox
-            x:Name="ConsoleTextBox"
-            Grid.Row="3"
-            AcceptsReturn="True"
-            Background="#111318"
-            FontFamily="Consolas"
-            FontSize="13"
-            Foreground="#E6EDF3"
-            IsReadOnly="True"
-            ScrollViewer.HorizontalScrollBarVisibility="Auto"
-            ScrollViewer.VerticalScrollBarVisibility="Auto"
-            Text="{Binding ConsoleText, Mode=OneWay}"
-            TextChanged="ConsoleTextBox_TextChanged"
-            TextWrapping="NoWrap" />
-
-        <Grid Grid.Row="4" ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBox
-                x:Name="CommandTextBox"
-                IsEnabled="{Binding CanSendCommands, Mode=OneWay}"
-                KeyDown="CommandTextBox_KeyDown"
-                PlaceholderText="Enter a server command, for example: list"
-                Text="{Binding CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <Button
-                Grid.Column="1"
-                Command="{Binding SendCommand}"
-                Content="Send" />
-        </Grid>
+            </NavigationView.Content>
+        </NavigationView>
     </Grid>
 </Window>

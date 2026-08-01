@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $projectPath = Join-Path $repositoryRoot 'src\MinecraftServerManager\MinecraftServerManager.csproj'
+$iconPath = Join-Path $repositoryRoot 'src\MinecraftServerManager\Assets\AppIcon.ico'
 $artifactRoot = [IO.Path]::GetFullPath((Join-Path $repositoryRoot 'artifacts'))
 $publishDirectory = [IO.Path]::GetFullPath((Join-Path $artifactRoot 'publish\win-x64'))
 $releaseDirectory = [IO.Path]::GetFullPath((Join-Path $artifactRoot 'releases'))
@@ -50,6 +51,7 @@ try {
         --mainExe MinecraftServerManager.exe `
         --packTitle "Minecraft Server Manager" `
         --packAuthors "Kiddabob" `
+        --icon $iconPath `
         --runtime win-x64 `
         --shortcuts Desktop,StartMenuRoot `
         --outputDir $releaseDirectory

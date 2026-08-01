@@ -8,6 +8,8 @@ public interface IAppUpdateService
 
     bool IsUpdateReady { get; }
 
+    void SetCheckIntervalMinutes(int minutes);
+
     void StartMonitoring();
 
     void ApplyUpdateAndRestart();
