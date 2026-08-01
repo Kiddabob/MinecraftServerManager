@@ -43,7 +43,7 @@ The one-click installer places the app under `%LocalAppData%\Kidda.MinecraftServ
 
 ## GitHub updates
 
-The installed app checks GitHub Releases on launch and every 15 minutes. When a newer version exists, it downloads the update in the background and enables **Restart to update**. If Tekkit is running, the app sends the safe stop command first and will not apply the update unless the server exits.
+The installed app checks GitHub Releases on launch and every 15 minutes. When a newer version exists, it downloads the update in the background and enables **Restart to update**. The update experience is controlled from the app; `Update.exe` is only the installed helper that replaces files after the app closes, and you do not need to run it manually. If Tekkit is running, the app sends the safe stop command first and will not apply the update unless the server exits.
 
 The update source is the public repository at `https://github.com/Kiddabob/MinecraftServerManager`. Raw source commits are not installed directly; the release workflow turns each push to `main` into a versioned Velopack release first.
 
