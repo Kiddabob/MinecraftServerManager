@@ -35,7 +35,7 @@ public partial class App : Application
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerLaunchRequestFactory, JavaServerLaunchRequestFactory>();
         services.AddSingleton<IServerConsoleParserFactory, ProfileConsoleParserFactory>();
-        services.AddSingleton<IServerProcessService, ServerProcessService>();
+        services.AddSingleton<IServerProcessServiceFactory, ServerProcessServiceFactory>();
         services.AddSingleton<IAppUpdateService, GitHubAppUpdateService>();
         services.AddSingleton<IUiDispatcher, DispatcherQueueUiDispatcher>();
         services.AddSingleton<MainViewModel>();

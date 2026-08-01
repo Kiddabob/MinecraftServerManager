@@ -15,6 +15,24 @@ namespace MinecraftServerManager.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly string[] AccentBrushResourceKeys =
+    [
+        "AppAccentBrush",
+        "AccentFillColorDefaultBrush",
+        "AccentFillColorSecondaryBrush",
+        "AccentFillColorTertiaryBrush",
+        "AccentFillColorDisabledBrush",
+        "AccentTextFillColorPrimaryBrush",
+        "AccentTextFillColorSecondaryBrush",
+        "AccentTextFillColorTertiaryBrush",
+        "NavigationViewSelectionIndicatorForeground",
+        "ListViewItemSelectionIndicatorForeground",
+        "CheckBoxBackgroundChecked",
+        "CheckBoxBackgroundCheckedPointerOver",
+        "CheckBoxBackgroundCheckedPressed",
+        "CheckBoxBackgroundCheckedDisabled"
+    ];
+
     private bool _initialized;
     private bool _allowClose;
     private bool _stopBeforeCloseInProgress;
@@ -50,6 +68,29 @@ public sealed partial class MainWindow : Window
         _initialized = true;
         await ViewModel.InitializeAsync();
         ApplyAppearance();
+        UpdatePaneFooterVisibility();
+    }
+
+    private void MainNavigationView_PaneOpened(NavigationView sender, object args)
+    {
+        UpdatePaneFooterVisibility();
+    }
+
+    private void MainNavigationView_PaneClosed(NavigationView sender, object args)
+    {
+        UpdatePaneFooterVisibility();
+    }
+
+    private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        DispatcherQueue.TryEnqueue(UpdatePaneFooterVisibility);
+    }
+
+    private void UpdatePaneFooterVisibility()
+    {
+        ProfilePaneFooter.Visibility = MainNavigationView.IsPaneOpen
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void MainNavigationView_SelectionChanged(
@@ -125,7 +166,7 @@ public sealed partial class MainWindow : Window
     {
         if (_initialized)
         {
-            ApplyAppearance();
+            DispatcherQueue.TryEnqueue(ApplyAppearance);
         }
     }
 
@@ -138,14 +179,22 @@ public sealed partial class MainWindow : Window
             _ => ElementTheme.Default
         };
 
-        if (Application.Current.Resources["AppAccentBrush"] is not SolidColorBrush accentBrush)
-        {
-            return;
-        }
-
-        accentBrush.Color = ViewModel.SelectedAccentOption?.Id == "System"
+        var accentColor = ViewModel.SelectedAccentOption?.Id == "System"
             ? GetSystemAccentColor()
             : ParseColor(ViewModel.SelectedAccentOption?.HexColor ?? "#60CDFF");
+
+        foreach (var resourceKey in AccentBrushResourceKeys)
+        {
+            if (Application.Current.Resources[resourceKey] is SolidColorBrush accentBrush)
+            {
+                accentBrush.Color = WithResourceOpacity(resourceKey, accentColor);
+            }
+        }
+
+        if (ProfilesList.Resources["ListViewItemSelectionIndicatorForeground"] is SolidColorBrush profileSelectionBrush)
+        {
+            profileSelectionBrush.Color = accentColor;
+        }
     }
 
     private static Color GetSystemAccentColor()
@@ -171,6 +220,19 @@ public sealed partial class MainWindow : Window
             (byte)(rgb & 0xFF));
     }
 
+    private static Color WithResourceOpacity(string resourceKey, Color color) => resourceKey switch
+    {
+        "AccentFillColorSecondaryBrush" or "AccentTextFillColorSecondaryBrush"
+            or "CheckBoxBackgroundCheckedPointerOver" =>
+            Color.FromArgb(230, color.R, color.G, color.B),
+        "AccentFillColorTertiaryBrush" or "AccentTextFillColorTertiaryBrush"
+            or "CheckBoxBackgroundCheckedPressed" =>
+            Color.FromArgb(204, color.R, color.G, color.B),
+        "AccentFillColorDisabledBrush" or "CheckBoxBackgroundCheckedDisabled" =>
+            Color.FromArgb(102, color.R, color.G, color.B),
+        _ => color
+    };
+
     private void ConsoleTextBox_TextChanged(object sender, TextChangedEventArgs args)
     {
         ConsoleTextBox.SelectionStart = ConsoleTextBox.Text.Length;
@@ -179,13 +241,14 @@ public sealed partial class MainWindow : Window
 
     private void CommandTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (args.Key != VirtualKey.Enter || !ViewModel.SendCommand.CanExecute(null))
+        var command = ViewModel.SelectedProfile?.SendCommand;
+        if (args.Key != VirtualKey.Enter || command is null || !command.CanExecute(null))
         {
             return;
         }
 
         args.Handled = true;
-        ViewModel.SendCommand.Execute(null);
+        command.Execute(null);
     }
 
     private async void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)

@@ -8,15 +8,17 @@
 
     <Grid
         x:Name="RootGrid"
-        Loaded="RootGrid_Loaded">
+        Loaded="RootGrid_Loaded"
+        SizeChanged="RootGrid_SizeChanged">
         <NavigationView
             x:Name="MainNavigationView"
             AlwaysShowHeader="False"
             IsBackButtonVisible="Collapsed"
             IsPaneToggleButtonVisible="True"
             IsSettingsVisible="False"
+            PaneClosed="MainNavigationView_PaneClosed"
             PaneDisplayMode="Auto"
-            PaneTitle="Server Manager"
+            PaneOpened="MainNavigationView_PaneOpened"
             SelectionChanged="MainNavigationView_SelectionChanged">
 
             <NavigationView.PaneHeader>
@@ -74,15 +76,17 @@
             </NavigationView.FooterMenuItems>
 
             <NavigationView.PaneFooter>
-                <StackPanel Margin="0,12,0,8" Spacing="6">
+                <StackPanel
+                    x:Name="ProfilePaneFooter"
+                    Margin="0,12,0,8"
+                    Spacing="6">
                     <TextBlock
                         FontSize="12"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Active profile" />
+                        Text="Current profile" />
                     <ComboBox
                         Width="250"
                         DisplayMemberPath="DisplayName"
-                        IsEnabled="{Binding CanSelectProfile, Mode=OneWay}"
                         ItemsSource="{Binding Profiles, Mode=OneWay}"
                         SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
                 </StackPanel>
@@ -103,7 +107,7 @@
                                 <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Overview" />
                                 <TextBlock
                                     Style="{StaticResource BodySecondaryTextStyle}"
-                                    Text="Start, monitor, and safely stop your selected Minecraft server." />
+                                    Text="Start, monitor, and safely stop the current Minecraft server." />
                             </StackPanel>
 
                             <Border Style="{StaticResource AppCardStyle}">
@@ -118,7 +122,7 @@
                                         Width="56"
                                         Height="56"
                                         VerticalAlignment="Top"
-                                        Background="{StaticResource AppAccentBrush}"
+                                        Background="{Binding SelectedProfile.State, Converter={StaticResource ServerStateToBrushConverter}}"
                                         CornerRadius="28">
                                         <FontIcon
                                             FontSize="24"
@@ -130,15 +134,15 @@
                                         <TextBlock
                                             FontSize="24"
                                             FontWeight="SemiBold"
-                                            Text="{Binding StateText, Mode=OneWay}" />
+                                            Text="{Binding SelectedProfile.StateText, Mode=OneWay}" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="{Binding StatusMessage, Mode=OneWay}" />
+                                            Text="{Binding SelectedProfile.StatusMessage, Mode=OneWay}" />
                                         <TextBlock
                                             Margin="0,5,0,0"
                                             FontSize="12"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding ProcessInfo, Mode=OneWay}" />
+                                            Text="{Binding SelectedProfile.ProcessInfo, Mode=OneWay}" />
                                     </StackPanel>
 
                                     <StackPanel
@@ -147,10 +151,10 @@
                                         Orientation="Horizontal"
                                         Spacing="8">
                                         <Button
-                                            Command="{Binding StartCommand}"
+                                            Command="{Binding SelectedProfile.StartCommand}"
                                             Content="Start server"
-                                            Style="{StaticResource AccentButtonStyle}" />
-                                        <Button Command="{Binding StopCommand}" Content="Stop safely" />
+                                            Style="{StaticResource AppAccentButtonStyle}" />
+                                        <Button Command="{Binding SelectedProfile.StopCommand}" Content="Stop safely" />
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -177,11 +181,11 @@
                                             </Grid.RowDefinitions>
                                             <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Profile" />
                                             <StackPanel Grid.Column="1" Spacing="2">
-                                                <TextBlock FontWeight="SemiBold" Text="{Binding ProfileName, Mode=OneWay}" />
+                                                <TextBlock FontWeight="SemiBold" Text="{Binding SelectedProfile.DisplayName, Mode=OneWay}" />
                                                 <TextBlock
                                                     FontSize="12"
                                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                    Text="{Binding ProfileDetails, Mode=OneWay}" />
+                                                    Text="{Binding SelectedProfile.ProfileDetails, Mode=OneWay}" />
                                             </StackPanel>
                                             <TextBlock
                                                 Grid.Row="1"
@@ -190,7 +194,7 @@
                                             <TextBlock
                                                 Grid.Row="1"
                                                 Grid.Column="1"
-                                                Text="{Binding ServerDirectory, Mode=OneWay}"
+                                                Text="{Binding SelectedProfile.ServerDirectory, Mode=OneWay}"
                                                 TextTrimming="CharacterEllipsis" />
                                             <TextBlock
                                                 Grid.Row="2"
@@ -199,7 +203,7 @@
                                             <TextBlock
                                                 Grid.Row="2"
                                                 Grid.Column="1"
-                                                Text="{Binding JavaDetails, Mode=OneWay}"
+                                                Text="{Binding SelectedProfile.JavaDetails, Mode=OneWay}"
                                                 TextTrimming="CharacterEllipsis" />
                                             <TextBlock
                                                 Grid.Row="3"
@@ -208,7 +212,7 @@
                                             <TextBlock
                                                 Grid.Row="3"
                                                 Grid.Column="1"
-                                                Text="{Binding ValidationText, Mode=OneWay}"
+                                                Text="{Binding SelectedProfile.ValidationText, Mode=OneWay}"
                                                 TextWrapping="Wrap" />
                                         </Grid>
                                     </StackPanel>
@@ -258,10 +262,10 @@
                                 Orientation="Horizontal"
                                 Spacing="8">
                                 <Button
-                                    Command="{Binding StartCommand}"
+                                    Command="{Binding SelectedProfile.StartCommand}"
                                     Content="Start"
-                                    Style="{StaticResource AccentButtonStyle}" />
-                                <Button Command="{Binding StopCommand}" Content="Stop safely" />
+                                    Style="{StaticResource AppAccentButtonStyle}" />
+                                <Button Command="{Binding SelectedProfile.StopCommand}" Content="Stop safely" />
                             </StackPanel>
                         </Grid>
 
@@ -271,7 +275,7 @@
                             Padding="12,8"
                             Background="{ThemeResource ControlFillColorSecondaryBrush}"
                             CornerRadius="6">
-                            <TextBlock Text="{Binding StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SelectedProfile.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
                         </Border>
 
                         <TextBox
@@ -286,7 +290,7 @@
                             IsReadOnly="True"
                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                            Text="{Binding ConsoleText, Mode=OneWay}"
+                            Text="{Binding SelectedProfile.ConsoleText, Mode=OneWay}"
                             TextChanged="ConsoleTextBox_TextChanged"
                             TextWrapping="NoWrap" />
 
@@ -297,15 +301,15 @@
                             </Grid.ColumnDefinitions>
                             <TextBox
                                 x:Name="CommandTextBox"
-                                IsEnabled="{Binding CanSendCommands, Mode=OneWay}"
+                                IsEnabled="{Binding SelectedProfile.CanSendCommands, Mode=OneWay}"
                                 KeyDown="CommandTextBox_KeyDown"
                                 PlaceholderText="Enter a server command, for example: list"
-                                Text="{Binding CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                Text="{Binding SelectedProfile.CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <Button
                                 Grid.Column="1"
-                                Command="{Binding SendCommand}"
+                                Command="{Binding SelectedProfile.SendCommand}"
                                 Content="Send"
-                                Style="{StaticResource AccentButtonStyle}" />
+                                Style="{StaticResource AppAccentButtonStyle}" />
                         </Grid>
                     </Grid>
 
@@ -451,40 +455,108 @@
                                         VerticalAlignment="Center"
                                         Click="ChooseServerFolder_Click"
                                         Content="Choose server folder"
-                                        IsEnabled="{Binding CanSelectProfile, Mode=OneWay}"
-                                        Style="{StaticResource AccentButtonStyle}" />
+                                        Style="{StaticResource AppAccentButtonStyle}" />
                                 </Grid>
                             </Border>
 
-                            <StackPanel Spacing="10">
-                                <TextBlock
-                                    Style="{StaticResource SectionTitleTextStyle}"
-                                    Text="{Binding ProfileCountText, Mode=OneWay}" />
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock
+                                            Style="{StaticResource SectionTitleTextStyle}"
+                                            Text="{Binding ProfileCountText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Select a row to view its console and files. Tick profiles to run them together." />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="8">
+                                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding SelectedProfileCountText, Mode=OneWay}" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="•" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding ActiveServerCountText, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                                            <Button
+                                                Command="{Binding StartSelectedCommand}"
+                                                Content="Start selected"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                            <Button
+                                                Command="{Binding StopSelectedCommand}"
+                                                Content="Stop selected" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                                 <ListView
+                                    x:Name="ProfilesList"
                                     ItemsSource="{Binding Profiles, Mode=OneWay}"
                                     SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
                                     SelectionMode="Single">
+                                    <ListView.Resources>
+                                        <SolidColorBrush x:Key="ListViewItemSelectionIndicatorForeground" Color="#60CDFF" />
+                                    </ListView.Resources>
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid MinHeight="70" Padding="8" ColumnSpacing="14">
+                                            <Grid MinHeight="76" Padding="8" ColumnSpacing="12">
                                                 <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="36" />
                                                     <ColumnDefinition Width="44" />
                                                     <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
+                                                <CheckBox
+                                                    VerticalAlignment="Center"
+                                                    IsChecked="{Binding IsSelectedForBulk, Mode=TwoWay}"
+                                                    ToolTipService.ToolTip="Include this profile in Start selected and Stop selected" />
                                                 <Border
+                                                    Grid.Column="1"
                                                     Width="40"
                                                     Height="40"
-                                                    Background="{StaticResource AppAccentBrush}"
-                                                    CornerRadius="8">
+                                                    Background="{Binding State, Converter={StaticResource ServerStateToBrushConverter}}"
+                                                    CornerRadius="20">
                                                     <FontIcon Foreground="White" Glyph="&#xE8D4;" />
                                                 </Border>
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="3">
                                                     <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
-                                                    <TextBlock
-                                                        FontSize="12"
-                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                        Text="{Binding ServerDirectory}"
-                                                        TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{Binding State, Converter={StaticResource ServerStateToBrushConverter}}"
+                                                            Text="{Binding StateText}" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="•" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding ServerDirectory}"
+                                                            TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <StackPanel
+                                                    Grid.Column="3"
+                                                    VerticalAlignment="Center"
+                                                    Orientation="Horizontal"
+                                                    Spacing="8">
+                                                    <Button
+                                                        Command="{Binding StartCommand}"
+                                                        Content="Start"
+                                                        Style="{StaticResource AppAccentButtonStyle}" />
+                                                    <Button Command="{Binding StopCommand}" Content="Stop" />
                                                 </StackPanel>
                                             </Grid>
                                         </DataTemplate>
@@ -537,7 +609,7 @@
                                         <TextBlock FontWeight="SemiBold" Text="Accent colour" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Used for status, profile, and folder highlights." />
+                                            Text="Used for app actions, profile, and folder highlights. Server status keeps its own health colour." />
                                     </StackPanel>
                                     <ComboBox
                                         Grid.Row="1"
@@ -583,7 +655,7 @@
                                     Grid.Column="1"
                                     Command="{Binding SaveSettingsCommand}"
                                     Content="Save settings"
-                                    Style="{StaticResource AccentButtonStyle}" />
+                                    Style="{StaticResource AppAccentButtonStyle}" />
                             </Grid>
                         </StackPanel>
                     </ScrollViewer>
