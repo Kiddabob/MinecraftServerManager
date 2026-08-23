@@ -30,7 +30,9 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
+        services.AddSingleton<IWindowPlacementService, JsonWindowPlacementService>();
         services.AddSingleton<IProfileService, JsonProfileService>();
+        services.AddSingleton<IPlayerPlaytimeService, JsonPlayerPlaytimeService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerLaunchRequestFactory, JavaServerLaunchRequestFactory>();
