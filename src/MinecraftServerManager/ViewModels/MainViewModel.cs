@@ -23,7 +23,7 @@ public sealed class MainViewModel : BindableBase
     private ServerSessionViewModel? _selectedProfile;
     private bool _initialized;
     private bool _changingProfile;
-    private string _profileImportStatus = "Choose a Tekkit server folder to detect or create a profile.";
+    private string _profileImportStatus = "Choose a server folder to detect or create a profile.";
     private string _updateStatus = "Updater is starting…";
     private string _currentFilesPath = string.Empty;
     private string _filesStatus = "Select a profile to browse its server files.";

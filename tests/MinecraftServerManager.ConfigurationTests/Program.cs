@@ -200,7 +200,27 @@ try
     AssertTrue(updatedJson.Contains("\"enabled\": false", StringComparison.Ordinal), "JSON boolean round trip");
     AssertTrue(updatedJson.Contains("\"name\": \"Updated\"", StringComparison.Ordinal), "JSON string round trip");
 
-    Console.WriteLine("Configuration dashboard service tests passed.");
+    var fabricFolder = Path.Combine(testRoot, "fabric-server");
+    Directory.CreateDirectory(fabricFolder);
+    await File.WriteAllBytesAsync(Path.Combine(fabricFolder, "fabric-installer-1.0.jar"), [1, 2, 3, 4]);
+    await File.WriteAllBytesAsync(Path.Combine(fabricFolder, "fabric-server-launch.jar"), [1]);
+    var fabricDetection = ServerFolderDetector.Detect(fabricFolder);
+    AssertEqual("fabric-server-launch.jar", fabricDetection!.ServerJar, "server launcher selection");
+    AssertEqual("Fabric", fabricDetection.ServerType, "Fabric classification");
+
+    var paperFolder = Path.Combine(testRoot, "paper-server");
+    Directory.CreateDirectory(paperFolder);
+    await File.WriteAllBytesAsync(Path.Combine(paperFolder, "paper-1.21.4-232.jar"), [1]);
+    var paperDetection = ServerFolderDetector.Detect(paperFolder);
+    AssertEqual("Paper", paperDetection!.ServerType, "Paper classification");
+    AssertEqual("1.21.4", paperDetection.MinecraftVersion, "Minecraft version detection");
+
+    var customFolder = Path.Combine(testRoot, "custom-server");
+    Directory.CreateDirectory(customFolder);
+    await File.WriteAllBytesAsync(Path.Combine(customFolder, "my-community-pack.jar"), [1]);
+    AssertEqual("Minecraft", ServerFolderDetector.Detect(customFolder)!.ServerType, "unknown launcher fallback");
+
+    Console.WriteLine("Configuration dashboard and server import detection tests passed.");
 }
 catch (Exception exception)
 {

@@ -90,8 +90,9 @@ public sealed class ServerSessionViewModel : BindableBase
 
     public string? ProfileIconPath => Profile.IconPath;
 
-    public string ProfileDetails =>
-        $"{Profile.ServerType} • Minecraft {Profile.MinecraftVersion} • Forge {Profile.ForgeVersion}";
+    public string ProfileDetails => string.IsNullOrWhiteSpace(Profile.ForgeVersion)
+        ? $"{Profile.ServerType} • Minecraft {Profile.MinecraftVersion}"
+        : $"{Profile.ServerType} • Minecraft {Profile.MinecraftVersion} • Forge {Profile.ForgeVersion}";
 
     public string JavaDetails => $"{Profile.JavaVersion} • {Profile.JavaExecutable}";
 

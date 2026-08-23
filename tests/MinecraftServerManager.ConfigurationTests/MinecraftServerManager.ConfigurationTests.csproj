@@ -16,5 +16,6 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationEditorService.cs" Link="Services\IServerConfigurationEditorService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationEditorService.cs" Link="Services\ServerConfigurationEditorService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationService.cs" Link="Services\ServerConfigurationService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ServerFolderDetector.cs" Link="Services\ServerFolderDetector.cs" />
   </ItemGroup>
 </Project>

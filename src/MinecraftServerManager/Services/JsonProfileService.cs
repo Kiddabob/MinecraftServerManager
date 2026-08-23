@@ -98,16 +98,32 @@ public sealed class JsonProfileService : IProfileService
             .OrderByDescending(candidate => DetectionScore(normalizedFolder, candidate))
             .FirstOrDefault();
 
-        if (template is null)
-        {
-            return new ProfileImportResult(
-                null,
-                false,
-                "This folder was not recognised as a supported Tekkit server. Select the folder containing TekkitServer.jar.");
-        }
-
         var folderName = new DirectoryInfo(normalizedFolder).Name;
-        var importedProfile = CloneForFolder(template, normalizedFolder, folderName);
+        ServerProfile importedProfile;
+        string message;
+        if (template is not null)
+        {
+            importedProfile = CloneForFolder(template, normalizedFolder, folderName);
+            message = $"Created a {template.DisplayName} profile for '{folderName}'.";
+        }
+        else
+        {
+            var detection = ServerFolderDetector.Detect(normalizedFolder);
+            if (detection is null)
+            {
+                return new ProfileImportResult(
+                    null,
+                    false,
+                    "No top-level server launcher JAR was found. Select the folder containing the server's runnable .jar file.");
+            }
+
+            importedProfile = CreateGenericProfile(
+                normalizedFolder,
+                folderName,
+                detection,
+                templates.FirstOrDefault());
+            message = $"Created a {detection.ServerType} profile for '{folderName}' using {detection.ServerJar}.";
+        }
 
         Directory.CreateDirectory(UserProfilesDirectory);
         var profilePath = Path.Combine(UserProfilesDirectory, $"{importedProfile.Id}.json");
@@ -119,7 +135,7 @@ public sealed class JsonProfileService : IProfileService
         return new ProfileImportResult(
             importedProfile,
             true,
-            $"Created a Tekkit profile for '{folderName}'.");
+            message);
     }
 
     private static async Task<ServerProfile> LoadProfileFileAsync(
@@ -196,6 +212,81 @@ public sealed class JsonProfileService : IProfileService
             StopCommand = template.StopCommand,
             StopTimeoutSeconds = template.StopTimeoutSeconds
         };
+    }
+
+    private static ServerProfile CreateGenericProfile(
+        string folderPath,
+        string folderName,
+        ServerFolderDetection detection,
+        ServerProfile? sharedMinecraftDefaults)
+    {
+        var pathHash = CreatePathHash(folderPath);
+        return new ServerProfile
+        {
+            Id = $"generic-{pathHash}",
+            DisplayName = folderName,
+            ServerType = detection.ServerType,
+            MinecraftVersion = detection.MinecraftVersion,
+            ForgeVersion = string.Empty,
+            JavaVersion = "Automatic",
+            ServerDirectory = folderPath,
+            IconPath = FindProfileIcon(folderPath),
+            JavaExecutable = FindJavaExecutable(folderPath),
+            ServerJar = detection.ServerJar,
+            JavaArguments = ["-Xms1G", "-Xmx2G"],
+            ServerArguments = ["nogui"],
+            RequiredFiles = [detection.ServerJar],
+            RequiredDirectories = [],
+            ConfigurationSources = sharedMinecraftDefaults?.ConfigurationSources ?? [],
+            ConfigurationSchemas = [],
+            ReadyPatterns = sharedMinecraftDefaults?.ReadyPatterns ?? [@"Done \([^)]+\)!"],
+            PlayerJoinPatterns = sharedMinecraftDefaults?.PlayerJoinPatterns ?? [],
+            PlayerLeavePatterns = sharedMinecraftDefaults?.PlayerLeavePatterns ?? [],
+            ListPlayersCommand = sharedMinecraftDefaults?.ListPlayersCommand ?? "list",
+            BroadcastCommandPrefix = sharedMinecraftDefaults?.BroadcastCommandPrefix ?? "say ",
+            SaveCommand = sharedMinecraftDefaults?.SaveCommand ?? "save-all",
+            StopCommand = sharedMinecraftDefaults?.StopCommand ?? "stop",
+            StopTimeoutSeconds = sharedMinecraftDefaults?.StopTimeoutSeconds ?? 60
+        };
+    }
+
+    private static string FindJavaExecutable(string folderPath)
+    {
+        string[] relativeCandidates =
+        [
+            @"runtime\bin\java.exe",
+            @"jre\bin\java.exe",
+            @"java\bin\java.exe",
+            @"jdk\bin\java.exe"
+        ];
+
+        foreach (var relativePath in relativeCandidates)
+        {
+            var candidate = Path.Combine(folderPath, relativePath);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        var javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
+        if (!string.IsNullOrWhiteSpace(javaHome))
+        {
+            var candidate = Path.Combine(javaHome, "bin", "java.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return "java";
+    }
+
+    private static string CreatePathHash(string folderPath)
+    {
+        return Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(folderPath.ToUpperInvariant())))[..10]
+            .ToLowerInvariant();
     }
 
     private static void InheritMissingProfileSettings(

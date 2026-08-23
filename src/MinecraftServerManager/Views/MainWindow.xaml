@@ -1259,10 +1259,10 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Spacing="6">
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Add a Tekkit server" />
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Add a Minecraft server" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Choose the folder containing TekkitServer.jar. The app will detect it and create a reusable profile." />
+                                            Text="Choose the folder containing the server launcher JAR. The app will detect common server types and create a reusable profile." />
                                         <TextBlock
                                             Margin="0,4,0,0"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
