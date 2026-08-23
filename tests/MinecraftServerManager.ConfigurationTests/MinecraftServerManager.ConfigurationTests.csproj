@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationModels.cs" Link="Models\ServerConfigurationModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationEditorModels.cs" Link="Models\ServerConfigurationEditorModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationSchema.cs" Link="Models\ServerConfigurationSchema.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationSource.cs" Link="Models\ServerConfigurationSource.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerProfile.cs" Link="Models\ServerProfile.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationService.cs" Link="Services\IServerConfigurationService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationEditorService.cs" Link="Services\IServerConfigurationEditorService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationEditorService.cs" Link="Services\ServerConfigurationEditorService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationService.cs" Link="Services\ServerConfigurationService.cs" />
+  </ItemGroup>
+</Project>

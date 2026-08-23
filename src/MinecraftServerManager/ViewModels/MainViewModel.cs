@@ -47,6 +47,7 @@ public sealed class MainViewModel : BindableBase
         IAppUpdateService appUpdateService,
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
+        ServerDashboardViewModel dashboard,
         IUiDispatcher uiDispatcher)
     {
         _profileService = profileService;
@@ -59,6 +60,7 @@ public sealed class MainViewModel : BindableBase
         _appSettingsService = appSettingsService;
         _serverFileService = serverFileService;
         _uiDispatcher = uiDispatcher;
+        Dashboard = dashboard;
 
         ThemeOptions =
         [
@@ -103,6 +105,8 @@ public sealed class MainViewModel : BindableBase
 
     public ObservableCollection<PlayerPlaytimeRow> PlayerPlaytimes { get; } = [];
 
+    public ServerDashboardViewModel Dashboard { get; }
+
     public IReadOnlyList<AppThemeOption> ThemeOptions { get; }
 
     public IReadOnlyList<AccentColorOption> AccentOptions { get; }
@@ -136,6 +140,7 @@ public sealed class MainViewModel : BindableBase
             OnPropertyChanged();
             RefreshFilesCommand.NotifyCanExecuteChanged();
             _ = RefreshServerFilesAsync();
+            _ = Dashboard.SelectProfileAsync(value);
             _ = PersistPreferencesAsync("Profile selection saved.");
         }
     }
@@ -300,6 +305,7 @@ public sealed class MainViewModel : BindableBase
             selected.IsSelectedForBulk = true;
             SetSelectedProfileWithoutCallback(selected);
             CurrentFilesPath = selected.ServerDirectory;
+            await Dashboard.SelectProfileAsync(selected);
             await RefreshServerFilesAsync();
         }
         catch (Exception exception) when (
@@ -332,6 +338,7 @@ public sealed class MainViewModel : BindableBase
             profile.IsSelectedForBulk = true;
             SetSelectedProfileWithoutCallback(profile);
             CurrentFilesPath = profile.ServerDirectory;
+            await Dashboard.SelectProfileAsync(profile);
             await RefreshServerFilesAsync();
             await PersistPreferencesAsync("Profile selection saved.");
         }
