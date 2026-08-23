@@ -1,6 +1,6 @@
 # Minecraft Server Manager
 
-A WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally Tekkit-first: profile selection, validation, Java process control, live console output, safe shutdown, in-app server-file browsing, personalisation, and GitHub updates.
+A WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally Tekkit-first: profile selection, validation, Java process control, live console output, safe shutdown, profile-scoped player playtime, in-app server-file browsing, personalisation, and GitHub updates.
 
 ## Requirements
 
@@ -16,6 +16,12 @@ The starter profile is `src/MinecraftServerManager/Profiles/tekkit.json`. It cur
 - JAR: `TekkitServer.jar`
 
 You can also choose the folder containing `TekkitServer.jar` from the app's **Profiles** page. The app detects the packaged Tekkit definition and stores the resulting user profile under `%LocalAppData%\Kidda.MinecraftServerManager\UserProfiles`, so an app update does not overwrite it.
+
+## Player playtime
+
+The **Players** page begins tracking when a player joins a server launched by the manager. Tekkit's profile supplies the join and leave patterns; the generic process service contains no Minecraft-specific log rules. Each profile has an independent history, while **All servers** adds a player's profile totals together. Existing history is not backfilled.
+
+Completed time and 30-second live checkpoints are stored under `%LocalAppData%\Kidda.MinecraftServerManager\PlayerPlaytime`. Duplicate join/leave messages are ignored, and any open sessions are closed when that profile's Java process exits.
 
 ## Build
 

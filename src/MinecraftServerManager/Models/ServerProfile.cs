@@ -35,6 +35,10 @@ public sealed class ServerProfile
 
     public IReadOnlyList<string> ReadyPatterns { get; init; } = [];
 
+    public IReadOnlyList<string> PlayerJoinPatterns { get; set; } = [];
+
+    public IReadOnlyList<string> PlayerLeavePatterns { get; set; } = [];
+
     public string ListPlayersCommand { get; set; } = string.Empty;
 
     public string BroadcastCommandPrefix { get; set; } = string.Empty;

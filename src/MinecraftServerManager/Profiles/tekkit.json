@@ -34,6 +34,14 @@
   "readyPatterns": [
     "Done \\([^)]+\\)!"
   ],
+  "playerJoinPatterns": [
+    "(?<player>[A-Za-z0-9_]{1,16})\\[/[^\\]]+\\] logged in with entity id",
+    "(?<player>[A-Za-z0-9_]{1,16}) joined the game"
+  ],
+  "playerLeavePatterns": [
+    "(?<player>[A-Za-z0-9_]{1,16}) lost connection:",
+    "(?<player>[A-Za-z0-9_]{1,16}) left the game"
+  ],
   "listPlayersCommand": "list",
   "broadcastCommandPrefix": "say ",
   "saveCommand": "save-all",

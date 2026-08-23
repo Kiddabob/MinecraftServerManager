@@ -14,6 +14,7 @@ public sealed class MainViewModel : BindableBase
     private readonly IServerLaunchRequestFactory _launchRequestFactory;
     private readonly IServerConsoleParserFactory _consoleParserFactory;
     private readonly IServerProcessServiceFactory _processServiceFactory;
+    private readonly IPlayerPlaytimeService _playerPlaytimeService;
     private readonly IAppUpdateService _appUpdateService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly IServerFileService _serverFileService;
@@ -32,6 +33,9 @@ public sealed class MainViewModel : BindableBase
     private AppThemeOption? _selectedThemeOption;
     private AccentColorOption? _selectedAccentOption;
     private UpdateIntervalOption? _selectedUpdateIntervalOption;
+    private PlayerScopeOption? _selectedPlayerScope;
+    private string _playerSummaryText = "Tracking begins when a player joins a server started here.";
+    private string? _renderedPlayerScopeId;
 
     public MainViewModel(
         IProfileService profileService,
@@ -39,6 +43,7 @@ public sealed class MainViewModel : BindableBase
         IServerLaunchRequestFactory launchRequestFactory,
         IServerConsoleParserFactory consoleParserFactory,
         IServerProcessServiceFactory processServiceFactory,
+        IPlayerPlaytimeService playerPlaytimeService,
         IAppUpdateService appUpdateService,
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
@@ -49,6 +54,7 @@ public sealed class MainViewModel : BindableBase
         _launchRequestFactory = launchRequestFactory;
         _consoleParserFactory = consoleParserFactory;
         _processServiceFactory = processServiceFactory;
+        _playerPlaytimeService = playerPlaytimeService;
         _appUpdateService = appUpdateService;
         _appSettingsService = appSettingsService;
         _serverFileService = serverFileService;
@@ -86,11 +92,16 @@ public sealed class MainViewModel : BindableBase
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
 
         _appUpdateService.StatusChanged += OnUpdateStatusChanged;
+        _playerPlaytimeService.Changed += OnPlayerPlaytimeChanged;
     }
 
     public ObservableCollection<ServerSessionViewModel> Profiles { get; } = [];
 
     public ObservableCollection<ServerFileItem> ServerFiles { get; } = [];
+
+    public ObservableCollection<PlayerScopeOption> PlayerScopeOptions { get; } = [];
+
+    public ObservableCollection<PlayerPlaytimeRow> PlayerPlaytimes { get; } = [];
 
     public IReadOnlyList<AppThemeOption> ThemeOptions { get; }
 
@@ -145,6 +156,24 @@ public sealed class MainViewModel : BindableBase
     {
         get => _selectedUpdateIntervalOption;
         set => SetProperty(ref _selectedUpdateIntervalOption, value);
+    }
+
+    public PlayerScopeOption? SelectedPlayerScope
+    {
+        get => _selectedPlayerScope;
+        set
+        {
+            if (SetProperty(ref _selectedPlayerScope, value))
+            {
+                RefreshPlayerPlaytime();
+            }
+        }
+    }
+
+    public string PlayerSummaryText
+    {
+        get => _playerSummaryText;
+        private set => SetProperty(ref _playerSummaryText, value);
     }
 
     public string ProfileImportStatus
@@ -245,10 +274,17 @@ public sealed class MainViewModel : BindableBase
             _appUpdateService.SetCheckIntervalMinutes(preferences.UpdateCheckIntervalMinutes);
             _appUpdateService.StartMonitoring();
 
-            foreach (var profile in await _profileService.LoadAllAsync())
+            var loadedProfiles = await _profileService.LoadAllAsync();
+            await _playerPlaytimeService.InitializeAsync(loadedProfiles);
+            PlayerScopeOptions.Add(new PlayerScopeOption("all", "All servers"));
+            foreach (var profile in loadedProfiles)
             {
                 AddProfile(profile);
+                PlayerScopeOptions.Add(new PlayerScopeOption(profile.Id, profile.DisplayName));
             }
+
+            SelectedPlayerScope = PlayerScopeOptions[0];
+            StartPlayerRefreshLoop();
 
             OnPropertyChanged(nameof(ProfileCountText));
             var selected = Profiles.FirstOrDefault(profile => profile.Id == preferences.LastProfileId)
@@ -287,7 +323,9 @@ public sealed class MainViewModel : BindableBase
             var profile = Profiles.FirstOrDefault(item => item.Id == result.Profile.Id);
             if (profile is null)
             {
+                await _playerPlaytimeService.InitializeAsync([result.Profile]);
                 profile = AddProfile(result.Profile);
+                PlayerScopeOptions.Add(new PlayerScopeOption(result.Profile.Id, result.Profile.DisplayName));
                 OnPropertyChanged(nameof(ProfileCountText));
             }
 
@@ -315,7 +353,22 @@ public sealed class MainViewModel : BindableBase
         await RefreshServerFilesAsync();
     }
 
-    public async Task<bool> StopForAppExitAsync() => await StopAllActiveAsync();
+    public async Task<bool> StopForAppExitAsync()
+    {
+        var stopped = await StopAllActiveAsync();
+        if (!stopped)
+        {
+            return false;
+        }
+
+        foreach (var profile in Profiles)
+        {
+            _playerPlaytimeService.CloseSessions(profile.Id);
+        }
+
+        await _playerPlaytimeService.FlushAsync();
+        return true;
+    }
 
     private ServerSessionViewModel AddProfile(ServerProfile profile)
     {
@@ -325,6 +378,7 @@ public sealed class MainViewModel : BindableBase
             _launchRequestFactory,
             _consoleParserFactory,
             _processServiceFactory.Create(),
+            _playerPlaytimeService,
             _uiDispatcher);
         session.PropertyChanged += Session_PropertyChanged;
         Profiles.Add(session);
@@ -521,4 +575,139 @@ public sealed class MainViewModel : BindableBase
             IsUpdateReady = args.State == AppUpdateState.ReadyToApply;
         });
     }
+
+    private void OnPlayerPlaytimeChanged(object? sender, EventArgs args)
+    {
+        _uiDispatcher.TryEnqueue(RefreshPlayerPlaytime);
+    }
+
+    private void StartPlayerRefreshLoop()
+    {
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync())
+            {
+                _uiDispatcher.TryEnqueue(RefreshPlayerPlaytime);
+            }
+        });
+    }
+
+    private void RefreshPlayerPlaytime()
+    {
+        if (SelectedPlayerScope is null)
+        {
+            return;
+        }
+
+        var snapshots = _playerPlaytimeService.GetSnapshots();
+        IEnumerable<PlayerPlaytimeRow> rows;
+        if (SelectedPlayerScope.Id == "all")
+        {
+            rows = snapshots
+                .GroupBy(snapshot => snapshot.PlayerName, StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var entries = group.OrderByDescending(entry => entry.Playtime).ToArray();
+                    return new PlayerPlaytimeRow(
+                        entries[0].PlayerName,
+                        entries.Any(entry => entry.IsOnline),
+                        entries.Any(entry => entry.IsOnline) ? "Online" : "Offline",
+                        string.Join(
+                            "  •  ",
+                            entries.Select(entry => $"{entry.ProfileName} {FormatPlaytime(entry.Playtime)}")),
+                        entries.Aggregate(TimeSpan.Zero, (total, entry) => total + entry.Playtime),
+                        FormatPlaytime(entries.Aggregate(TimeSpan.Zero, (total, entry) => total + entry.Playtime)),
+                        entries.Any(entry => entry.IsOnline)
+                            ? "Now"
+                            : FormatLastSeen(entries.Max(entry => entry.LastSeenUtc)));
+                });
+        }
+        else
+        {
+            rows = snapshots
+                .Where(snapshot => snapshot.ProfileId.Equals(
+                    SelectedPlayerScope.Id,
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(snapshot => new PlayerPlaytimeRow(
+                    snapshot.PlayerName,
+                    snapshot.IsOnline,
+                    snapshot.IsOnline ? "Online" : "Offline",
+                    snapshot.ProfileName,
+                    snapshot.Playtime,
+                    FormatPlaytime(snapshot.Playtime),
+                    snapshot.IsOnline ? "Now" : FormatLastSeen(snapshot.LastSeenUtc)));
+        }
+
+        var orderedRows = rows
+            .OrderByDescending(row => row.IsOnline)
+            .ThenByDescending(row => row.SortablePlaytime)
+            .ThenBy(row => row.PlayerName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        if (!string.Equals(
+            _renderedPlayerScopeId,
+            SelectedPlayerScope.Id,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            _renderedPlayerScopeId = SelectedPlayerScope.Id;
+            PlayerPlaytimes.Clear();
+        }
+
+        var desiredNames = orderedRows
+            .Select(row => row.PlayerName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var index = PlayerPlaytimes.Count - 1; index >= 0; index--)
+        {
+            if (!desiredNames.Contains(PlayerPlaytimes[index].PlayerName))
+            {
+                PlayerPlaytimes.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < orderedRows.Length; targetIndex++)
+        {
+            var desired = orderedRows[targetIndex];
+            var existing = PlayerPlaytimes.FirstOrDefault(row => row.PlayerName.Equals(
+                desired.PlayerName,
+                StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+            {
+                PlayerPlaytimes.Insert(targetIndex, desired);
+                continue;
+            }
+
+            existing.UpdateFrom(desired);
+            var currentIndex = PlayerPlaytimes.IndexOf(existing);
+            if (currentIndex != targetIndex)
+            {
+                PlayerPlaytimes.Move(currentIndex, targetIndex);
+            }
+        }
+
+        var onlineCount = orderedRows.Count(row => row.IsOnline);
+        PlayerSummaryText = orderedRows.Length == 0
+            ? "No sessions yet  •  Tracking starts with the next player join"
+            : $"{orderedRows.Length:N0} players tracked  •  {onlineCount:N0} online";
+    }
+
+    private static string FormatPlaytime(TimeSpan playtime)
+    {
+        if (playtime.TotalDays >= 1)
+        {
+            return $"{(int)playtime.TotalDays}d {playtime.Hours}h {playtime.Minutes}m";
+        }
+
+        if (playtime.TotalHours >= 1)
+        {
+            return $"{(int)playtime.TotalHours}h {playtime.Minutes}m";
+        }
+
+        return $"{playtime.Minutes}m {playtime.Seconds}s";
+    }
+
+    private static string FormatLastSeen(DateTimeOffset? lastSeenUtc) =>
+        lastSeenUtc is null
+            ? "—"
+            : lastSeenUtc.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm");
 }

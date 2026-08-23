@@ -15,6 +15,7 @@ public sealed class ServerSessionViewModel : BindableBase
     private readonly IServerLaunchRequestFactory _launchRequestFactory;
     private readonly IServerConsoleParserFactory _consoleParserFactory;
     private readonly IServerProcessService _processService;
+    private readonly IPlayerPlaytimeService _playerPlaytimeService;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly ConcurrentQueue<PendingConsoleLine> _pendingConsoleLines = new();
 
@@ -40,6 +41,7 @@ public sealed class ServerSessionViewModel : BindableBase
         IServerLaunchRequestFactory launchRequestFactory,
         IServerConsoleParserFactory consoleParserFactory,
         IServerProcessService processService,
+        IPlayerPlaytimeService playerPlaytimeService,
         IUiDispatcher uiDispatcher)
     {
         Profile = profile;
@@ -47,6 +49,7 @@ public sealed class ServerSessionViewModel : BindableBase
         _launchRequestFactory = launchRequestFactory;
         _consoleParserFactory = consoleParserFactory;
         _processService = processService;
+        _playerPlaytimeService = playerPlaytimeService;
         _uiDispatcher = uiDispatcher;
         _consoleParser = _consoleParserFactory.Create(profile);
 
@@ -221,6 +224,7 @@ public sealed class ServerSessionViewModel : BindableBase
         }
 
         StopResourceMonitoring();
+        _playerPlaytimeService.CloseSessions(Profile.Id);
         ConsoleEntries.Clear();
         CpuHistory.Clear();
         MemoryHistory.Clear();
@@ -378,7 +382,8 @@ public sealed class ServerSessionViewModel : BindableBase
         var parsed = _consoleParser.Parse(args.Line, args.Stream);
         _pendingConsoleLines.Enqueue(new PendingConsoleLine(
             parsed.Entry,
-            parsed.Signal == ServerConsoleSignal.Ready));
+            parsed.Signal == ServerConsoleSignal.Ready,
+            parsed.PlayerConnection));
         ScheduleConsoleDrain();
     }
 
@@ -387,6 +392,7 @@ public sealed class ServerSessionViewModel : BindableBase
         _uiDispatcher.TryEnqueue(() =>
         {
             StopResourceMonitoring();
+            _playerPlaytimeService.CloseSessions(Profile.Id);
             var runtime = args.ExitedAt - args.StartedAt;
             ProcessInfo = $"Last process: PID {args.ProcessId} • Exit {args.ExitCode} • Runtime {runtime:hh\\:mm\\:ss}";
             AppendManagerMessage(
@@ -441,6 +447,10 @@ public sealed class ServerSessionViewModel : BindableBase
         {
             AppendConsoleEntry(pendingLine.Entry);
             sawReadySignal |= pendingLine.IsReadySignal;
+            if (pendingLine.PlayerConnection is not null)
+            {
+                _playerPlaytimeService.RecordConnection(Profile.Id, pendingLine.PlayerConnection);
+            }
         }
 
         Interlocked.Exchange(ref _consoleDrainScheduled, 0);
@@ -600,5 +610,6 @@ public sealed class ServerSessionViewModel : BindableBase
 
     private readonly record struct PendingConsoleLine(
         ServerLogEntry Entry,
-        bool IsReadySignal);
+        bool IsReadySignal,
+        PlayerConnectionChange? PlayerConnection);
 }

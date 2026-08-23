@@ -8,7 +8,10 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
     public IServerConsoleParser Create(ServerProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        return new ProfileConsoleParser(profile.ReadyPatterns);
+        return new ProfileConsoleParser(
+            profile.ReadyPatterns,
+            profile.PlayerJoinPatterns,
+            profile.PlayerLeavePatterns);
     }
 
     private sealed class ProfileConsoleParser : IServerConsoleParser
@@ -29,22 +32,33 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
             TimeSpan.FromSeconds(1));
 
         private readonly IReadOnlyList<Regex> _readyPatterns;
+        private readonly IReadOnlyList<Regex> _playerJoinPatterns;
+        private readonly IReadOnlyList<Regex> _playerLeavePatterns;
 
-        public ProfileConsoleParser(IReadOnlyList<string> readyPatterns)
+        public ProfileConsoleParser(
+            IReadOnlyList<string> readyPatterns,
+            IReadOnlyList<string> playerJoinPatterns,
+            IReadOnlyList<string> playerLeavePatterns)
         {
-            _readyPatterns = readyPatterns
+            _readyPatterns = CompilePatterns(readyPatterns);
+            _playerJoinPatterns = CompilePatterns(playerJoinPatterns);
+            _playerLeavePatterns = CompilePatterns(playerLeavePatterns);
+        }
+
+        private static IReadOnlyList<Regex> CompilePatterns(IReadOnlyList<string> patterns) =>
+            patterns
                 .Where(pattern => !string.IsNullOrWhiteSpace(pattern))
                 .Select(pattern => new Regex(
                     pattern,
                     RegexOptions.Compiled | RegexOptions.CultureInvariant,
                     TimeSpan.FromSeconds(1)))
                 .ToArray();
-        }
 
         public ServerConsoleParseResult Parse(string line, ServerOutputStream stream)
         {
             var cleanedLine = StripAnsi(line).TrimEnd();
             var signal = ServerConsoleSignal.None;
+            var playerConnection = MatchPlayerConnection(cleanedLine);
             foreach (var pattern in _readyPatterns)
             {
                 try
@@ -77,7 +91,8 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
                         match.Groups["time"].Value,
                         level,
                         string.IsNullOrWhiteSpace(source) ? "Server" : source,
-                        match.Groups["message"].Value.TrimStart()));
+                        match.Groups["message"].Value.TrimStart()),
+                    playerConnection);
             }
 
             var fallbackLevel = stream == ServerOutputStream.StandardError
@@ -92,7 +107,44 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
                     DateTime.Now.ToString("HH:mm:ss"),
                     fallbackLevel,
                     stream == ServerOutputStream.StandardError ? "Java" : "Server",
-                    cleanedLine));
+                    cleanedLine),
+                playerConnection);
+        }
+
+        private PlayerConnectionChange? MatchPlayerConnection(string line)
+        {
+            var playerName = MatchPlayerName(_playerJoinPatterns, line);
+            if (playerName is not null)
+            {
+                return new PlayerConnectionChange(playerName, PlayerConnectionKind.Joined);
+            }
+
+            playerName = MatchPlayerName(_playerLeavePatterns, line);
+            return playerName is null
+                ? null
+                : new PlayerConnectionChange(playerName, PlayerConnectionKind.Left);
+        }
+
+        private static string? MatchPlayerName(IReadOnlyList<Regex> patterns, string line)
+        {
+            foreach (var pattern in patterns)
+            {
+                try
+                {
+                    var match = pattern.Match(line);
+                    var playerName = match.Groups["player"].Value;
+                    if (match.Success && !string.IsNullOrWhiteSpace(playerName))
+                    {
+                        return playerName;
+                    }
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    // A bad profile pattern must not interrupt console streaming.
+                }
+            }
+
+            return null;
         }
 
         private static Match MatchLogLine(string line)

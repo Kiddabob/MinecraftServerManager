@@ -58,7 +58,7 @@ public sealed class JsonProfileService : IProfileService
         foreach (var profilePath in EnumerateProfileFiles(UserProfilesDirectory))
         {
             var profile = await LoadProfileFileAsync(profilePath, cancellationToken);
-            InheritMissingQuickCommands(profile, packagedProfiles);
+            InheritMissingProfileSettings(profile, packagedProfiles);
             profilesById[profile.Id] = profile;
         }
 
@@ -186,6 +186,8 @@ public sealed class JsonProfileService : IProfileService
             RequiredFiles = template.RequiredFiles,
             RequiredDirectories = template.RequiredDirectories,
             ReadyPatterns = template.ReadyPatterns,
+            PlayerJoinPatterns = template.PlayerJoinPatterns,
+            PlayerLeavePatterns = template.PlayerLeavePatterns,
             ListPlayersCommand = template.ListPlayersCommand,
             BroadcastCommandPrefix = template.BroadcastCommandPrefix,
             SaveCommand = template.SaveCommand,
@@ -194,7 +196,7 @@ public sealed class JsonProfileService : IProfileService
         };
     }
 
-    private static void InheritMissingQuickCommands(
+    private static void InheritMissingProfileSettings(
         ServerProfile profile,
         IReadOnlyList<ServerProfile> packagedProfiles)
     {
@@ -218,6 +220,16 @@ public sealed class JsonProfileService : IProfileService
         if (string.IsNullOrWhiteSpace(profile.SaveCommand))
         {
             profile.SaveCommand = template.SaveCommand;
+        }
+
+        if (profile.PlayerJoinPatterns.Count == 0)
+        {
+            profile.PlayerJoinPatterns = template.PlayerJoinPatterns;
+        }
+
+        if (profile.PlayerLeavePatterns.Count == 0)
+        {
+            profile.PlayerLeavePatterns = template.PlayerLeavePatterns;
         }
     }
 

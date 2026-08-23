@@ -56,6 +56,11 @@
                         <FontIcon Glyph="&#xE756;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Players" Tag="players">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE716;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Server files" Tag="files">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8B7;" />
@@ -79,14 +84,15 @@
             <NavigationView.PaneFooter>
                 <StackPanel
                     x:Name="ProfilePaneFooter"
-                    Margin="0,12,0,8"
+                    Margin="12,12,12,8"
+                    HorizontalAlignment="Stretch"
                     Spacing="6">
                     <TextBlock
                         FontSize="12"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="Current profile" />
                     <ComboBox
-                        Width="250"
+                        HorizontalAlignment="Stretch"
                         DisplayMemberPath="DisplayName"
                         ItemsSource="{Binding Profiles, Mode=OneWay}"
                         SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
@@ -474,7 +480,7 @@
                                     BorderThickness="0"
                                     ItemsSource="{Binding SelectedProfile.ConsoleEntries, Mode=OneWay}"
                                     SelectionMode="None"
-                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                     ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <ListView.ItemContainerStyle>
                                         <Style TargetType="ListViewItem">
@@ -488,7 +494,7 @@
                                             <Border
                                                 BorderBrush="#12FFFFFF"
                                                 BorderThickness="0,0,0,1">
-                                                <Grid MinHeight="38" Padding="10,6" ColumnSpacing="10">
+                                                <Grid MinWidth="880" MinHeight="38" Padding="10,6" ColumnSpacing="10">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="3" />
                                                         <ColumnDefinition Width="26" />
@@ -544,7 +550,7 @@
                                                         Foreground="#E6EDF3"
                                                         IsTextSelectionEnabled="True"
                                                         Text="{Binding Message}"
-                                                        TextWrapping="Wrap" />
+                                                        TextWrapping="WrapWholeWords" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -601,6 +607,124 @@
                                     ToolTipService.ToolTip="Immediately terminate Java without waiting for a save" />
                             </StackPanel>
                         </StackPanel>
+                    </Grid>
+
+                    <Grid
+                        x:Name="PlayersPage"
+                        Margin="32,28,32,32"
+                        Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Spacing="5">
+                            <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Player playtime" />
+                            <TextBlock
+                                Style="{StaticResource BodySecondaryTextStyle}"
+                                Text="Tracking starts with new joins on servers launched here; existing history is not backfilled." />
+                        </StackPanel>
+
+                        <Grid Grid.Row="1" Margin="0,20,0,14" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="260" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Text="Show" />
+                            <ComboBox
+                                Grid.Column="1"
+                                DisplayMemberPath="DisplayName"
+                                ItemsSource="{Binding PlayerScopeOptions, Mode=OneWay}"
+                                SelectedItem="{Binding SelectedPlayerScope, Mode=TwoWay}" />
+                            <TextBlock
+                                Grid.Column="2"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{Binding PlayerSummaryText, Mode=OneWay}" />
+                        </Grid>
+
+                        <Border Grid.Row="2" Style="{StaticResource AppCardStyle}" Padding="0">
+                            <ListView
+                                ItemsSource="{Binding PlayerPlaytimes, Mode=OneWay}"
+                                SelectionMode="None"
+                                ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                <ListView.Header>
+                                    <Grid
+                                        MinWidth="840"
+                                        Padding="16,12"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="160" />
+                                            <ColumnDefinition Width="90" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="120" />
+                                            <ColumnDefinition Width="150" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontWeight="SemiBold" Text="Player" />
+                                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Status" />
+                                        <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Server breakdown" />
+                                        <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Playtime" />
+                                        <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="Last seen" />
+                                    </Grid>
+                                </ListView.Header>
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid MinWidth="840" MinHeight="54" Padding="16,10" ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="160" />
+                                                <ColumnDefinition Width="90" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="150" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontWeight="SemiBold"
+                                                Text="{Binding PlayerName}" />
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="7">
+                                                <Ellipse
+                                                    Width="8"
+                                                    Height="8"
+                                                    Fill="{Binding IsOnline, Converter={StaticResource PlayerOnlineToBrushConverter}}" />
+                                                <TextBlock
+                                                    Foreground="{Binding IsOnline, Converter={StaticResource PlayerOnlineToBrushConverter}}"
+                                                    Text="{Binding StatusText}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding ProfileSummary}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Grid.Column="3"
+                                                VerticalAlignment="Center"
+                                                FontFamily="Cascadia Mono, Consolas"
+                                                Text="{Binding PlaytimeText}" />
+                                            <TextBlock
+                                                Grid.Column="4"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding LastSeenText}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Border>
                     </Grid>
 
                     <Grid
