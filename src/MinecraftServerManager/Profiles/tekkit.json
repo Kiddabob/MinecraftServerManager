@@ -31,6 +31,60 @@
     "config",
     "mods"
   ],
+  "configurationSources": [
+    {
+      "id": "core",
+      "displayName": "Server settings",
+      "category": "Core",
+      "relativePath": "server.properties",
+      "filePatterns": [
+        "server.properties"
+      ],
+      "recursive": false
+    },
+    {
+      "id": "mods",
+      "displayName": "Mod configurations",
+      "category": "Mods",
+      "relativePath": "config",
+      "filePatterns": [
+        "*.cfg",
+        "*.conf",
+        "*.config",
+        "*.properties",
+        "*.json",
+        "*.json5",
+        "*.toml",
+        "*.yml",
+        "*.yaml",
+        "*.xml",
+        "*.ini",
+        "*.txt"
+      ],
+      "recursive": true
+    },
+    {
+      "id": "plugins",
+      "displayName": "Plugin configurations",
+      "category": "Plugins",
+      "relativePath": "plugins",
+      "filePatterns": [
+        "*.cfg",
+        "*.conf",
+        "*.config",
+        "*.properties",
+        "*.json",
+        "*.json5",
+        "*.toml",
+        "*.yml",
+        "*.yaml",
+        "*.xml",
+        "*.ini",
+        "*.txt"
+      ],
+      "recursive": true
+    }
+  ],
   "readyPatterns": [
     "Done \\([^)]+\\)!"
   ],

@@ -1,6 +1,6 @@
 # Minecraft Server Manager
 
-A WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally Tekkit-first: profile selection, validation, Java process control, live console output, safe shutdown, profile-scoped player playtime, in-app server-file browsing, personalisation, and GitHub updates.
+A WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally Tekkit-first: profile selection, validation, Java process control, live console output, safe shutdown, profile-scoped player playtime, profile-driven configuration editing, in-app server-file browsing, personalisation, and GitHub updates.
 
 ## Requirements
 
@@ -23,10 +23,22 @@ The **Players** page begins tracking when a player joins a server launched by th
 
 Completed time and 30-second live checkpoints are stored under `%LocalAppData%\Kidda.MinecraftServerManager\PlayerPlaytime`. Duplicate join/leave messages are ignored, and any open sessions are closed when that profile's Java process exits.
 
+## Server dashboard
+
+The **Dashboard** page discovers editable files from the selected profile's `configurationSources`. A profile can describe core settings, mod configuration folders, plugin folders, or any combination, so hybrid mod-and-plugin servers do not need special cases in the editor service. The packaged Tekkit profile scans `server.properties`, supported text files under `config`, and an optional `plugins` folder when one is present.
+
+Configuration files are read-only while that profile's Java process is active. Saving validates JSON and XML where applicable, refuses to overwrite a file that changed after it was opened, writes through a same-folder temporary file, and first stores the previous bytes under `%LocalAppData%\Kidda.MinecraftServerManager\ConfigurationBackups\<profile>`. Files over 2 MB, binary files, reparse points, and configuration paths outside the server root are not editable.
+
 ## Build
 
 ```powershell
 dotnet build MinecraftServerManager.sln -c Debug -p:Platform=x64
+```
+
+The dependency-free configuration-service checks can be run with:
+
+```powershell
+dotnet run --project tests\MinecraftServerManager.ConfigurationTests -c Release
 ```
 
 The app validates the configured paths before enabling Start. It sends the profile's `stop` command and waits up to 60 seconds for a safe exit; it does not force-kill Java after a timeout.

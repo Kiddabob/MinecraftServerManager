@@ -51,6 +51,11 @@
                         <FontIcon Glyph="&#xE80F;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Dashboard" Tag="dashboard">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE9D2;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Console" Tag="console">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE756;" />
@@ -237,6 +242,288 @@
                             </Grid>
                         </StackPanel>
                     </ScrollViewer>
+
+                    <Grid
+                        x:Name="DashboardPage"
+                        Margin="32,28,32,32"
+                        Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Server dashboard" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Discover and safely edit configuration supplied by the selected server profile." />
+                            </StackPanel>
+                            <StackPanel
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal"
+                                Spacing="10">
+                                <ProgressRing
+                                    Width="20"
+                                    Height="20"
+                                    IsActive="{Binding Dashboard.IsBusy, Mode=OneWay}" />
+                                <Button Command="{Binding Dashboard.RefreshCommand}" Content="Rescan configuration" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border
+                            Grid.Row="1"
+                            Margin="0,18,0,14"
+                            Style="{StaticResource AppCardStyle}">
+                            <Grid RowSpacing="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Width="42"
+                                        Height="42"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="8">
+                                        <FontIcon
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Foreground="{StaticResource AppAccentBrush}"
+                                            Glyph="&#xE9D2;" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock
+                                            FontSize="17"
+                                            FontWeight="SemiBold"
+                                            Text="{Binding Dashboard.EnvironmentText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding Dashboard.SummaryText, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <ScrollViewer
+                                    Grid.Row="1"
+                                    HorizontalScrollBarVisibility="Auto"
+                                    HorizontalScrollMode="Enabled"
+                                    VerticalScrollBarVisibility="Disabled"
+                                    VerticalScrollMode="Disabled">
+                                    <ItemsControl ItemsSource="{Binding Dashboard.ConfigurationSources, Mode=OneWay}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    MinWidth="180"
+                                                    Padding="11,9"
+                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                    CornerRadius="6">
+                                                    <Grid ColumnSpacing="10">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <FontIcon
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{StaticResource AppAccentBrush}"
+                                                            Glyph="{Binding Glyph}" />
+                                                        <StackPanel Grid.Column="1" Spacing="1">
+                                                            <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                Text="{Binding PresenceText}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition
+                                    x:Name="DashboardFileListColumn"
+                                    Width="320"
+                                    MinWidth="240"
+                                    MaxWidth="520" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Style="{StaticResource AppCardStyle}" Padding="0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <TextBox
+                                        Margin="12"
+                                        PlaceholderText="Search configuration files"
+                                        Text="{Binding Dashboard.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ListView
+                                        Grid.Row="1"
+                                        ItemsSource="{Binding Dashboard.ConfigurationFiles, Mode=OneWay}"
+                                        SelectedItem="{Binding Dashboard.SelectedConfigurationFile, Mode=TwoWay}"
+                                        SelectionMode="Single">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                <Setter Property="Padding" Value="0" />
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid MinHeight="60" Padding="12,8" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <FontIcon
+                                                        Width="22"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{StaticResource AppAccentBrush}"
+                                                        Glyph="{Binding Glyph}" />
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                        <TextBlock
+                                                            FontWeight="SemiBold"
+                                                            Text="{Binding Name}"
+                                                            TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding RelativePath}"
+                                                            TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock
+                                                            FontSize="11"
+                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                            Text="{Binding SourceName}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </Grid>
+                            </Border>
+
+                            <Thumb
+                                Grid.Column="1"
+                                AutomationProperties.Name="Resize configuration file list"
+                                DragDelta="DashboardSplitter_DragDelta">
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb">
+                                        <Grid Background="Transparent">
+                                            <Border
+                                                Width="2"
+                                                HorizontalAlignment="Center"
+                                                Background="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                CornerRadius="1" />
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+
+                            <Border Grid.Column="2" Style="{StaticResource AppCardStyle}" Padding="0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid Padding="16,13" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="2">
+                                            <TextBlock
+                                                FontSize="17"
+                                                FontWeight="SemiBold"
+                                                Text="{Binding Dashboard.SelectedConfigurationFile.Name, Mode=OneWay, TargetNullValue=Configuration editor}" />
+                                            <TextBlock
+                                                FontSize="12"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding Dashboard.SelectedFileDetails, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                            <Button
+                                                Command="{Binding Dashboard.ReloadFileCommand}"
+                                                Content="Reload"
+                                                ToolTipService.ToolTip="Reload from disk and discard unsaved editor text" />
+                                            <Button Command="{Binding Dashboard.DiscardCommand}" Content="Discard" />
+                                            <Button
+                                                Command="{Binding Dashboard.SaveCommand}"
+                                                Content="Save safely"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <TextBox
+                                        Grid.Row="1"
+                                        MinWidth="360"
+                                        Padding="14,12"
+                                        AcceptsReturn="True"
+                                        FontFamily="Cascadia Mono, Consolas"
+                                        FontSize="13"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        IsReadOnly="{Binding Dashboard.IsEditorReadOnly, Mode=OneWay}"
+                                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                        ScrollViewer.HorizontalScrollMode="Enabled"
+                                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                        ScrollViewer.VerticalScrollMode="Enabled"
+                                        Text="{Binding Dashboard.DocumentText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        TextWrapping="NoWrap" />
+
+                                    <Grid Grid.Row="2" Padding="16,10" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon
+                                            FontSize="14"
+                                            Foreground="{StaticResource AppAccentBrush}"
+                                            Glyph="&#xE946;" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding Dashboard.EditorNotice, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <TextBlock
+                            Grid.Row="3"
+                            Margin="4,10,0,0"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding Dashboard.StatusText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </Grid>
 
                     <Grid
                         x:Name="ConsolePage"

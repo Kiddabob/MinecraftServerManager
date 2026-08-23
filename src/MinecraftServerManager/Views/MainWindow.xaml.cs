@@ -23,8 +23,8 @@ public sealed partial class MainWindow : Window
 {
     private const int DefaultWindowWidth = 1220;
     private const int DefaultWindowHeight = 800;
-    private const int MinimumWindowWidth = 720;
-    private const int MinimumWindowHeight = 520;
+    private const int MinimumWindowWidth = 900;
+    private const int MinimumWindowHeight = 600;
 
     private static readonly string[] AccentBrushResourceKeys =
     [
@@ -170,6 +170,7 @@ public sealed partial class MainWindow : Window
         });
 
         OverviewPage.Visibility = destination == "overview" ? Visibility.Visible : Visibility.Collapsed;
+        DashboardPage.Visibility = destination == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConsolePage.Visibility = destination == "console" ? Visibility.Visible : Visibility.Collapsed;
         PlayersPage.Visibility = destination == "players" ? Visibility.Visible : Visibility.Collapsed;
         FilesPage.Visibility = destination == "files" ? Visibility.Visible : Visibility.Collapsed;
@@ -179,6 +180,11 @@ public sealed partial class MainWindow : Window
         if (destination == "files")
         {
             ViewModel.RefreshFilesCommand.Execute(null);
+        }
+
+        if (destination == "dashboard")
+        {
+            ViewModel.Dashboard.RefreshCommand.Execute(null);
         }
 
         if (destination == "console")
@@ -408,6 +414,22 @@ public sealed partial class MainWindow : Window
             minimumSidebarWidth,
             Math.Min(520d, maximumSidebarWidth));
         ResourceSidebarColumn.Width = new GridLength(newWidth);
+    }
+
+    private void DashboardSplitter_DragDelta(object sender, DragDeltaEventArgs args)
+    {
+        const double minimumFileListWidth = 240d;
+        const double minimumEditorWidth = 360d;
+        const double splitterWidth = 12d;
+
+        var maximumFileListWidth = Math.Max(
+            minimumFileListWidth,
+            DashboardPage.ActualWidth - minimumEditorWidth - splitterWidth);
+        var newWidth = Math.Clamp(
+            DashboardFileListColumn.ActualWidth + args.HorizontalChange,
+            minimumFileListWidth,
+            Math.Min(520d, maximumFileListWidth));
+        DashboardFileListColumn.Width = new GridLength(newWidth);
     }
 
     private void RestoreWindowPlacement()

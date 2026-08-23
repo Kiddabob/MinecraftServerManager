@@ -35,11 +35,13 @@ public partial class App : Application
         services.AddSingleton<IPlayerPlaytimeService, JsonPlayerPlaytimeService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
         services.AddSingleton<IServerFileService, ServerFileService>();
+        services.AddSingleton<IServerConfigurationService, ServerConfigurationService>();
         services.AddSingleton<IServerLaunchRequestFactory, JavaServerLaunchRequestFactory>();
         services.AddSingleton<IServerConsoleParserFactory, ProfileConsoleParserFactory>();
         services.AddSingleton<IServerProcessServiceFactory, ServerProcessServiceFactory>();
         services.AddSingleton<IAppUpdateService, GitHubAppUpdateService>();
         services.AddSingleton<IUiDispatcher, DispatcherQueueUiDispatcher>();
+        services.AddSingleton<ServerDashboardViewModel>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
 
