@@ -27,6 +27,8 @@ Completed time and 30-second live checkpoints are stored under `%LocalAppData%\K
 
 The **Dashboard** page discovers editable files from the selected profile's `configurationSources`. A profile can describe core settings, mod configuration folders, plugin folders, or any combination, so hybrid mod-and-plugin servers do not need special cases in the editor service. The packaged Tekkit profile scans `server.properties`, supported text files under `config`, and an optional `plugins` folder when one is present.
 
+Supported scalar settings can be switched between **User Friendly** controls and the exact **Text Editor**. Boolean values use toggles, numeric values use number boxes, known choices use drop-downs or radio buttons, and declared minimum/maximum values are shown beside the control. Tekkit's main `server.properties` guidance is supplied by the profile; Forge mod limits are also detected from nearby `minimum` and `maximum` comments. When a safe limit cannot be established, the app says so rather than inventing one, and complex lists remain available in Text Editor mode.
+
 Configuration files are read-only while that profile's Java process is active. Saving validates JSON and XML where applicable, refuses to overwrite a file that changed after it was opened, writes through a same-folder temporary file, and first stores the previous bytes under `%LocalAppData%\Kidda.MinecraftServerManager\ConfigurationBackups\<profile>`. Files over 2 MB, binary files, reparse points, and configuration paths outside the server root are not editable.
 
 ## Build

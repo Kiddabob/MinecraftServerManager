@@ -445,6 +445,7 @@
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
@@ -481,8 +482,124 @@
                                         </StackPanel>
                                     </Grid>
 
-                                    <TextBox
+                                    <Grid
                                         Grid.Row="1"
+                                        Padding="16,8"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleSwitch
+                                            AutomationProperties.Name="Configuration editor mode"
+                                            IsEnabled="{Binding Dashboard.CanUseFriendlyEditor, Mode=OneWay}"
+                                            IsOn="{Binding Dashboard.IsFriendlyMode, Mode=TwoWay}"
+                                            OffContent="Text Editor"
+                                            OnContent="User Friendly" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                            <TextBlock
+                                                FontSize="12"
+                                                FontWeight="SemiBold"
+                                                Text="{Binding Dashboard.FriendlyEditorSummary, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                Text="{Binding Dashboard.FriendlyEditorGuidance, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Grid
+                                        Grid.Row="2"
+                                        Visibility="{Binding Dashboard.IsFriendlyMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ListView
+                                            Padding="12"
+                                            IsEnabled="{Binding Dashboard.IsEditorReadOnly, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}"
+                                            ItemsSource="{Binding Dashboard.FriendlySettings, Mode=OneWay}"
+                                            SelectionMode="None">
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Margin="0,0,0,8"
+                                                        Padding="14,12"
+                                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                        CornerRadius="7">
+                                                        <StackPanel Spacing="5">
+                                                            <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                                            <TextBlock
+                                                                FontFamily="Cascadia Mono, Consolas"
+                                                                FontSize="11"
+                                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                                Text="{Binding Key}" />
+                                                            <TextBlock
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                Text="{Binding Description}"
+                                                                TextWrapping="Wrap" />
+                                                            <ToggleSwitch
+                                                                Margin="0,3,0,0"
+                                                                IsOn="{Binding BooleanValue, Mode=TwoWay}"
+                                                                OffContent="Off"
+                                                                OnContent="On"
+                                                                Visibility="{Binding IsBoolean, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            <NumberBox
+                                                                Margin="0,3,0,0"
+                                                                Maximum="{Binding Maximum}"
+                                                                Minimum="{Binding Minimum}"
+                                                                SmallChange="{Binding Step}"
+                                                                SpinButtonPlacementMode="Compact"
+                                                                Value="{Binding NumericValue, Mode=TwoWay}"
+                                                                Visibility="{Binding IsNumber, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            <ComboBox
+                                                                Margin="0,3,0,0"
+                                                                HorizontalAlignment="Stretch"
+                                                                DisplayMemberPath="DisplayName"
+                                                                ItemsSource="{Binding Options}"
+                                                                SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                                                                Visibility="{Binding IsDropDown, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            <RadioButtons
+                                                                Margin="0,3,0,0"
+                                                                MaxColumns="3"
+                                                                ItemsSource="{Binding Options}"
+                                                                SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                                                                Visibility="{Binding IsRadio, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <RadioButtons.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding DisplayName}" />
+                                                                    </DataTemplate>
+                                                                </RadioButtons.ItemTemplate>
+                                                            </RadioButtons>
+                                                            <TextBox
+                                                                Margin="0,3,0,0"
+                                                                Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                Visibility="{Binding IsText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                Text="{Binding LimitsText}"
+                                                                TextWrapping="Wrap" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                                Text="{Binding ValidationText}"
+                                                                TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                            <ListView.ItemContainerStyle>
+                                                <Style TargetType="ListViewItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                    <Setter Property="Padding" Value="0" />
+                                                    <Setter Property="Margin" Value="0" />
+                                                </Style>
+                                            </ListView.ItemContainerStyle>
+                                        </ListView>
+                                    </Grid>
+
+                                    <TextBox
+                                        Grid.Row="2"
                                         MinWidth="360"
                                         Padding="14,12"
                                         AcceptsReturn="True"
@@ -496,9 +613,10 @@
                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
                                         ScrollViewer.VerticalScrollMode="Enabled"
                                         Text="{Binding Dashboard.DocumentText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                        TextWrapping="NoWrap" />
+                                        TextWrapping="NoWrap"
+                                        Visibility="{Binding Dashboard.IsFriendlyMode, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
 
-                                    <Grid Grid.Row="2" Padding="16,10" ColumnSpacing="8">
+                                    <Grid Grid.Row="3" Padding="16,10" ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />

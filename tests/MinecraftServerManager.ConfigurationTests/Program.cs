@@ -68,6 +68,37 @@ try
                 RelativePath = string.Empty,
                 FilePatterns = ["*.json"]
             }
+        ],
+        ConfigurationSchemas =
+        [
+            new ServerConfigurationSchema
+            {
+                FilePattern = "server.properties",
+                Fields =
+                [
+                    new ServerConfigurationFieldDefinition
+                    {
+                        Key = "max-players",
+                        DisplayName = "Maximum players",
+                        Kind = "Integer",
+                        Minimum = 1,
+                        Maximum = 100,
+                        Step = 1
+                    },
+                    new ServerConfigurationFieldDefinition
+                    {
+                        Key = "gamemode",
+                        DisplayName = "Default game mode",
+                        Kind = "Choice",
+                        Presentation = "Radio",
+                        Options =
+                        [
+                            new ServerConfigurationOptionDefinition { Value = "0", DisplayName = "Survival" },
+                            new ServerConfigurationOptionDefinition { Value = "1", DisplayName = "Creative" }
+                        ]
+                    }
+                ]
+            }
         ]
     };
 
@@ -125,6 +156,49 @@ try
     await AssertThrowsAsync<InvalidOperationException>(
         () => service.ReadAsync(profile, outsideFile),
         "server-root containment");
+
+    var editor = new ServerConfigurationEditorService();
+    const string propertyText = "# Keep this comment\r\nmax-players=10\r\ngamemode=0\r\nonline-mode=true\r\nmotd=Test server\r\n";
+    var friendlyProperties = editor.Parse(profile, propertiesFile, propertyText);
+    AssertEqual(4, friendlyProperties.Fields.Count, "friendly server property count");
+    var maximumPlayers = friendlyProperties.Fields.Single(field => field.Key == "max-players");
+    AssertEqual(1d, maximumPlayers.DeclaredMinimum!.Value, "profile minimum guidance");
+    AssertEqual(100d, maximumPlayers.DeclaredMaximum!.Value, "profile maximum guidance");
+    maximumPlayers.NumericValue = 12;
+    friendlyProperties.Fields.Single(field => field.Key == "online-mode").BooleanValue = false;
+    friendlyProperties.Fields.Single(field => field.Key == "gamemode").SelectedOption =
+        friendlyProperties.Fields.Single(field => field.Key == "gamemode").Options[1];
+    var updatedProperties = editor.Apply(friendlyProperties);
+    AssertTrue(updatedProperties.Contains("# Keep this comment\r\n", StringComparison.Ordinal), "property comment preservation");
+    AssertTrue(updatedProperties.Contains("max-players=12\r\n", StringComparison.Ordinal), "number-box property update");
+    AssertTrue(updatedProperties.Contains("gamemode=1\r\n", StringComparison.Ordinal), "choice property update");
+    AssertTrue(updatedProperties.Contains("online-mode=false\r\n", StringComparison.Ordinal), "toggle property update");
+
+    const string forgeText = "general {\n    # Packet threshold, minimum 64, maximum 1024\n    I:clumpingThreshold=64\n    B:enableGlobalConfig=false\n}\n";
+    var forgeFile = propertiesFile with
+    {
+        Name = "forge.cfg",
+        RelativePath = "config\\forge.cfg",
+        FullPath = Path.Combine(testRoot, "config", "forge.cfg")
+    };
+    var friendlyForge = editor.Parse(profile, forgeFile, forgeText);
+    AssertEqual(2, friendlyForge.Fields.Count, "Forge typed setting count");
+    var threshold = friendlyForge.Fields.Single(field => field.Key == "general.clumpingThreshold");
+    AssertEqual(64d, threshold.DeclaredMinimum!.Value, "Forge comment minimum detection");
+    AssertEqual(1024d, threshold.DeclaredMaximum!.Value, "Forge comment maximum detection");
+    threshold.NumericValue = 128;
+    var updatedForge = editor.Apply(friendlyForge);
+    AssertTrue(updatedForge.Contains("I:clumpingThreshold=128", StringComparison.Ordinal), "Forge scalar round trip");
+    AssertTrue(updatedForge.Contains("# Packet threshold, minimum 64, maximum 1024", StringComparison.Ordinal), "Forge comment round trip");
+
+    const string jsonText = "{\n  \"enabled\": true,\n  \"limit\": 5,\n  \"name\": \"Example\"\n}\n";
+    var jsonFriendly = editor.Parse(profile, jsonFile, jsonText);
+    AssertEqual(3, jsonFriendly.Fields.Count, "JSON scalar setting count");
+    jsonFriendly.Fields.Single(field => field.Key == "enabled").BooleanValue = false;
+    jsonFriendly.Fields.Single(field => field.Key == "name").TextValue = "Updated";
+    var updatedJson = editor.Apply(jsonFriendly);
+    AssertTrue(updatedJson.Contains("\"enabled\": false", StringComparison.Ordinal), "JSON boolean round trip");
+    AssertTrue(updatedJson.Contains("\"name\": \"Updated\"", StringComparison.Ordinal), "JSON string round trip");
 
     Console.WriteLine("Configuration dashboard service tests passed.");
 }

@@ -85,6 +85,243 @@
       "recursive": true
     }
   ],
+  "configurationSchemas": [
+    {
+      "filePattern": "server.properties",
+      "fields": [
+        {
+          "key": "motd",
+          "displayName": "Server message",
+          "description": "The message players see in the multiplayer server list.",
+          "kind": "Text"
+        },
+        {
+          "key": "level-name",
+          "displayName": "World folder name",
+          "description": "The folder containing this server's primary world.",
+          "kind": "Text"
+        },
+        {
+          "key": "level-seed",
+          "displayName": "World seed",
+          "description": "Leave blank for a random seed. Changing this does not replace chunks that already exist.",
+          "kind": "Text"
+        },
+        {
+          "key": "level-type",
+          "displayName": "World type",
+          "description": "The terrain generator used when creating a new Minecraft 1.6.4 world.",
+          "kind": "Choice",
+          "presentation": "DropDown",
+          "options": [
+            { "value": "DEFAULT", "displayName": "Default" },
+            { "value": "FLAT", "displayName": "Superflat" },
+            { "value": "LARGEBIOMES", "displayName": "Large biomes" }
+          ]
+        },
+        {
+          "key": "generator-settings",
+          "displayName": "Generator settings",
+          "description": "Optional generator-specific settings. Leave blank unless the selected world type requires them.",
+          "kind": "Text"
+        },
+        {
+          "key": "gamemode",
+          "displayName": "Default game mode",
+          "description": "The game mode assigned to players when they first join.",
+          "kind": "Choice",
+          "presentation": "Radio",
+          "options": [
+            { "value": "0", "displayName": "Survival" },
+            { "value": "1", "displayName": "Creative" },
+            { "value": "2", "displayName": "Adventure" }
+          ]
+        },
+        {
+          "key": "difficulty",
+          "displayName": "Difficulty",
+          "description": "Controls hostile mob damage and survival difficulty.",
+          "kind": "Choice",
+          "presentation": "DropDown",
+          "options": [
+            { "value": "0", "displayName": "Peaceful" },
+            { "value": "1", "displayName": "Easy" },
+            { "value": "2", "displayName": "Normal" },
+            { "value": "3", "displayName": "Hard" }
+          ]
+        },
+        {
+          "key": "op-permission-level",
+          "displayName": "Operator permission level",
+          "description": "The command permission level granted to server operators.",
+          "kind": "Choice",
+          "presentation": "Radio",
+          "options": [
+            { "value": "1", "displayName": "1 — Bypass spawn protection" },
+            { "value": "2", "displayName": "2 — Single-player commands" },
+            { "value": "3", "displayName": "3 — Player management" },
+            { "value": "4", "displayName": "4 — All commands" }
+          ]
+        },
+        {
+          "key": "server-port",
+          "displayName": "Server port",
+          "description": "The TCP and UDP port used by Minecraft clients.",
+          "kind": "Integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "step": 1
+        },
+        {
+          "key": "server-ip",
+          "displayName": "Bind address",
+          "description": "Normally left blank so the server listens on every available network interface.",
+          "kind": "Text"
+        },
+        {
+          "key": "max-players",
+          "displayName": "Maximum players",
+          "description": "The greatest number of players allowed online at once.",
+          "kind": "Integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "step": 1
+        },
+        {
+          "key": "view-distance",
+          "displayName": "View distance",
+          "description": "The server-side chunk radius sent to each player. Larger values require more memory and CPU.",
+          "kind": "Integer",
+          "minimum": 3,
+          "maximum": 15,
+          "step": 1
+        },
+        {
+          "key": "max-build-height",
+          "displayName": "Maximum build height",
+          "description": "The highest buildable world height for this Minecraft version, in multiples of 16.",
+          "kind": "Integer",
+          "minimum": 16,
+          "maximum": 256,
+          "step": 16
+        },
+        {
+          "key": "spawn-protection",
+          "displayName": "Spawn protection radius",
+          "description": "The protected radius around world spawn. Set to 0 to disable spawn protection.",
+          "kind": "Integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "step": 1
+        },
+        {
+          "key": "player-idle-timeout",
+          "displayName": "Idle timeout",
+          "description": "Minutes before an idle player is removed. Set to 0 to disable the timeout.",
+          "kind": "Integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "step": 1
+        },
+        {
+          "key": "allow-nether",
+          "displayName": "Allow the Nether",
+          "description": "Allows players to travel to the Nether dimension.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "allow-flight",
+          "displayName": "Allow flight",
+          "description": "Prevents the server from automatically removing players that appear to be flying.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "online-mode",
+          "displayName": "Verify player accounts",
+          "description": "Authenticates connecting players with Minecraft account services. Keep enabled for public servers.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "white-list",
+          "displayName": "Use whitelist",
+          "description": "Only allows players listed in the server whitelist to join.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "pvp",
+          "displayName": "Player versus player",
+          "description": "Allows players to damage one another.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "hardcore",
+          "displayName": "Hardcore mode",
+          "description": "Enables the server's hardcore death rules.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "force-gamemode",
+          "displayName": "Force default game mode",
+          "description": "Resets joining players to the configured default game mode.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "enable-command-block",
+          "displayName": "Enable command blocks",
+          "description": "Allows command blocks to execute server commands.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "generate-structures",
+          "displayName": "Generate structures",
+          "description": "Generates villages, strongholds, dungeons, and other world structures in new chunks.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "spawn-monsters",
+          "displayName": "Spawn monsters",
+          "description": "Allows hostile mobs to spawn.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "spawn-animals",
+          "displayName": "Spawn animals",
+          "description": "Allows passive animals to spawn.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "spawn-npcs",
+          "displayName": "Spawn villagers",
+          "description": "Allows villagers and other non-player characters to spawn.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "enable-query",
+          "displayName": "Enable query protocol",
+          "description": "Exposes GameSpy-style server query information for monitoring tools.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "enable-rcon",
+          "displayName": "Enable remote console",
+          "description": "Enables Minecraft's remote console protocol. Additional RCON settings and a strong password are required.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "snooper-enabled",
+          "displayName": "Enable snooper",
+          "description": "Controls the legacy Minecraft server usage-data setting.",
+          "kind": "Boolean"
+        },
+        {
+          "key": "texture-pack",
+          "displayName": "Server texture pack URL",
+          "description": "An optional direct URL for the legacy server texture pack prompt.",
+          "kind": "Text"
+        }
+      ]
+    }
+  ],
   "readyPatterns": [
     "Done \\([^)]+\\)!"
   ],

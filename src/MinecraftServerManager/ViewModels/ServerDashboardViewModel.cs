@@ -9,11 +9,13 @@ namespace MinecraftServerManager.ViewModels;
 public sealed class ServerDashboardViewModel : BindableBase
 {
     private readonly IServerConfigurationService _configurationService;
+    private readonly IServerConfigurationEditorService _editorService;
     private readonly List<ServerConfigurationFile> _allFiles = [];
 
     private ServerSessionViewModel? _session;
     private ServerConfigurationFile? _selectedConfigurationFile;
     private ServerConfigurationDocument? _document;
+    private ServerConfigurationFriendlyDocument? _friendlyDocument;
     private string _documentText = string.Empty;
     private string _originalText = string.Empty;
     private string _searchText = string.Empty;
@@ -24,12 +26,19 @@ public sealed class ServerDashboardViewModel : BindableBase
     private bool _isBusy;
     private bool _isDirty;
     private bool _updatingDocumentText;
+    private bool _canUseFriendlyEditor;
+    private bool _isFriendlyMode;
+    private string _friendlyEditorSummary = "Text Editor required";
+    private string _friendlyEditorGuidance = "Select a supported configuration file to use friendly controls.";
     private long _profileRevision;
     private long _documentRevision;
 
-    public ServerDashboardViewModel(IServerConfigurationService configurationService)
+    public ServerDashboardViewModel(
+        IServerConfigurationService configurationService,
+        IServerConfigurationEditorService editorService)
     {
         _configurationService = configurationService;
+        _editorService = editorService;
 
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, CanRefresh);
         SaveCommand = new AsyncRelayCommand(SaveAsync, CanSave);
@@ -40,6 +49,8 @@ public sealed class ServerDashboardViewModel : BindableBase
     public ObservableCollection<ServerConfigurationFile> ConfigurationFiles { get; } = [];
 
     public ObservableCollection<ServerConfigurationSourceStatus> ConfigurationSources { get; } = [];
+
+    public ObservableCollection<ServerConfigurationField> FriendlySettings { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
 
@@ -128,6 +139,50 @@ public sealed class ServerDashboardViewModel : BindableBase
         get => _selectedFileDetails;
         private set => SetProperty(ref _selectedFileDetails, value);
     }
+
+    public bool CanUseFriendlyEditor
+    {
+        get => _canUseFriendlyEditor;
+        private set => SetProperty(ref _canUseFriendlyEditor, value);
+    }
+
+    public bool IsFriendlyMode
+    {
+        get => _isFriendlyMode;
+        set
+        {
+            if (value)
+            {
+                RebuildFriendlyEditor(selectFriendlyMode: false);
+                if (!CanUseFriendlyEditor)
+                {
+                    StatusText = FriendlyEditorGuidance;
+                    return;
+                }
+            }
+
+            if (SetProperty(ref _isFriendlyMode, value))
+            {
+                OnPropertyChanged(nameof(EditorModeName));
+            }
+        }
+    }
+
+    public string EditorModeName => IsFriendlyMode ? "User Friendly" : "Text Editor";
+
+    public string FriendlyEditorSummary
+    {
+        get => _friendlyEditorSummary;
+        private set => SetProperty(ref _friendlyEditorSummary, value);
+    }
+
+    public string FriendlyEditorGuidance
+    {
+        get => _friendlyEditorGuidance;
+        private set => SetProperty(ref _friendlyEditorGuidance, value);
+    }
+
+    public bool HasFriendlyValidationErrors => FriendlySettings.Any(setting => !setting.IsValid);
 
     public bool IsBusy
     {
@@ -288,6 +343,7 @@ public sealed class ServerDashboardViewModel : BindableBase
             _originalText = document.Content;
             SetDocumentText(document.Content);
             IsDirty = false;
+            RebuildFriendlyEditor(selectFriendlyMode: true);
             SelectedFileDetails =
                 $"{document.File.SourceName} • {document.File.RelativePath} • {document.File.SizeText} • {EncodingDisplayName(document)}";
             StatusText = IsServerActive
@@ -301,6 +357,7 @@ public sealed class ServerDashboardViewModel : BindableBase
             _originalText = string.Empty;
             SetDocumentText(string.Empty);
             IsDirty = false;
+            ClearFriendlyEditor();
             SelectedFileDetails = file.RelativePath;
             StatusText = $"This file could not be opened safely: {exception.Message}";
         }
@@ -331,6 +388,7 @@ public sealed class ServerDashboardViewModel : BindableBase
             _originalText = result.Document.Content;
             ReplaceFile(result.Document.File);
             IsDirty = false;
+            RebuildFriendlyEditor(selectFriendlyMode: IsFriendlyMode);
             SelectedFileDetails =
                 $"{result.Document.File.SourceName} • {result.Document.File.RelativePath} • {result.Document.File.SizeText} • {EncodingDisplayName(result.Document)}";
             StatusText = $"Saved {result.Document.File.Name}. The previous version was backed up to {result.BackupPath}";
@@ -357,6 +415,7 @@ public sealed class ServerDashboardViewModel : BindableBase
 
         SetDocumentText(_originalText);
         IsDirty = false;
+        RebuildFriendlyEditor(selectFriendlyMode: IsFriendlyMode);
         StatusText = "Unsaved changes were discarded.";
         return Task.CompletedTask;
     }
@@ -443,6 +502,7 @@ public sealed class ServerDashboardViewModel : BindableBase
         _originalText = string.Empty;
         SetDocumentText(string.Empty);
         IsDirty = false;
+        ClearFriendlyEditor();
         SelectedFileDetails = "Select a configuration file.";
         if (!keepSelection)
         {
@@ -462,6 +522,81 @@ public sealed class ServerDashboardViewModel : BindableBase
         _updatingDocumentText = false;
     }
 
+    private void RebuildFriendlyEditor(bool selectFriendlyMode)
+    {
+        ClearFriendlyEditor();
+        var session = _session;
+        var file = SelectedConfigurationFile;
+        if (session is null || file is null || _document is null)
+        {
+            return;
+        }
+
+        _friendlyDocument = _editorService.Parse(session.Profile, file, DocumentText);
+        foreach (var field in _friendlyDocument.Fields)
+        {
+            field.ValueChanged += FriendlyField_ValueChanged;
+            FriendlySettings.Add(field);
+        }
+
+        CanUseFriendlyEditor = FriendlySettings.Count > 0;
+        FriendlyEditorSummary = _friendlyDocument.Summary;
+        FriendlyEditorGuidance = _friendlyDocument.Guidance;
+        if (selectFriendlyMode && CanUseFriendlyEditor)
+        {
+            _isFriendlyMode = true;
+            OnPropertyChanged(nameof(IsFriendlyMode));
+            OnPropertyChanged(nameof(EditorModeName));
+        }
+
+        OnPropertyChanged(nameof(HasFriendlyValidationErrors));
+    }
+
+    private void ClearFriendlyEditor()
+    {
+        foreach (var field in FriendlySettings)
+        {
+            field.ValueChanged -= FriendlyField_ValueChanged;
+        }
+
+        FriendlySettings.Clear();
+        _friendlyDocument = null;
+        CanUseFriendlyEditor = false;
+        FriendlyEditorSummary = "Text Editor required";
+        FriendlyEditorGuidance = "This file does not expose scalar settings that can be changed safely with friendly controls.";
+        _isFriendlyMode = false;
+        OnPropertyChanged(nameof(IsFriendlyMode));
+        OnPropertyChanged(nameof(EditorModeName));
+        OnPropertyChanged(nameof(HasFriendlyValidationErrors));
+    }
+
+    private void FriendlyField_ValueChanged(object? sender, EventArgs args)
+    {
+        OnPropertyChanged(nameof(HasFriendlyValidationErrors));
+        NotifyCommandStates();
+        if (_friendlyDocument is null)
+        {
+            return;
+        }
+
+        var invalid = FriendlySettings.FirstOrDefault(field => !field.IsValid);
+        if (invalid is not null)
+        {
+            StatusText = $"{invalid.DisplayName}: {invalid.ValidationText}";
+            return;
+        }
+
+        try
+        {
+            DocumentText = _editorService.Apply(_friendlyDocument);
+            StatusText = "Friendly setting changed. Review it, then choose Save safely.";
+        }
+        catch (InvalidDataException exception)
+        {
+            StatusText = exception.Message;
+        }
+    }
+
     private void Session_PropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(ServerSessionViewModel.State)
@@ -479,7 +614,12 @@ public sealed class ServerDashboardViewModel : BindableBase
 
     private bool CanRefresh() => _session is not null && !IsBusy;
 
-    private bool CanSave() => _document is not null && IsDirty && !IsBusy && !IsServerActive;
+    private bool CanSave() =>
+        _document is not null
+        && IsDirty
+        && !IsBusy
+        && !IsServerActive
+        && !HasFriendlyValidationErrors;
 
     private bool CanDiscard() => _document is not null && IsDirty && !IsBusy;
 

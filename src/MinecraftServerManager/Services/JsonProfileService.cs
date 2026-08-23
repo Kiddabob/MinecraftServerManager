@@ -186,6 +186,7 @@ public sealed class JsonProfileService : IProfileService
             RequiredFiles = template.RequiredFiles,
             RequiredDirectories = template.RequiredDirectories,
             ConfigurationSources = template.ConfigurationSources,
+            ConfigurationSchemas = template.ConfigurationSchemas,
             ReadyPatterns = template.ReadyPatterns,
             PlayerJoinPatterns = template.PlayerJoinPatterns,
             PlayerLeavePatterns = template.PlayerLeavePatterns,
@@ -236,6 +237,11 @@ public sealed class JsonProfileService : IProfileService
         if (profile.ConfigurationSources.Count == 0)
         {
             profile.ConfigurationSources = template.ConfigurationSources;
+        }
+
+        if (profile.ConfigurationSchemas.Count == 0)
+        {
+            profile.ConfigurationSchemas = template.ConfigurationSchemas;
         }
     }
 

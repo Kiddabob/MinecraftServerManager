@@ -36,6 +36,7 @@ public partial class App : Application
         services.AddSingleton<IProfileValidator, ProfileValidator>();
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerConfigurationService, ServerConfigurationService>();
+        services.AddSingleton<IServerConfigurationEditorService, ServerConfigurationEditorService>();
         services.AddSingleton<IServerLaunchRequestFactory, JavaServerLaunchRequestFactory>();
         services.AddSingleton<IServerConsoleParserFactory, ProfileConsoleParserFactory>();
         services.AddSingleton<IServerProcessServiceFactory, ServerProcessServiceFactory>();

@@ -35,6 +35,8 @@ public sealed class ServerProfile
 
     public IReadOnlyList<ServerConfigurationSource> ConfigurationSources { get; set; } = [];
 
+    public IReadOnlyList<ServerConfigurationSchema> ConfigurationSchemas { get; set; } = [];
+
     public IReadOnlyList<string> ReadyPatterns { get; init; } = [];
 
     public IReadOnlyList<string> PlayerJoinPatterns { get; set; } = [];

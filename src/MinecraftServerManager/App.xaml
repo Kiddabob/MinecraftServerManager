@@ -45,6 +45,7 @@
             <infrastructure:ServerStateToBrushConverter x:Key="ServerStateToBrushConverter" />
             <infrastructure:ServerLogLevelToBrushConverter x:Key="ServerLogLevelToBrushConverter" />
             <infrastructure:PlayerOnlineToBrushConverter x:Key="PlayerOnlineToBrushConverter" />
+            <infrastructure:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
             <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI Variable Display" />
