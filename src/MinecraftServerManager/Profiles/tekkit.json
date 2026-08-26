@@ -1,4 +1,5 @@
 {
+  "profileFormatVersion": 3,
   "id": "tekkit-1.6.4",
   "displayName": "Tekkit",
   "serverType": "Forge",
@@ -324,6 +325,14 @@
   ],
   "readyPatterns": [
     "Done \\([^)]+\\)!"
+  ],
+  "failurePatterns": [
+    "LoaderException",
+    "UnsupportedClassVersionError",
+    "Could not reserve enough space for object heap",
+    "Unable to access jarfile",
+    "A problem occurred running the Server launcher",
+    "Failed to start the minecraft server"
   ],
   "playerJoinPatterns": [
     "(?<player>[A-Za-z0-9_]{1,16})\\[/[^\\]]+\\] logged in with entity id",

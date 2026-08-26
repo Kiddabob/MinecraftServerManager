@@ -4,17 +4,28 @@ namespace MinecraftServerManager.Services;
 
 public sealed class ProfileValidator : IProfileValidator
 {
+    private readonly IJavaRuntimeService _javaRuntimeService;
+
+    public ProfileValidator(IJavaRuntimeService javaRuntimeService)
+    {
+        _javaRuntimeService = javaRuntimeService;
+    }
+
     public ProfileValidationResult Validate(ServerProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
 
         var errors = new List<string>();
+        var warnings = new List<string>();
 
         RequireValue(profile.Id, "Profile ID", errors);
         RequireValue(profile.DisplayName, "Display name", errors);
         RequireValue(profile.ServerDirectory, "Server directory", errors);
         RequireValue(profile.JavaExecutable, "Java executable", errors);
-        RequireValue(profile.ServerJar, "Server JAR", errors);
+        if (profile.DirectLaunchArguments.Count == 0)
+        {
+            RequireValue(profile.ServerJar, "Server JAR", errors);
+        }
 
         if (string.IsNullOrWhiteSpace(profile.ServerDirectory))
         {
@@ -37,11 +48,19 @@ public sealed class ProfileValidator : IProfileValidator
             errors.Add($"Server directory does not exist: {serverDirectory}");
         }
 
-        ValidateJavaExecutable(profile.JavaExecutable, errors);
+        ValidateJavaExecutable(profile, errors);
 
         if (!string.IsNullOrWhiteSpace(profile.ServerJar))
         {
             ValidateRequiredFile(serverDirectory, profile.ServerJar, "Server JAR", errors);
+        }
+
+        foreach (var argumentFile in profile.DirectLaunchArguments
+                     .Where(argument => argument.StartsWith('@'))
+                     .Select(argument => argument[1..].Trim('"'))
+                     .Where(argument => !string.IsNullOrWhiteSpace(argument)))
+        {
+            ValidateRequiredFile(serverDirectory, argumentFile, "Java argument file", errors);
         }
 
         foreach (var requiredFile in profile.RequiredFiles.Where(path => !string.IsNullOrWhiteSpace(path)))
@@ -64,7 +83,24 @@ public sealed class ProfileValidator : IProfileValidator
             errors.Add("Stop timeout must be greater than zero seconds.");
         }
 
-        return new ProfileValidationResult(errors);
+        var runtime = _javaRuntimeService.FindKnownRuntime(profile.JavaExecutable);
+        var compatibility = _javaRuntimeService.GetCompatibilityMessage(
+            profile.MinecraftVersion,
+            runtime);
+        var recommendedJava = _javaRuntimeService.GetRecommendedJavaMajor(profile.MinecraftVersion);
+        if (runtime is not null
+            && recommendedJava is not null
+            && runtime.MajorVersion < recommendedJava)
+        {
+            errors.Add(compatibility);
+        }
+        else if (compatibility.StartsWith("Compatibility warning:", StringComparison.Ordinal)
+            || runtime is null)
+        {
+            warnings.Add(compatibility);
+        }
+
+        return new ProfileValidationResult(errors, warnings);
     }
 
     private static void RequireValue(string value, string name, ICollection<string> errors)
@@ -75,26 +111,30 @@ public sealed class ProfileValidator : IProfileValidator
         }
     }
 
-    private static void ValidateJavaExecutable(string executable, ICollection<string> errors)
+    private void ValidateJavaExecutable(ServerProfile profile, ICollection<string> errors)
     {
+        var executable = profile.JavaExecutable;
         if (string.IsNullOrWhiteSpace(executable))
         {
             return;
         }
 
-        if (Path.IsPathFullyQualified(executable))
+        var resolvedExecutable = _javaRuntimeService.ResolveExecutablePath(
+            executable,
+            profile.JavaVersion);
+        if (Path.IsPathFullyQualified(resolvedExecutable))
         {
-            if (!File.Exists(executable))
+            if (!File.Exists(resolvedExecutable))
             {
-                errors.Add($"Java executable does not exist: {executable}");
+                errors.Add($"Java executable does not exist: {resolvedExecutable}");
             }
 
             return;
         }
 
-        if (!CanResolveFromPath(executable))
+        if (!CanResolveFromPath(resolvedExecutable))
         {
-            errors.Add($"Java executable could not be resolved from PATH: {executable}");
+            errors.Add($"Java executable could not be resolved from PATH: {resolvedExecutable}");
         }
     }
 

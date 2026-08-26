@@ -9,6 +9,17 @@ public sealed class JsonProfileService : IProfileService
 {
     private const string ProfilesDirectoryName = "Profiles";
     private const string UserProfilesDirectoryName = "UserProfiles";
+    private const int CurrentProfileFormatVersion = 3;
+
+    private static readonly IReadOnlyList<string> DefaultFailurePatterns =
+    [
+        @"LoaderException",
+        @"UnsupportedClassVersionError",
+        @"Could not reserve enough space for object heap",
+        @"Unable to access jarfile",
+        @"A problem occurred running the Server launcher",
+        @"Failed to start the minecraft server"
+    ];
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -59,6 +70,11 @@ public sealed class JsonProfileService : IProfileService
         {
             var profile = await LoadProfileFileAsync(profilePath, cancellationToken);
             InheritMissingProfileSettings(profile, packagedProfiles);
+            if (profile.ProfileFormatVersion < CurrentProfileFormatVersion)
+            {
+                MigrateProfile(profile, packagedProfiles.FirstOrDefault());
+                await SaveProfileFileAsync(profile, cancellationToken);
+            }
             profilesById[profile.Id] = profile;
         }
 
@@ -114,7 +130,7 @@ public sealed class JsonProfileService : IProfileService
                 return new ProfileImportResult(
                     null,
                     false,
-                    "No top-level server launcher JAR was found. Select the folder containing the server's runnable .jar file.");
+                    "No supported Java launch command or top-level server JAR was found in this folder.");
             }
 
             importedProfile = CreateGenericProfile(
@@ -122,20 +138,25 @@ public sealed class JsonProfileService : IProfileService
                 folderName,
                 detection,
                 templates.FirstOrDefault());
-            message = $"Created a {detection.ServerType} profile for '{folderName}' using {detection.ServerJar}.";
+            var launcher = string.IsNullOrWhiteSpace(detection.LaunchScript)
+                ? detection.ServerJar
+                : detection.LaunchScript;
+            message = $"Created a {detection.ServerType} profile for '{folderName}' using {launcher}.";
         }
 
-        Directory.CreateDirectory(UserProfilesDirectory);
-        var profilePath = Path.Combine(UserProfilesDirectory, $"{importedProfile.Id}.json");
-        await using (var stream = File.Create(profilePath))
-        {
-            await JsonSerializer.SerializeAsync(stream, importedProfile, SerializerOptions, cancellationToken);
-        }
+        await SaveProfileFileAsync(importedProfile, cancellationToken);
 
         return new ProfileImportResult(
             importedProfile,
             true,
             message);
+    }
+
+    public Task SaveAsync(ServerProfile profile, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        profile.ProfileFormatVersion = CurrentProfileFormatVersion;
+        return SaveProfileFileAsync(profile, cancellationToken);
     }
 
     private static async Task<ServerProfile> LoadProfileFileAsync(
@@ -185,6 +206,7 @@ public sealed class JsonProfileService : IProfileService
 
         return new ServerProfile
         {
+            ProfileFormatVersion = CurrentProfileFormatVersion,
             Id = $"{template.Id}-{pathHash}",
             DisplayName = string.Equals(folderName, template.DisplayName, StringComparison.OrdinalIgnoreCase)
                 ? template.DisplayName
@@ -197,13 +219,18 @@ public sealed class JsonProfileService : IProfileService
             IconPath = FindProfileIcon(folderPath),
             JavaExecutable = template.JavaExecutable,
             ServerJar = template.ServerJar,
+            LaunchScript = template.LaunchScript,
             JavaArguments = template.JavaArguments,
             ServerArguments = template.ServerArguments,
+            DirectLaunchArguments = template.DirectLaunchArguments,
             RequiredFiles = template.RequiredFiles,
             RequiredDirectories = template.RequiredDirectories,
             ConfigurationSources = template.ConfigurationSources,
             ConfigurationSchemas = template.ConfigurationSchemas,
             ReadyPatterns = template.ReadyPatterns,
+            FailurePatterns = template.FailurePatterns.Count == 0
+                ? DefaultFailurePatterns
+                : template.FailurePatterns,
             PlayerJoinPatterns = template.PlayerJoinPatterns,
             PlayerLeavePatterns = template.PlayerLeavePatterns,
             ListPlayersCommand = template.ListPlayersCommand,
@@ -221,25 +248,37 @@ public sealed class JsonProfileService : IProfileService
         ServerProfile? sharedMinecraftDefaults)
     {
         var pathHash = CreatePathHash(folderPath);
+        var javaExecutable = SelectJavaExecutable(
+            folderPath,
+            detection,
+            sharedMinecraftDefaults);
+        var recommendedJava = GetRecommendedJavaMajor(detection.MinecraftVersion);
         return new ServerProfile
         {
+            ProfileFormatVersion = CurrentProfileFormatVersion,
             Id = $"generic-{pathHash}",
             DisplayName = folderName,
             ServerType = detection.ServerType,
             MinecraftVersion = detection.MinecraftVersion,
             ForgeVersion = string.Empty,
-            JavaVersion = "Automatic",
+            JavaVersion = recommendedJava is null ? "Automatic" : $"Java {recommendedJava}",
             ServerDirectory = folderPath,
             IconPath = FindProfileIcon(folderPath),
-            JavaExecutable = FindJavaExecutable(folderPath),
+            JavaExecutable = javaExecutable,
             ServerJar = detection.ServerJar,
-            JavaArguments = ["-Xms1G", "-Xmx2G"],
-            ServerArguments = ["nogui"],
-            RequiredFiles = [detection.ServerJar],
+            LaunchScript = detection.LaunchScript,
+            JavaArguments = detection.EffectiveJavaArguments.Count == 0
+                && detection.EffectiveDirectLaunchArguments.Count == 0
+                ? ["-Xms1G", "-Xmx2G"]
+                : detection.EffectiveJavaArguments,
+            ServerArguments = detection.EffectiveServerArguments,
+            DirectLaunchArguments = detection.EffectiveDirectLaunchArguments,
+            RequiredFiles = string.IsNullOrWhiteSpace(detection.ServerJar) ? [] : [detection.ServerJar],
             RequiredDirectories = [],
             ConfigurationSources = sharedMinecraftDefaults?.ConfigurationSources ?? [],
             ConfigurationSchemas = [],
             ReadyPatterns = sharedMinecraftDefaults?.ReadyPatterns ?? [@"Done \([^)]+\)!"],
+            FailurePatterns = DefaultFailurePatterns,
             PlayerJoinPatterns = sharedMinecraftDefaults?.PlayerJoinPatterns ?? [],
             PlayerLeavePatterns = sharedMinecraftDefaults?.PlayerLeavePatterns ?? [],
             ListPlayersCommand = sharedMinecraftDefaults?.ListPlayersCommand ?? "list",
@@ -248,6 +287,121 @@ public sealed class JsonProfileService : IProfileService
             StopCommand = sharedMinecraftDefaults?.StopCommand ?? "stop",
             StopTimeoutSeconds = sharedMinecraftDefaults?.StopTimeoutSeconds ?? 60
         };
+    }
+
+    private static void MigrateProfile(ServerProfile profile, ServerProfile? sharedMinecraftDefaults)
+    {
+        if (profile.Id.StartsWith("generic-", StringComparison.OrdinalIgnoreCase)
+            && Directory.Exists(profile.ServerDirectory)
+            && ServerFolderDetector.Detect(profile.ServerDirectory) is { } detection)
+        {
+            ApplyDetection(profile, detection);
+            profile.JavaExecutable = SelectJavaExecutable(
+                profile.ServerDirectory,
+                detection,
+                sharedMinecraftDefaults);
+        }
+
+        if (profile.FailurePatterns.Count == 0)
+        {
+            profile.FailurePatterns = DefaultFailurePatterns;
+        }
+
+        profile.ProfileFormatVersion = CurrentProfileFormatVersion;
+    }
+
+    private static void ApplyDetection(ServerProfile profile, ServerFolderDetection detection)
+    {
+        profile.ServerJar = detection.ServerJar;
+        profile.LaunchScript = detection.LaunchScript;
+        profile.ServerType = detection.ServerType;
+        profile.MinecraftVersion = detection.MinecraftVersion;
+        profile.JavaArguments = detection.EffectiveJavaArguments.Count == 0
+            && detection.EffectiveDirectLaunchArguments.Count == 0
+            ? profile.JavaArguments
+            : detection.EffectiveJavaArguments;
+        profile.ServerArguments = detection.EffectiveServerArguments;
+        profile.DirectLaunchArguments = detection.EffectiveDirectLaunchArguments;
+        profile.RequiredFiles = string.IsNullOrWhiteSpace(detection.ServerJar)
+            ? []
+            : [detection.ServerJar];
+
+        if (Path.IsPathFullyQualified(detection.JavaExecutable)
+            && File.Exists(detection.JavaExecutable))
+        {
+            profile.JavaExecutable = detection.JavaExecutable;
+        }
+
+        var recommendedJava = GetRecommendedJavaMajor(detection.MinecraftVersion);
+        profile.JavaVersion = recommendedJava is null ? profile.JavaVersion : $"Java {recommendedJava}";
+    }
+
+    private static string SelectJavaExecutable(
+        string folderPath,
+        ServerFolderDetection detection,
+        ServerProfile? sharedMinecraftDefaults)
+    {
+        if (Path.IsPathFullyQualified(detection.JavaExecutable)
+            && File.Exists(detection.JavaExecutable))
+        {
+            return detection.JavaExecutable;
+        }
+
+        var discovered = FindJavaExecutable(folderPath);
+        var recommendedJava = GetRecommendedJavaMajor(detection.MinecraftVersion);
+        if (recommendedJava == 8
+            && sharedMinecraftDefaults is not null
+            && File.Exists(sharedMinecraftDefaults.JavaExecutable))
+        {
+            return sharedMinecraftDefaults.JavaExecutable;
+        }
+
+        return discovered;
+    }
+
+    private static int? GetRecommendedJavaMajor(string minecraftVersion)
+    {
+        if (!Version.TryParse(minecraftVersion, out var version)) return null;
+        if (version >= new Version(1, 20, 5)) return 21;
+        if (version >= new Version(1, 18)) return 17;
+        if (version >= new Version(1, 17)) return 16;
+        return 8;
+    }
+
+    private static async Task SaveProfileFileAsync(
+        ServerProfile profile,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(UserProfilesDirectory);
+        var profilePath = Path.Combine(UserProfilesDirectory, $"{profile.Id}.json");
+        var temporaryPath = $"{profilePath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                FileOptions.Asynchronous))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    profile,
+                    SerializerOptions,
+                    cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+
+            File.Move(temporaryPath, profilePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
     }
 
     private static string FindJavaExecutable(string folderPath)
@@ -333,6 +487,11 @@ public sealed class JsonProfileService : IProfileService
         if (profile.ConfigurationSchemas.Count == 0)
         {
             profile.ConfigurationSchemas = template.ConfigurationSchemas;
+        }
+
+        if (profile.FailurePatterns.Count == 0 && template.FailurePatterns.Count > 0)
+        {
+            profile.FailurePatterns = template.FailurePatterns;
         }
     }
 

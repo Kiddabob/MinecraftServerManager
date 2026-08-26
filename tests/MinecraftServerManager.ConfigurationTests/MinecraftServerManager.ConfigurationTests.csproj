@@ -12,10 +12,27 @@
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationSchema.cs" Link="Models\ServerConfigurationSchema.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationSource.cs" Link="Models\ServerConfigurationSource.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerProfile.cs" Link="Models\ServerProfile.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\JavaRuntimeInfo.cs" Link="Models\JavaRuntimeInfo.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRequest.cs" Link="Models\ServerLaunchRequest.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConsoleParseResult.cs" Link="Models\ServerConsoleParseResult.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConsoleSignal.cs" Link="Models\ServerConsoleSignal.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerOutputStream.cs" Link="Models\ServerOutputStream.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLogEntry.cs" Link="Models\ServerLogEntry.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLogLevel.cs" Link="Models\ServerLogLevel.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\PlayerConnectionChange.cs" Link="Models\PlayerConnectionChange.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationService.cs" Link="Services\IServerConfigurationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationEditorService.cs" Link="Services\IServerConfigurationEditorService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationEditorService.cs" Link="Services\ServerConfigurationEditorService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationService.cs" Link="Services\ServerConfigurationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerFolderDetector.cs" Link="Services\ServerFolderDetector.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\CommandLineArgumentParser.cs" Link="Services\CommandLineArgumentParser.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\JavaArgumentUtilities.cs" Link="Services\JavaArgumentUtilities.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IJavaRuntimeService.cs" Link="Services\IJavaRuntimeService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\JavaRuntimeService.cs" Link="Services\JavaRuntimeService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerLaunchRequestFactory.cs" Link="Services\IServerLaunchRequestFactory.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\JavaServerLaunchRequestFactory.cs" Link="Services\JavaServerLaunchRequestFactory.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConsoleParser.cs" Link="Services\IServerConsoleParser.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConsoleParserFactory.cs" Link="Services\IServerConsoleParserFactory.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ProfileConsoleParserFactory.cs" Link="Services\ProfileConsoleParserFactory.cs" />
   </ItemGroup>
 </Project>

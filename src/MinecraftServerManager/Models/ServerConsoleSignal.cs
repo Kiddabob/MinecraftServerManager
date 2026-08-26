@@ -3,5 +3,6 @@ namespace MinecraftServerManager.Models;
 public enum ServerConsoleSignal
 {
     None,
-    Ready
+    Ready,
+    Failed
 }
