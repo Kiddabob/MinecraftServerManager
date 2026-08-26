@@ -10,6 +10,7 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
         ArgumentNullException.ThrowIfNull(profile);
         return new ProfileConsoleParser(
             profile.ReadyPatterns,
+            profile.FailurePatterns,
             profile.PlayerJoinPatterns,
             profile.PlayerLeavePatterns);
     }
@@ -32,15 +33,18 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
             TimeSpan.FromSeconds(1));
 
         private readonly IReadOnlyList<Regex> _readyPatterns;
+        private readonly IReadOnlyList<Regex> _failurePatterns;
         private readonly IReadOnlyList<Regex> _playerJoinPatterns;
         private readonly IReadOnlyList<Regex> _playerLeavePatterns;
 
         public ProfileConsoleParser(
             IReadOnlyList<string> readyPatterns,
+            IReadOnlyList<string> failurePatterns,
             IReadOnlyList<string> playerJoinPatterns,
             IReadOnlyList<string> playerLeavePatterns)
         {
             _readyPatterns = CompilePatterns(readyPatterns);
+            _failurePatterns = CompilePatterns(failurePatterns);
             _playerJoinPatterns = CompilePatterns(playerJoinPatterns);
             _playerLeavePatterns = CompilePatterns(playerLeavePatterns);
         }
@@ -75,6 +79,11 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
                 }
             }
 
+            if (signal == ServerConsoleSignal.None && MatchesAny(_failurePatterns, cleanedLine))
+            {
+                signal = ServerConsoleSignal.Failed;
+            }
+
             var match = MatchLogLine(cleanedLine);
             if (match.Success)
             {
@@ -83,6 +92,10 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
                 if (signal == ServerConsoleSignal.Ready && level == ServerLogLevel.Information)
                 {
                     level = ServerLogLevel.Success;
+                }
+                else if (signal == ServerConsoleSignal.Failed)
+                {
+                    level = ServerLogLevel.Error;
                 }
 
                 return new ServerConsoleParseResult(
@@ -97,6 +110,8 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
 
             var fallbackLevel = stream == ServerOutputStream.StandardError
                 ? ServerLogLevel.Error
+                : signal == ServerConsoleSignal.Failed
+                    ? ServerLogLevel.Error
                 : signal == ServerConsoleSignal.Ready
                     ? ServerLogLevel.Success
                     : ServerLogLevel.Information;
@@ -109,6 +124,26 @@ public sealed class ProfileConsoleParserFactory : IServerConsoleParserFactory
                     stream == ServerOutputStream.StandardError ? "Java" : "Server",
                     cleanedLine),
                 playerConnection);
+        }
+
+        private static bool MatchesAny(IReadOnlyList<Regex> patterns, string line)
+        {
+            foreach (var pattern in patterns)
+            {
+                try
+                {
+                    if (pattern.IsMatch(line))
+                    {
+                        return true;
+                    }
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    // A bad profile pattern must not interrupt console streaming.
+                }
+            }
+
+            return false;
         }
 
         private PlayerConnectionChange? MatchPlayerConnection(string line)

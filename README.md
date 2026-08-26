@@ -1,13 +1,13 @@
 # Minecraft Server Manager
 
-A WinUI 3 desktop application for running the existing Tekkit 1.6.4 server. The current scope is intentionally Tekkit-first: profile selection, validation, Java process control, live console output, safe shutdown, profile-scoped player playtime, profile-driven configuration editing, in-app server-file browsing, personalisation, and GitHub updates.
+A WinUI 3 desktop application for running Minecraft Java servers. Tekkit 1.6.4 remains the first-class baseline, while imported profiles can now preserve the launch script, JAR, Java runtime, memory, and arguments used by other server folders.
 
 ## Requirements
 
 - Windows 10 version 1809 or later
 - Visual Studio 2022 with the .NET desktop development tools, or the .NET 10 SDK
 - The Windows App SDK runtime is bundled by this unpackaged x64 build
-- A working Java 8 x64 runtime and Tekkit server directory
+- A compatible x64 Java runtime for each imported server (Tekkit 1.6.4 uses Java 8)
 
 The starter profile is `src/MinecraftServerManager/Profiles/tekkit.json`. It currently points to:
 
@@ -15,7 +15,9 @@ The starter profile is `src/MinecraftServerManager/Profiles/tekkit.json`. It cur
 - Java: `%USERPROFILE%\OneDrive\jre-legacy\bin\java.exe`
 - JAR: `TekkitServer.jar`
 
-You can also choose the folder containing `TekkitServer.jar` from the app's **Profiles** page. The app detects the packaged Tekkit definition and stores the resulting user profile under `%LocalAppData%\Kidda.MinecraftServerManager\UserProfiles`, so an app update does not overwrite it.
+You can choose any server folder from the app's **Profiles** page. The importer checks top-level `.bat`, `.cmd`, and `.sh` launchers before falling back to runnable JARs; this lets it preserve custom launchers such as Tekkit Classic, Tekkit Legends, and modern Forge `@...args.txt` commands. The launch-settings card lets you review or change the detected launcher, Java executable, initial/maximum memory, JVM arguments, and server arguments. Profile-specific settings are stored under `%LocalAppData%\Kidda.MinecraftServerManager\UserProfiles`, so an app update does not overwrite them.
+
+Profiles created by v0.1.12 are upgraded on first load. Generic profiles are re-detected from their server folder, so an existing imported server can pick up its original launch script without being deleted and imported again. Stop a server before saving changes to its launch profile.
 
 ## Player playtime
 
@@ -37,13 +39,13 @@ Configuration files are read-only while that profile's Java process is active. S
 dotnet build MinecraftServerManager.sln -c Debug -p:Platform=x64
 ```
 
-The dependency-free configuration-service checks can be run with:
+The dependency-free configuration, launcher-detection, and Java-compatibility checks can be run with:
 
 ```powershell
 dotnet run --project tests\MinecraftServerManager.ConfigurationTests -c Release
 ```
 
-The app validates the configured paths before enabling Start. It sends the profile's `stop` command and waits up to 60 seconds for a safe exit; it does not force-kill Java after a timeout.
+The app validates the configured paths and Java runtime before enabling Start. Java 8 is recommended through Minecraft 1.16.5, Java 16 for 1.17, Java 17 from 1.18, and Java 21 from 1.20.5; the profile page warns when the selected runtime does not match that baseline. It sends the profile's `stop` command and waits up to 60 seconds for a safe exit; it does not force-kill Java after a timeout. Emergency stop explicitly terminates the full process tree when Java is stuck.
 
 ## Installer and shortcuts
 

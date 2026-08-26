@@ -1,6 +1,30 @@
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
 
+if (args is ["--detect", .. var folders])
+{
+    foreach (var folder in folders)
+    {
+        var detection = ServerFolderDetector.Detect(folder);
+        Console.WriteLine(detection is null
+            ? $"{folder}: no launcher detected"
+            : $"{folder}: {detection.DisplayName} • Java {detection.JavaExecutable} • JVM {CommandLineArgumentParser.Join(detection.EffectiveJavaArguments)} • Server {CommandLineArgumentParser.Join(detection.EffectiveServerArguments)}");
+    }
+
+    return;
+}
+
+if (args is ["--java", .. var executables])
+{
+    var runtimes = await new JavaRuntimeService().DiscoverAsync(executables);
+    foreach (var runtime in runtimes)
+    {
+        Console.WriteLine(runtime.DisplayName);
+    }
+
+    return;
+}
+
 var testRoot = Path.Combine(
     Path.GetTempPath(),
     "MinecraftServerManager-ConfigurationTests",
@@ -220,7 +244,107 @@ try
     await File.WriteAllBytesAsync(Path.Combine(customFolder, "my-community-pack.jar"), [1]);
     AssertEqual("Minecraft", ServerFolderDetector.Detect(customFolder)!.ServerType, "unknown launcher fallback");
 
-    Console.WriteLine("Configuration dashboard and server import detection tests passed.");
+    var legendsFolder = Path.Combine(testRoot, "tekkit-legends");
+    Directory.CreateDirectory(legendsFolder);
+    Directory.CreateDirectory(Path.Combine(legendsFolder, "mods"));
+    Directory.CreateDirectory(Path.Combine(legendsFolder, "plugins"));
+    await File.WriteAllBytesAsync(Path.Combine(legendsFolder, "CryofinityLegends.jar"), [1]);
+    await File.WriteAllBytesAsync(Path.Combine(legendsFolder, "minecraft_server.1.7.10.jar"), [1]);
+    await File.WriteAllTextAsync(
+        Path.Combine(legendsFolder, "start.bat"),
+        "@echo off\r\n:start\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\necho menu\r\njava -Dfml.debugExit=true -Xms1G -jar \"CryofinityLegends.jar\" nogui -Dfml.debugExit=true\r\n");
+    await File.WriteAllTextAsync(
+        Path.Combine(legendsFolder, "start.sh"),
+        "java -Xmx2G -Xms1G -jar \"TekkitLegends.jar\" nogui\n");
+    await File.WriteAllBytesAsync(Path.Combine(legendsFolder, "TekkitLegends.jar"), [1]);
+    var legendsDetection = ServerFolderDetector.Detect(legendsFolder)!;
+    AssertEqual("start.bat", legendsDetection.LaunchScript, "Legends launch script detection");
+    AssertEqual("CryofinityLegends.jar", legendsDetection.ServerJar, "Legends scripted launcher selection");
+    AssertEqual("1.7.10", legendsDetection.MinecraftVersion, "Legends companion JAR version detection");
+    AssertEqual("Hybrid", legendsDetection.ServerType, "Legends mods and plugins classification");
+    AssertTrue(
+        legendsDetection.EffectiveJavaArguments.Contains("-Dfml.debugExit=true"),
+        "Legends JVM argument preservation");
+
+    var classicFolder = Path.Combine(testRoot, "tekkit-classic");
+    Directory.CreateDirectory(classicFolder);
+    Directory.CreateDirectory(Path.Combine(classicFolder, "mods"));
+    Directory.CreateDirectory(Path.Combine(classicFolder, "plugins"));
+    await File.WriteAllBytesAsync(Path.Combine(classicFolder, "TekkitClassic.jar"), [1]);
+    await File.WriteAllTextAsync(
+        Path.Combine(classicFolder, "launch.bat"),
+        "\"C:\\Program Files\\Java\\jre1.8.0_191\\bin\\javaw.exe\" -Xms1G -Xmx6G -jar TekkitClassic.jar -o true\r\n");
+    await File.WriteAllTextAsync(
+        Path.Combine(classicFolder, "server.log"),
+        "2012-06-01 10:20:30 [INFO] Starting minecraft server version 1.2.5\r\n" + new string('x', (2 * 1024 * 1024) + 20));
+    var classicDetection = ServerFolderDetector.Detect(classicFolder)!;
+    AssertEqual("launch.bat", classicDetection.LaunchScript, "Classic launch script detection");
+    AssertEqual("TekkitClassic.jar", classicDetection.ServerJar, "Classic launcher selection");
+    AssertEqual("1.2.5", classicDetection.MinecraftVersion, "Classic log version detection");
+    AssertEqual(6144, JavaArgumentUtilities.GetMaximumMemoryMegabytes(classicDetection.EffectiveJavaArguments)!.Value, "Classic maximum memory detection");
+    AssertTrue(classicDetection.EffectiveServerArguments.SequenceEqual(["-o", "true"]), "Classic server argument preservation");
+
+    var modernForgeFolder = Path.Combine(testRoot, "modern-forge");
+    Directory.CreateDirectory(modernForgeFolder);
+    Directory.CreateDirectory(Path.Combine(modernForgeFolder, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.3.0"));
+    await File.WriteAllTextAsync(Path.Combine(modernForgeFolder, "user_jvm_args.txt"), "-Xmx4G\r\n");
+    var winArgsPath = Path.Combine(modernForgeFolder, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.3.0", "win_args.txt");
+    await File.WriteAllTextAsync(winArgsPath, "net.minecraftforge.server.ServerMain\r\n");
+    await File.WriteAllTextAsync(
+        Path.Combine(modernForgeFolder, "run.bat"),
+        "java @user_jvm_args.txt @libraries/net/minecraftforge/forge/1.20.1-47.3.0/win_args.txt %*\r\n");
+    var modernForgeDetection = ServerFolderDetector.Detect(modernForgeFolder)!;
+    AssertEqual("run.bat", modernForgeDetection.LaunchScript, "modern Forge run script detection");
+    AssertEqual("Forge", modernForgeDetection.ServerType, "modern Forge classification");
+    AssertEqual("1.20.1", modernForgeDetection.MinecraftVersion, "modern Forge argument path version detection");
+    AssertEqual(2, modernForgeDetection.EffectiveDirectLaunchArguments.Count, "modern Forge argument-file preservation");
+
+    var replacedMemory = JavaArgumentUtilities.ReplaceMemoryArguments(
+        ["-server", "-Xms512M", "-Xmx1G"],
+        2048,
+        6144,
+        ["-Dexample=true"]);
+    AssertTrue(replacedMemory.SequenceEqual(["-Xms2G", "-Xmx6G", "-server", "-Dexample=true"]), "memory argument replacement");
+
+    var runtimeService = new JavaRuntimeService();
+    AssertEqual(8, runtimeService.GetRecommendedJavaMajor("1.16.5")!.Value, "Java 8 baseline");
+    AssertEqual(16, runtimeService.GetRecommendedJavaMajor("1.17")!.Value, "Java 16 baseline");
+    AssertEqual(17, runtimeService.GetRecommendedJavaMajor("1.18.2")!.Value, "Java 17 baseline");
+    AssertEqual(21, runtimeService.GetRecommendedJavaMajor("1.20.5")!.Value, "Java 21 baseline");
+
+    var modernProfile = new ServerProfile
+    {
+        Id = "modern-forge",
+        ServerDirectory = modernForgeFolder,
+        JavaExecutable = "java",
+        JavaVersion = "Java 17",
+        JavaArguments = ["-Xms2G", "-Xmx4G"],
+        DirectLaunchArguments = modernForgeDetection.EffectiveDirectLaunchArguments,
+        ServerArguments = ["nogui"]
+    };
+    var modernRequest = new JavaServerLaunchRequestFactory(runtimeService).Create(modernProfile);
+    AssertTrue(
+        modernRequest.Arguments.SequenceEqual(
+        [
+            "@user_jvm_args.txt",
+            "-Xms2G",
+            "-Xmx4G",
+            "@libraries/net/minecraftforge/forge/1.20.1-47.3.0/win_args.txt",
+            "nogui"
+        ]),
+        "modern Forge memory override argument placement");
+
+    var failureParser = new ProfileConsoleParserFactory().Create(new ServerProfile
+    {
+        FailurePatterns = ["LoaderException"]
+    });
+    var failureResult = failureParser.Parse(
+        "2015-01-01 12:00:00 [SEVERE] [ForgeModLoader] cpw.mods.fml.common.LoaderException: broken mod",
+        ServerOutputStream.StandardError);
+    AssertEqual(ServerConsoleSignal.Failed, failureResult.Signal, "startup failure signal");
+    AssertEqual(ServerLogLevel.Error, failureResult.Entry.Level, "startup failure log severity");
+
+    Console.WriteLine("Configuration dashboard, launcher detection, and Java compatibility tests passed.");
 }
 catch (Exception exception)
 {
@@ -244,9 +368,8 @@ static void AssertTrue(bool condition, string description)
 }
 
 static void AssertEqual<T>(T expected, T actual, string description)
-    where T : IEquatable<T>
 {
-    if (!expected.Equals(actual))
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
     {
         throw new InvalidOperationException(
             $"Assertion failed: {description}. Expected {expected}; received {actual}.");

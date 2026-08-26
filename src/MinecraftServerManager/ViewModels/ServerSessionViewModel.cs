@@ -183,21 +183,21 @@ public sealed class ServerSessionViewModel : BindableBase
         set => SetProperty(ref _isSelectedForBulk, value);
     }
 
-    public bool IsServerActive => _state is ServerState.Starting
+    public bool IsServerActive => _processService.IsRunning || _state is ServerState.Starting
         or ServerState.Running
         or ServerState.Ready
         or ServerState.Stopping;
 
-    public bool CanStart => _state is ServerState.Stopped or ServerState.Failed
+    public bool CanStart => (_state is ServerState.Stopped or ServerState.Failed)
         && !_processService.IsRunning;
 
-    public bool CanStop => _state is ServerState.Starting or ServerState.Running or ServerState.Ready;
+    public bool CanStop => _processService.IsRunning && _state != ServerState.Stopping;
 
     public bool CanSendCommands => _state is ServerState.Running or ServerState.Ready;
 
     public bool CanBroadcast => CanSendProfileCommand(Profile.BroadcastCommandPrefix);
 
-    public bool CanEmergencyStop => CanStop;
+    public bool CanEmergencyStop => _processService.IsRunning && _state != ServerState.Stopping;
 
     public AsyncRelayCommand StartCommand { get; }
 
@@ -208,6 +208,28 @@ public sealed class ServerSessionViewModel : BindableBase
     public AsyncRelayCommand ListPlayersCommand { get; }
 
     public AsyncRelayCommand SaveNowCommand { get; }
+
+    public void RefreshProfile()
+    {
+        _consoleParser = _consoleParserFactory.Create(Profile);
+        var validation = _profileValidator.Validate(Profile);
+        ValidationText = validation.ToDisplayText();
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(ServerDirectory));
+        OnPropertyChanged(nameof(ProfileIconPath));
+        OnPropertyChanged(nameof(ProfileDetails));
+        OnPropertyChanged(nameof(JavaDetails));
+        OnPropertyChanged(nameof(CanBroadcast));
+
+        if (!_processService.IsRunning)
+        {
+            SetState(
+                validation.IsValid ? ServerState.Stopped : ServerState.InvalidProfile,
+                validation.IsValid
+                    ? $"{Profile.DisplayName} is configured and ready to start."
+                    : "Update this profile's launcher or Java settings before starting.");
+        }
+    }
 
     public async Task StartAsync()
     {
@@ -270,6 +292,7 @@ public sealed class ServerSessionViewModel : BindableBase
             return true;
         }
 
+        var failedBeforeStop = _state == ServerState.Failed;
         SetState(ServerState.Stopping, $"Sending '{Profile.StopCommand}' and waiting for the server to save and exit…");
         AppendManagerMessage($"Sending safe stop command: {Profile.StopCommand}", ServerLogLevel.Command);
 
@@ -282,7 +305,7 @@ public sealed class ServerSessionViewModel : BindableBase
             if (!stopped)
             {
                 SetState(
-                    ServerState.Running,
+                    failedBeforeStop ? ServerState.Failed : ServerState.Running,
                     $"The server did not exit within {Profile.StopTimeoutSeconds} seconds. It was not force-killed.");
                 AppendManagerMessage(
                     "Safe stop timed out; the Java process is still running.",
@@ -293,7 +316,7 @@ public sealed class ServerSessionViewModel : BindableBase
         }
         catch (Exception exception) when (exception is InvalidOperationException or IOException)
         {
-            SetState(ServerState.Running, exception.Message);
+            SetState(failedBeforeStop ? ServerState.Failed : ServerState.Running, exception.Message);
             AppendManagerMessage($"Stop failed: {exception.Message}", ServerLogLevel.Error);
             return false;
         }
@@ -317,6 +340,7 @@ public sealed class ServerSessionViewModel : BindableBase
             return;
         }
 
+        var failedBeforeStop = _state == ServerState.Failed;
         SetState(ServerState.Stopping, "Force-stopping Java without waiting for a world save…");
         AppendManagerMessage(
             "Emergency stop requested. Recent world changes may be lost.",
@@ -328,7 +352,7 @@ public sealed class ServerSessionViewModel : BindableBase
         }
         catch (Exception exception) when (exception is InvalidOperationException or IOException)
         {
-            SetState(ServerState.Running, exception.Message);
+            SetState(failedBeforeStop ? ServerState.Failed : ServerState.Running, exception.Message);
             AppendManagerMessage($"Emergency stop failed: {exception.Message}", ServerLogLevel.Error);
         }
     }
@@ -384,6 +408,7 @@ public sealed class ServerSessionViewModel : BindableBase
         _pendingConsoleLines.Enqueue(new PendingConsoleLine(
             parsed.Entry,
             parsed.Signal == ServerConsoleSignal.Ready,
+            parsed.Signal == ServerConsoleSignal.Failed,
             parsed.PlayerConnection));
         ScheduleConsoleDrain();
     }
@@ -444,10 +469,12 @@ public sealed class ServerSessionViewModel : BindableBase
     private void DrainConsoleQueue()
     {
         var sawReadySignal = false;
+        var sawFailureSignal = false;
         while (_pendingConsoleLines.TryDequeue(out var pendingLine))
         {
             AppendConsoleEntry(pendingLine.Entry);
             sawReadySignal |= pendingLine.IsReadySignal;
+            sawFailureSignal |= pendingLine.IsFailureSignal;
             if (pendingLine.PlayerConnection is not null)
             {
                 _playerPlaytimeService.RecordConnection(Profile.Id, pendingLine.PlayerConnection);
@@ -460,7 +487,13 @@ public sealed class ServerSessionViewModel : BindableBase
             ScheduleConsoleDrain();
         }
 
-        if (sawReadySignal && _state is ServerState.Starting or ServerState.Running)
+        if (sawFailureSignal && _processService.IsRunning && _state != ServerState.Stopping)
+        {
+            SetState(
+                ServerState.Failed,
+                "The server reported a startup failure. Review the highlighted console line, then stop safely or use emergency stop if Java is stuck.");
+        }
+        else if (sawReadySignal && _state is ServerState.Starting or ServerState.Running)
         {
             SetState(ServerState.Ready, $"{DisplayName} reported that it is ready.");
         }
@@ -612,5 +645,6 @@ public sealed class ServerSessionViewModel : BindableBase
     private readonly record struct PendingConsoleLine(
         ServerLogEntry Entry,
         bool IsReadySignal,
+        bool IsFailureSignal,
         PlayerConnectionChange? PlayerConnection);
 }

@@ -15,6 +15,7 @@ public sealed class MainViewModel : BindableBase
     private readonly IServerConsoleParserFactory _consoleParserFactory;
     private readonly IServerProcessServiceFactory _processServiceFactory;
     private readonly IPlayerPlaytimeService _playerPlaytimeService;
+    private readonly IJavaRuntimeService _javaRuntimeService;
     private readonly IAppUpdateService _appUpdateService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly IServerFileService _serverFileService;
@@ -36,6 +37,18 @@ public sealed class MainViewModel : BindableBase
     private PlayerScopeOption? _selectedPlayerScope;
     private string _playerSummaryText = "Tracking begins when a player joins a server started here.";
     private string? _renderedPlayerScopeId;
+    private bool _loadingProfileEditor;
+    private int _profileEditorLoadVersion;
+    private string _profileDisplayName = string.Empty;
+    private ServerFolderDetection? _selectedProfileLauncher;
+    private JavaRuntimeInfo? _selectedJavaRuntime;
+    private string _profileJavaExecutable = string.Empty;
+    private double _profileInitialMemoryMb = 1024;
+    private double _profileMaximumMemoryMb = 2048;
+    private string _profileAdditionalJavaArgumentsText = string.Empty;
+    private string _profileServerArgumentsText = string.Empty;
+    private string _profileCompatibilityText = "Select a profile to review Java compatibility.";
+    private string _profileEditorStatus = "Profile changes are stored for this Windows account.";
 
     public MainViewModel(
         IProfileService profileService,
@@ -44,6 +57,7 @@ public sealed class MainViewModel : BindableBase
         IServerConsoleParserFactory consoleParserFactory,
         IServerProcessServiceFactory processServiceFactory,
         IPlayerPlaytimeService playerPlaytimeService,
+        IJavaRuntimeService javaRuntimeService,
         IAppUpdateService appUpdateService,
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
@@ -56,6 +70,7 @@ public sealed class MainViewModel : BindableBase
         _consoleParserFactory = consoleParserFactory;
         _processServiceFactory = processServiceFactory;
         _playerPlaytimeService = playerPlaytimeService;
+        _javaRuntimeService = javaRuntimeService;
         _appUpdateService = appUpdateService;
         _appSettingsService = appSettingsService;
         _serverFileService = serverFileService;
@@ -92,6 +107,8 @@ public sealed class MainViewModel : BindableBase
         RefreshFilesCommand = new AsyncRelayCommand(RefreshServerFilesAsync, CanBrowseFiles);
         NavigateUpCommand = new AsyncRelayCommand(NavigateUpAsync, () => CanNavigateUp);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
+        SaveProfileCommand = new AsyncRelayCommand(SaveProfileAsync, CanEditSelectedProfile);
+        RedetectProfileCommand = new AsyncRelayCommand(RedetectProfileAsync, CanEditSelectedProfile);
 
         _appUpdateService.StatusChanged += OnUpdateStatusChanged;
         _playerPlaytimeService.Changed += OnPlayerPlaytimeChanged;
@@ -104,6 +121,10 @@ public sealed class MainViewModel : BindableBase
     public ObservableCollection<PlayerScopeOption> PlayerScopeOptions { get; } = [];
 
     public ObservableCollection<PlayerPlaytimeRow> PlayerPlaytimes { get; } = [];
+
+    public ObservableCollection<ServerFolderDetection> ProfileLauncherOptions { get; } = [];
+
+    public ObservableCollection<JavaRuntimeInfo> JavaRuntimeOptions { get; } = [];
 
     public ServerDashboardViewModel Dashboard { get; }
 
@@ -125,6 +146,10 @@ public sealed class MainViewModel : BindableBase
 
     public AsyncRelayCommand SaveSettingsCommand { get; }
 
+    public AsyncRelayCommand SaveProfileCommand { get; }
+
+    public AsyncRelayCommand RedetectProfileCommand { get; }
+
     public ServerSessionViewModel? SelectedProfile
     {
         get => _selectedProfile;
@@ -141,9 +166,103 @@ public sealed class MainViewModel : BindableBase
             RefreshFilesCommand.NotifyCanExecuteChanged();
             _ = RefreshServerFilesAsync();
             _ = Dashboard.SelectProfileAsync(value);
+            _ = LoadProfileEditorAsync(value);
             _ = PersistPreferencesAsync("Profile selection saved.");
         }
     }
+
+    public string ProfileDisplayName
+    {
+        get => _profileDisplayName;
+        set => SetProperty(ref _profileDisplayName, value);
+    }
+
+    public ServerFolderDetection? SelectedProfileLauncher
+    {
+        get => _selectedProfileLauncher;
+        set
+        {
+            if (SetProperty(ref _selectedProfileLauncher, value)
+                && !_loadingProfileEditor
+                && value is not null)
+            {
+                ApplyLauncherToEditor(value);
+            }
+        }
+    }
+
+    public JavaRuntimeInfo? SelectedJavaRuntime
+    {
+        get => _selectedJavaRuntime;
+        set
+        {
+            if (SetProperty(ref _selectedJavaRuntime, value)
+                && !_loadingProfileEditor
+                && value is not null)
+            {
+                ProfileJavaExecutable = value.ExecutablePath;
+                UpdateProfileCompatibility();
+            }
+        }
+    }
+
+    public string ProfileJavaExecutable
+    {
+        get => _profileJavaExecutable;
+        set
+        {
+            if (SetProperty(ref _profileJavaExecutable, value))
+            {
+                if (!_loadingProfileEditor
+                    && _selectedJavaRuntime is not null
+                    && !PathsEqual(_selectedJavaRuntime.ExecutablePath, value))
+                {
+                    _selectedJavaRuntime = null;
+                    OnPropertyChanged(nameof(SelectedJavaRuntime));
+                }
+
+                UpdateProfileCompatibility();
+            }
+        }
+    }
+
+    public double ProfileInitialMemoryMb
+    {
+        get => _profileInitialMemoryMb;
+        set => SetProperty(ref _profileInitialMemoryMb, value);
+    }
+
+    public double ProfileMaximumMemoryMb
+    {
+        get => _profileMaximumMemoryMb;
+        set => SetProperty(ref _profileMaximumMemoryMb, value);
+    }
+
+    public string ProfileAdditionalJavaArgumentsText
+    {
+        get => _profileAdditionalJavaArgumentsText;
+        set => SetProperty(ref _profileAdditionalJavaArgumentsText, value);
+    }
+
+    public string ProfileServerArgumentsText
+    {
+        get => _profileServerArgumentsText;
+        set => SetProperty(ref _profileServerArgumentsText, value);
+    }
+
+    public string ProfileCompatibilityText
+    {
+        get => _profileCompatibilityText;
+        private set => SetProperty(ref _profileCompatibilityText, value);
+    }
+
+    public string ProfileEditorStatus
+    {
+        get => _profileEditorStatus;
+        private set => SetProperty(ref _profileEditorStatus, value);
+    }
+
+    public bool IsProfileEditorEnabled => CanEditSelectedProfile();
 
     public AppThemeOption? SelectedThemeOption
     {
@@ -280,6 +399,7 @@ public sealed class MainViewModel : BindableBase
             _appUpdateService.StartMonitoring();
 
             var loadedProfiles = await _profileService.LoadAllAsync();
+            await RefreshJavaRuntimesAsync(loadedProfiles.Select(profile => profile.JavaExecutable));
             await _playerPlaytimeService.InitializeAsync(loadedProfiles);
             PlayerScopeOptions.Add(new PlayerScopeOption("all", "All servers"));
             foreach (var profile in loadedProfiles)
@@ -306,6 +426,7 @@ public sealed class MainViewModel : BindableBase
             SetSelectedProfileWithoutCallback(selected);
             CurrentFilesPath = selected.ServerDirectory;
             await Dashboard.SelectProfileAsync(selected);
+            await LoadProfileEditorAsync(selected);
             await RefreshServerFilesAsync();
         }
         catch (Exception exception) when (
@@ -339,6 +460,7 @@ public sealed class MainViewModel : BindableBase
             SetSelectedProfileWithoutCallback(profile);
             CurrentFilesPath = profile.ServerDirectory;
             await Dashboard.SelectProfileAsync(profile);
+            await LoadProfileEditorAsync(profile);
             await RefreshServerFilesAsync();
             await PersistPreferencesAsync("Profile selection saved.");
         }
@@ -375,6 +497,254 @@ public sealed class MainViewModel : BindableBase
 
         await _playerPlaytimeService.FlushAsync();
         return true;
+    }
+
+    public void SetProfileJavaExecutable(string executablePath)
+    {
+        if (!CanEditSelectedProfile() || string.IsNullOrWhiteSpace(executablePath))
+        {
+            return;
+        }
+
+        SelectedJavaRuntime = null;
+        ProfileJavaExecutable = executablePath;
+        ProfileEditorStatus = "Java executable selected. Save the profile to keep this change.";
+    }
+
+    private async Task LoadProfileEditorAsync(ServerSessionViewModel session)
+    {
+        var loadVersion = Interlocked.Increment(ref _profileEditorLoadVersion);
+        _loadingProfileEditor = true;
+        try
+        {
+            var detections = ServerFolderDetector.DetectCandidates(session.ServerDirectory);
+            ProfileLauncherOptions.Clear();
+            foreach (var detection in detections)
+            {
+                ProfileLauncherOptions.Add(detection);
+            }
+
+            var runtimes = await _javaRuntimeService.DiscoverAsync(
+                detections.Select(detection => detection.JavaExecutable)
+                    .Append(session.Profile.JavaExecutable));
+            if (loadVersion != _profileEditorLoadVersion
+                || !ReferenceEquals(session, SelectedProfile))
+            {
+                return;
+            }
+
+            ReplaceJavaRuntimes(runtimes);
+
+            ProfileDisplayName = session.Profile.DisplayName;
+            ProfileJavaExecutable = session.Profile.JavaExecutable;
+            ProfileInitialMemoryMb = JavaArgumentUtilities.GetInitialMemoryMegabytes(
+                session.Profile.JavaArguments) ?? 1024;
+            ProfileMaximumMemoryMb = JavaArgumentUtilities.GetMaximumMemoryMegabytes(
+                session.Profile.JavaArguments) ?? Math.Max(ProfileInitialMemoryMb, 2048);
+            ProfileAdditionalJavaArgumentsText = CommandLineArgumentParser.Join(
+                JavaArgumentUtilities.WithoutMemoryArguments(session.Profile.JavaArguments));
+            ProfileServerArgumentsText = CommandLineArgumentParser.Join(session.Profile.ServerArguments);
+            SelectedProfileLauncher = detections.FirstOrDefault(detection =>
+                    detection.LaunchScript.Equals(session.Profile.LaunchScript, StringComparison.OrdinalIgnoreCase)
+                    && detection.ServerJar.Equals(session.Profile.ServerJar, StringComparison.OrdinalIgnoreCase))
+                ?? detections.FirstOrDefault(detection =>
+                    detection.ServerJar.Equals(session.Profile.ServerJar, StringComparison.OrdinalIgnoreCase))
+                ?? detections.FirstOrDefault();
+
+            var resolvedJava = _javaRuntimeService.ResolveExecutablePath(
+                session.Profile.JavaExecutable,
+                session.Profile.JavaVersion);
+            SelectedJavaRuntime = JavaRuntimeOptions.FirstOrDefault(runtime =>
+                PathsEqual(runtime.ExecutablePath, resolvedJava));
+            ProfileEditorStatus = session.IsServerActive
+                ? "Stop this server before changing its launch settings."
+                : "Review the detected launcher, Java runtime, memory, and arguments before saving.";
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ProfileEditorStatus = $"Launch settings could not be inspected: {exception.Message}";
+        }
+        finally
+        {
+            if (loadVersion == _profileEditorLoadVersion)
+            {
+                _loadingProfileEditor = false;
+                UpdateProfileCompatibility();
+                NotifyProfileEditorCanExecuteChanged();
+            }
+        }
+    }
+
+    private async Task RefreshJavaRuntimesAsync(IEnumerable<string> configuredExecutables)
+    {
+        var runtimes = await _javaRuntimeService.DiscoverAsync(configuredExecutables);
+        ReplaceJavaRuntimes(runtimes);
+    }
+
+    private void ReplaceJavaRuntimes(IEnumerable<JavaRuntimeInfo> runtimes)
+    {
+        JavaRuntimeOptions.Clear();
+        foreach (var runtime in runtimes)
+        {
+            JavaRuntimeOptions.Add(runtime);
+        }
+    }
+
+    private void ApplyLauncherToEditor(ServerFolderDetection detection)
+    {
+        var initialMemory = JavaArgumentUtilities.GetInitialMemoryMegabytes(
+            detection.EffectiveJavaArguments);
+        var maximumMemory = JavaArgumentUtilities.GetMaximumMemoryMegabytes(
+            detection.EffectiveJavaArguments);
+        if (initialMemory is not null)
+        {
+            ProfileInitialMemoryMb = initialMemory.Value;
+        }
+
+        if (maximumMemory is not null)
+        {
+            ProfileMaximumMemoryMb = maximumMemory.Value;
+        }
+
+        ProfileAdditionalJavaArgumentsText = CommandLineArgumentParser.Join(
+            JavaArgumentUtilities.WithoutMemoryArguments(detection.EffectiveJavaArguments));
+        ProfileServerArgumentsText = CommandLineArgumentParser.Join(detection.EffectiveServerArguments);
+        if (Path.IsPathFullyQualified(detection.JavaExecutable)
+            && File.Exists(detection.JavaExecutable))
+        {
+            ProfileJavaExecutable = detection.JavaExecutable;
+            SelectedJavaRuntime = JavaRuntimeOptions.FirstOrDefault(runtime =>
+                PathsEqual(runtime.ExecutablePath, detection.JavaExecutable));
+        }
+
+        ProfileEditorStatus = "Detected launcher settings loaded. Save the profile to keep them.";
+        UpdateProfileCompatibility();
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        var session = SelectedProfile;
+        if (session is null || !CanEditSelectedProfile())
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ProfileDisplayName))
+        {
+            ProfileEditorStatus = "Enter a profile name before saving.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ProfileJavaExecutable))
+        {
+            ProfileEditorStatus = "Choose a Java executable before saving.";
+            return;
+        }
+
+        if (SelectedProfileLauncher is null)
+        {
+            ProfileEditorStatus = "Choose a detected launcher before saving.";
+            return;
+        }
+
+        if (!double.IsFinite(ProfileInitialMemoryMb)
+            || !double.IsFinite(ProfileMaximumMemoryMb)
+            || ProfileInitialMemoryMb > 262_144
+            || ProfileMaximumMemoryMb > 262_144)
+        {
+            ProfileEditorStatus = "Enter valid initial and maximum memory values.";
+            return;
+        }
+
+        var initialMemory = (int)Math.Round(ProfileInitialMemoryMb);
+        var maximumMemory = (int)Math.Round(ProfileMaximumMemoryMb);
+        if (initialMemory < 256 || maximumMemory < 256 || initialMemory > maximumMemory)
+        {
+            ProfileEditorStatus = "Memory must be at least 256 MB, and initial memory cannot exceed maximum memory.";
+            return;
+        }
+
+        var profile = session.Profile;
+        profile.DisplayName = ProfileDisplayName.Trim();
+        var launcher = SelectedProfileLauncher!;
+        profile.ServerJar = launcher.ServerJar;
+        profile.LaunchScript = launcher.LaunchScript;
+        profile.ServerType = launcher.ServerType;
+        profile.MinecraftVersion = launcher.MinecraftVersion;
+        profile.DirectLaunchArguments = launcher.EffectiveDirectLaunchArguments;
+        profile.RequiredFiles = string.IsNullOrWhiteSpace(launcher.ServerJar)
+            ? []
+            : [launcher.ServerJar];
+
+        profile.JavaExecutable = ProfileJavaExecutable.Trim();
+        profile.JavaVersion = SelectedJavaRuntime is null
+            ? profile.JavaVersion
+            : $"Java {SelectedJavaRuntime.MajorVersion}";
+        profile.JavaArguments = JavaArgumentUtilities.ReplaceMemoryArguments(
+            [],
+            initialMemory,
+            maximumMemory,
+            CommandLineArgumentParser.Split(ProfileAdditionalJavaArgumentsText));
+        profile.ServerArguments = CommandLineArgumentParser.Split(ProfileServerArgumentsText);
+
+        try
+        {
+            await _profileService.SaveAsync(profile);
+            session.RefreshProfile();
+            await Dashboard.SelectProfileAsync(session);
+            ProfileEditorStatus = "Profile launch settings saved.";
+            OnPropertyChanged(nameof(ProfileCountText));
+            OnPropertyChanged(nameof(SelectedProfile));
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ProfileEditorStatus = $"Profile settings could not be saved: {exception.Message}";
+        }
+    }
+
+    private Task RedetectProfileAsync()
+    {
+        var session = SelectedProfile;
+        return session is null ? Task.CompletedTask : LoadProfileEditorAsync(session);
+    }
+
+    private bool CanEditSelectedProfile() => SelectedProfile is { IsServerActive: false };
+
+    private void UpdateProfileCompatibility()
+    {
+        var minecraftVersion = SelectedProfileLauncher?.MinecraftVersion
+            ?? SelectedProfile?.Profile.MinecraftVersion
+            ?? string.Empty;
+        var runtime = SelectedJavaRuntime
+            ?? _javaRuntimeService.FindKnownRuntime(ProfileJavaExecutable);
+        ProfileCompatibilityText = _javaRuntimeService.GetCompatibilityMessage(
+            minecraftVersion,
+            runtime);
+    }
+
+    private void NotifyProfileEditorCanExecuteChanged()
+    {
+        OnPropertyChanged(nameof(IsProfileEditorEnabled));
+        SaveProfileCommand.NotifyCanExecuteChanged();
+        RedetectProfileCommand.NotifyCanExecuteChanged();
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left),
+                Path.GetFullPath(right),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     private ServerSessionViewModel AddProfile(ServerProfile profile)
@@ -567,10 +937,16 @@ public sealed class MainViewModel : BindableBase
 
         if (args.PropertyName == nameof(ServerSessionViewModel.State)
             && ReferenceEquals(sender, SelectedProfile)
-            && sender is ServerSessionViewModel session
-            && !session.IsServerActive)
+            && sender is ServerSessionViewModel session)
         {
-            _ = RefreshServerFilesAsync();
+            NotifyProfileEditorCanExecuteChanged();
+            ProfileEditorStatus = session.IsServerActive
+                ? "Stop this server before changing its launch settings."
+                : "Profile launch settings can now be edited.";
+            if (!session.IsServerActive)
+            {
+                _ = RefreshServerFilesAsync();
+            }
         }
     }
 

@@ -209,6 +209,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void ChooseJavaExecutable_Click(object sender, RoutedEventArgs args)
+    {
+        var picker = new FileOpenPicker(AppWindow.Id)
+        {
+            SuggestedStartLocation = PickerLocationId.ComputerFolder,
+            CommitButtonText = "Select Java executable"
+        };
+        picker.FileTypeFilter.Add(".exe");
+
+        var result = await picker.PickSingleFileAsync();
+        if (result is not null)
+        {
+            ViewModel.SetProfileJavaExecutable(result.Path);
+        }
+    }
+
     private async void ServerFilesList_ItemClick(object sender, ItemClickEventArgs args)
     {
         if (args.ClickedItem is ServerFileItem item)

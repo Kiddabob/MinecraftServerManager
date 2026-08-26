@@ -33,6 +33,7 @@ public partial class App : Application
         services.AddSingleton<IWindowPlacementService, JsonWindowPlacementService>();
         services.AddSingleton<IProfileService, JsonProfileService>();
         services.AddSingleton<IPlayerPlaytimeService, JsonPlayerPlaytimeService>();
+        services.AddSingleton<IJavaRuntimeService, JavaRuntimeService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerConfigurationService, ServerConfigurationService>();

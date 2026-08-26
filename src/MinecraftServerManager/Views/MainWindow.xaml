@@ -1262,7 +1262,7 @@
                                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Add a Minecraft server" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Choose the folder containing the server launcher JAR. The app will detect common server types and create a reusable profile." />
+                                            Text="Choose the folder containing the server launch script or runnable JAR. The app will preserve detected launch settings in a reusable profile." />
                                         <TextBlock
                                             Margin="0,4,0,0"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -1384,6 +1384,129 @@
                                     </ListView.ItemTemplate>
                                 </ListView>
                             </StackPanel>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <StackPanel Spacing="16">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Launch settings" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Detection follows this server's own launch script. Settings are saved only to the selected profile."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <StackPanel Spacing="14">
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock FontWeight="SemiBold" Text="Profile name" />
+                                                <TextBox
+                                                    AutomationProperties.Name="Profile name"
+                                                    Text="{Binding ProfileDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="6">
+                                                <TextBlock FontWeight="SemiBold" Text="Detected launcher" />
+                                                <ComboBox
+                                                    DisplayMemberPath="DisplayName"
+                                                    ItemsSource="{Binding ProfileLauncherOptions, Mode=OneWay}"
+                                                    SelectedItem="{Binding SelectedProfileLauncher, Mode=TwoWay}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <StackPanel Spacing="6">
+                                            <TextBlock FontWeight="SemiBold" Text="Java runtime" />
+                                            <ComboBox
+                                                DisplayMemberPath="DisplayName"
+                                                ItemsSource="{Binding JavaRuntimeOptions, Mode=OneWay}"
+                                                PlaceholderText="Choose a detected Java runtime"
+                                                SelectedItem="{Binding SelectedJavaRuntime, Mode=TwoWay}" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox
+                                                    AutomationProperties.Name="Java executable path"
+                                                    Text="{Binding ProfileJavaExecutable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Click="ChooseJavaExecutable_Click"
+                                                    Content="Choose Java…" />
+                                            </Grid>
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding ProfileCompatibilityText, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock FontWeight="SemiBold" Text="Initial memory (MB)" />
+                                                <NumberBox
+                                                    Minimum="256"
+                                                    Maximum="262144"
+                                                    SmallChange="256"
+                                                    SpinButtonPlacementMode="Inline"
+                                                    Value="{Binding ProfileInitialMemoryMb, Mode=TwoWay}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="6">
+                                                <TextBlock FontWeight="SemiBold" Text="Maximum memory (MB)" />
+                                                <NumberBox
+                                                    Minimum="256"
+                                                    Maximum="262144"
+                                                    SmallChange="256"
+                                                    SpinButtonPlacementMode="Inline"
+                                                    Value="{Binding ProfileMaximumMemoryMb, Mode=TwoWay}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <StackPanel Spacing="6">
+                                            <TextBlock FontWeight="SemiBold" Text="Additional Java arguments" />
+                                            <TextBox
+                                                AutomationProperties.Name="Additional Java arguments"
+                                                FontFamily="Consolas"
+                                                Text="{Binding ProfileAdditionalJavaArgumentsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                TextWrapping="NoWrap" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock FontWeight="SemiBold" Text="Server arguments" />
+                                            <TextBox
+                                                AutomationProperties.Name="Server arguments"
+                                                FontFamily="Consolas"
+                                                Text="{Binding ProfileServerArgumentsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                TextWrapping="NoWrap" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding ProfileEditorStatus, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                            <Button
+                                                Command="{Binding RedetectProfileCommand}"
+                                                Content="Re-detect" />
+                                            <Button
+                                                Command="{Binding SaveProfileCommand}"
+                                                Content="Save profile"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
