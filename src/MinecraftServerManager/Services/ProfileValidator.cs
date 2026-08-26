@@ -87,12 +87,16 @@ public sealed class ProfileValidator : IProfileValidator
         var compatibility = _javaRuntimeService.GetCompatibilityMessage(
             profile.MinecraftVersion,
             runtime);
-        var recommendedJava = _javaRuntimeService.GetRecommendedJavaMajor(profile.MinecraftVersion);
+        var minecraftRecommendedJava = _javaRuntimeService.GetRecommendedJavaMajor(profile.MinecraftVersion);
+        var recommendedJava = minecraftRecommendedJava;
+        recommendedJava ??= ParseJavaMajor(profile.JavaVersion);
         if (runtime is not null
             && recommendedJava is not null
             && runtime.MajorVersion < recommendedJava)
         {
-            errors.Add(compatibility);
+            errors.Add(minecraftRecommendedJava is null
+                ? $"The selected server JAR requires Java {recommendedJava} or newer, but Java {runtime.MajorVersion} is selected."
+                : compatibility);
         }
         else if (compatibility.StartsWith("Compatibility warning:", StringComparison.Ordinal)
             || runtime is null)
@@ -101,6 +105,12 @@ public sealed class ProfileValidator : IProfileValidator
         }
 
         return new ProfileValidationResult(errors, warnings);
+    }
+
+    private static int? ParseJavaMajor(string value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var majorVersion) ? majorVersion : null;
     }
 
     private static void RequireValue(string value, string name, ICollection<string> errors)
@@ -218,6 +228,17 @@ public sealed class ProfileValidator : IProfileValidator
             resolvedPath = Path.IsPathFullyQualified(configuredPath)
                 ? Path.GetFullPath(configuredPath)
                 : Path.GetFullPath(Path.Combine(serverDirectory, configuredPath));
+            var root = Path.GetFullPath(serverDirectory);
+            var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar)
+                ? root
+                : root + Path.DirectorySeparatorChar;
+            if (!resolvedPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "the path must remain inside the server folder";
+                resolvedPath = string.Empty;
+                return false;
+            }
+
             error = string.Empty;
             return true;
         }

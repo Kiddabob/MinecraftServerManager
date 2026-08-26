@@ -225,6 +225,43 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void InstallManagedJava_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { DataContext: ManagedJavaRuntimeOption option } button
+            || option.IsInstalled)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        try
+        {
+            await ViewModel.InstallManagedJavaAsync(option.MajorVersion);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async void InstallRecommendedJava_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        try
+        {
+            await ViewModel.InstallRecommendedJavaAsync();
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
     private async void ServerFilesList_ItemClick(object sender, ItemClickEventArgs args)
     {
         if (args.ClickedItem is ServerFileItem item)

@@ -135,6 +135,20 @@ public sealed partial class JavaRuntimeService : IJavaRuntimeService
 
     private static IEnumerable<string> EnumerateCandidatePaths(IEnumerable<string> configuredExecutables)
     {
+        foreach (var majorVersion in new[] { 8, 16, 17, 21 })
+        {
+            var managedDirectory = ManagedJavaRuntimeService.GetRuntimeDirectory(majorVersion);
+            if (!Directory.Exists(managedDirectory))
+            {
+                continue;
+            }
+
+            foreach (var executable in EnumerateVendorJavaExecutables(managedDirectory))
+            {
+                yield return executable;
+            }
+        }
+
         foreach (var configured in configuredExecutables.Where(value => !string.IsNullOrWhiteSpace(value)))
         {
             var expanded = Environment.ExpandEnvironmentVariables(configured.Trim().Trim('"'));
@@ -337,9 +351,11 @@ public sealed partial class JavaRuntimeService : IJavaRuntimeService
 
     private static string GetSource(string path) => IsJavaPathShim(path)
         ? "Windows Java PATH shim"
-        : path.Contains(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase)
-            ? "Installed runtime"
-            : "Configured profile";
+        : path.StartsWith(ManagedJavaRuntimeService.RuntimesRoot, StringComparison.OrdinalIgnoreCase)
+            ? "Managed by Minecraft Server Manager"
+            : path.Contains(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase)
+                ? "Installed runtime"
+                : "Configured profile";
 
     [GeneratedRegex("(?:java|openjdk) version \\\"(?<version>[^\\\"]+)\\\"", RegexOptions.IgnoreCase)]
     private static partial Regex VersionPattern();

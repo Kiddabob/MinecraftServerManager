@@ -244,11 +244,24 @@ try
     await File.WriteAllBytesAsync(Path.Combine(customFolder, "my-community-pack.jar"), [1]);
     AssertEqual("Minecraft", ServerFolderDetector.Detect(customFolder)!.ServerType, "unknown launcher fallback");
 
+    var bytecodeFolder = Path.Combine(testRoot, "bytecode-server");
+    Directory.CreateDirectory(bytecodeFolder);
+    CreateJar(
+        Path.Combine(bytecodeFolder, "community-launcher.jar"),
+        "example.ServerMain",
+        [],
+        classFileMajor: 61);
+    var bytecodeDetection = ServerFolderDetector.Detect(bytecodeFolder)!;
+    AssertEqual(17, bytecodeDetection.RequiredJavaMajorVersion!.Value, "Java requirement from main class bytecode");
+
     var legendsFolder = Path.Combine(testRoot, "tekkit-legends");
     Directory.CreateDirectory(legendsFolder);
     Directory.CreateDirectory(Path.Combine(legendsFolder, "mods"));
     Directory.CreateDirectory(Path.Combine(legendsFolder, "plugins"));
-    await File.WriteAllBytesAsync(Path.Combine(legendsFolder, "CryofinityLegends.jar"), [1]);
+    CreateJar(
+        Path.Combine(legendsFolder, "CryofinityLegends.jar"),
+        "cpw.mods.fml.relauncher.ServerLaunchWrapper",
+        ["cpw/mods/fml/common/Loader.class"]);
     await File.WriteAllBytesAsync(Path.Combine(legendsFolder, "minecraft_server.1.7.10.jar"), [1]);
     await File.WriteAllTextAsync(
         Path.Combine(legendsFolder, "start.bat"),
@@ -256,24 +269,31 @@ try
     await File.WriteAllTextAsync(
         Path.Combine(legendsFolder, "start.sh"),
         "java -Xmx2G -Xms1G -jar \"TekkitLegends.jar\" nogui\n");
-    await File.WriteAllBytesAsync(Path.Combine(legendsFolder, "TekkitLegends.jar"), [1]);
+    CreateJar(
+        Path.Combine(legendsFolder, "TekkitLegends.jar"),
+        "cpw.mods.fml.relauncher.ServerLaunchWrapper",
+        ["cpw/mods/fml/common/Loader.class"]);
     var legendsDetection = ServerFolderDetector.Detect(legendsFolder)!;
     AssertEqual("start.bat", legendsDetection.LaunchScript, "Legends launch script detection");
     AssertEqual("CryofinityLegends.jar", legendsDetection.ServerJar, "Legends scripted launcher selection");
     AssertEqual("1.7.10", legendsDetection.MinecraftVersion, "Legends companion JAR version detection");
-    AssertEqual("Hybrid", legendsDetection.ServerType, "Legends mods and plugins classification");
-    AssertTrue(
-        legendsDetection.EffectiveJavaArguments.Contains("-Dfml.debugExit=true"),
-        "Legends JVM argument preservation");
+    AssertEqual("Forge", legendsDetection.ServerType, "Legends executable JAR classification");
+    AssertEqual(0, legendsDetection.EffectiveJavaArguments.Count, "Legends BAT JVM arguments ignored");
+    AssertTrue(legendsDetection.EffectiveServerArguments.SequenceEqual(["nogui"]), "Legends safe server arguments");
 
     var classicFolder = Path.Combine(testRoot, "tekkit-classic");
     Directory.CreateDirectory(classicFolder);
     Directory.CreateDirectory(Path.Combine(classicFolder, "mods"));
     Directory.CreateDirectory(Path.Combine(classicFolder, "plugins"));
-    await File.WriteAllBytesAsync(Path.Combine(classicFolder, "TekkitClassic.jar"), [1]);
+    CreateJar(
+        Path.Combine(classicFolder, "TekkitClassic.jar"),
+        "org.bukkit.craftbukkit.Main",
+        ["cpw/mods/fml/common/Loader.class", "org/bukkit/craftbukkit/Main.class"]);
     await File.WriteAllTextAsync(
         Path.Combine(classicFolder, "launch.bat"),
-        "\"C:\\Program Files\\Java\\jre1.8.0_191\\bin\\javaw.exe\" -Xms1G -Xmx6G -jar TekkitClassic.jar -o true\r\n");
+        "set \"JAVA=C:\\Program Files\\Java\\jre1.8.0_191\\bin\\javaw.exe\"\r\n" +
+        "set \"SERVER_JAR=TekkitClassic.jar\"\r\n" +
+        "\"%JAVA%\" ^\r\n-Xms1G -Xmx6G ^\r\n-jar \"%SERVER_JAR%\" -o true\r\n");
     await File.WriteAllTextAsync(
         Path.Combine(classicFolder, "server.log"),
         "2012-06-01 10:20:30 [INFO] Starting minecraft server version 1.2.5\r\n" + new string('x', (2 * 1024 * 1024) + 20));
@@ -281,8 +301,10 @@ try
     AssertEqual("launch.bat", classicDetection.LaunchScript, "Classic launch script detection");
     AssertEqual("TekkitClassic.jar", classicDetection.ServerJar, "Classic launcher selection");
     AssertEqual("1.2.5", classicDetection.MinecraftVersion, "Classic log version detection");
-    AssertEqual(6144, JavaArgumentUtilities.GetMaximumMemoryMegabytes(classicDetection.EffectiveJavaArguments)!.Value, "Classic maximum memory detection");
-    AssertTrue(classicDetection.EffectiveServerArguments.SequenceEqual(["-o", "true"]), "Classic server argument preservation");
+    AssertEqual("Hybrid", classicDetection.ServerType, "Classic Forge and CraftBukkit classification");
+    AssertEqual(0, classicDetection.EffectiveJavaArguments.Count, "Classic BAT memory ignored");
+    AssertTrue(classicDetection.EffectiveServerArguments.SequenceEqual(["nogui"]), "Classic BAT server arguments ignored");
+    AssertEqual("java", classicDetection.JavaExecutable, "Classic BAT Java path ignored");
 
     var modernForgeFolder = Path.Combine(testRoot, "modern-forge");
     Directory.CreateDirectory(modernForgeFolder);
@@ -297,7 +319,10 @@ try
     AssertEqual("run.bat", modernForgeDetection.LaunchScript, "modern Forge run script detection");
     AssertEqual("Forge", modernForgeDetection.ServerType, "modern Forge classification");
     AssertEqual("1.20.1", modernForgeDetection.MinecraftVersion, "modern Forge argument path version detection");
-    AssertEqual(2, modernForgeDetection.EffectiveDirectLaunchArguments.Count, "modern Forge argument-file preservation");
+    AssertEqual(1, modernForgeDetection.EffectiveDirectLaunchArguments.Count, "only modern Forge main argument file preserved");
+    AssertTrue(
+        modernForgeDetection.EffectiveDirectLaunchArguments[0].Contains("win_args.txt", StringComparison.OrdinalIgnoreCase),
+        "modern Forge main argument file selection");
 
     var replacedMemory = JavaArgumentUtilities.ReplaceMemoryArguments(
         ["-server", "-Xms512M", "-Xmx1G"],
@@ -311,6 +336,22 @@ try
     AssertEqual(16, runtimeService.GetRecommendedJavaMajor("1.17")!.Value, "Java 16 baseline");
     AssertEqual(17, runtimeService.GetRecommendedJavaMajor("1.18.2")!.Value, "Java 17 baseline");
     AssertEqual(21, runtimeService.GetRecommendedJavaMajor("1.20.5")!.Value, "Java 21 baseline");
+
+    var recommendation = ServerLaunchRecommendationService.Create(
+        legendsFolder,
+        "Forge",
+        "1.7.10",
+        32L * 1024 * 1024 * 1024,
+        32,
+        8);
+    AssertEqual(8, recommendation.JavaMajorVersion!.Value, "recommended legacy Java");
+    AssertTrue(recommendation.MaximumMemoryMb >= 4096, "modded server memory recommendation");
+
+    var managedOptions = new ManagedJavaRuntimeService(runtimeService).GetOptions();
+    AssertEqual(4, managedOptions.Count, "managed Java option count");
+    AssertTrue(
+        managedOptions.Single(option => option.MajorVersion == 16).MinecraftVersions.Contains("1.17", StringComparison.Ordinal),
+        "Java 16 Minecraft version label");
 
     var modernProfile = new ServerProfile
     {
@@ -326,7 +367,6 @@ try
     AssertTrue(
         modernRequest.Arguments.SequenceEqual(
         [
-            "@user_jvm_args.txt",
             "-Xms2G",
             "-Xmx4G",
             "@libraries/net/minecraftforge/forge/1.20.1-47.3.0/win_args.txt",
@@ -356,6 +396,36 @@ finally
     if (Directory.Exists(testRoot))
     {
         Directory.Delete(testRoot, recursive: true);
+    }
+}
+
+static void CreateJar(
+    string path,
+    string mainClass,
+    IReadOnlyList<string> entries,
+    int classFileMajor = 52)
+{
+    using var archive = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create);
+    var manifestEntry = archive.CreateEntry("META-INF/MANIFEST.MF");
+    using (var writer = new StreamWriter(manifestEntry.Open()))
+    {
+        writer.Write($"Manifest-Version: 1.0\r\nMain-Class: {mainClass}\r\n\r\n");
+    }
+
+    var mainClassEntryName = mainClass.Replace('.', '/') + ".class";
+    foreach (var entryName in entries.Append(mainClassEntryName).Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        var entry = archive.CreateEntry(entryName);
+        if (entryName.Equals(mainClassEntryName, StringComparison.OrdinalIgnoreCase))
+        {
+            using var stream = entry.Open();
+            stream.Write([
+                0xCA, 0xFE, 0xBA, 0xBE,
+                0x00, 0x00,
+                (byte)(classFileMajor >> 8),
+                (byte)classFileMajor
+            ]);
+        }
     }
 }
 

@@ -1,13 +1,13 @@
 # Minecraft Server Manager
 
-A WinUI 3 desktop application for running Minecraft Java servers. Tekkit 1.6.4 remains the first-class baseline, while imported profiles can now preserve the launch script, JAR, Java runtime, memory, and arguments used by other server folders.
+A WinUI 3 desktop application for running Minecraft Java servers. Tekkit 1.6.4 remains the first-class baseline, while imported profiles can identify a server's executable JAR and create safe launch settings for the current PC.
 
 ## Requirements
 
 - Windows 10 version 1809 or later
 - Visual Studio 2022 with the .NET desktop development tools, or the .NET 10 SDK
 - The Windows App SDK runtime is bundled by this unpackaged x64 build
-- A compatible x64 Java runtime for each imported server (Tekkit 1.6.4 uses Java 8)
+- A compatible x64 Java runtime for each imported server; the app can optionally download managed Eclipse Temurin runtimes
 
 The starter profile is `src/MinecraftServerManager/Profiles/tekkit.json`. It currently points to:
 
@@ -15,9 +15,17 @@ The starter profile is `src/MinecraftServerManager/Profiles/tekkit.json`. It cur
 - Java: `%USERPROFILE%\OneDrive\jre-legacy\bin\java.exe`
 - JAR: `TekkitServer.jar`
 
-You can choose any server folder from the app's **Profiles** page. The importer checks top-level `.bat`, `.cmd`, and `.sh` launchers before falling back to runnable JARs; this lets it preserve custom launchers such as Tekkit Classic, Tekkit Legends, and modern Forge `@...args.txt` commands. The launch-settings card lets you review or change the detected launcher, Java executable, initial/maximum memory, JVM arguments, and server arguments. Profile-specific settings are stored under `%LocalAppData%\Kidda.MinecraftServerManager\UserProfiles`, so an app update does not overwrite them.
+You can choose any server folder from the app's **Profiles** page. The importer inspects JAR manifests and class signatures to distinguish Vanilla, Forge, NeoForge, Fabric, Quilt, Bukkit-family, and genuine hybrid launchers. Top-level `.bat`, `.cmd`, and `.sh` files are only hints when several JARs are present: their Java path, memory values, and miscellaneous arguments are not copied. Modern Forge's main `win_args.txt` or `unix_args.txt` file is retained without importing `user_jvm_args.txt`.
 
-Profiles created by v0.1.12 are upgraded on first load. Generic profiles are re-detected from their server folder, so an existing imported server can pick up its original launch script without being deleted and imported again. Stop a server before saving changes to its launch profile.
+The launch-settings card lets you review the selected JAR, Java executable, initial/maximum memory, JVM arguments, and server arguments. **Use recommended settings** calculates a conservative memory allocation from installed RAM and the selected profile's mod/plugin count. Profile-specific settings are stored under `%LocalAppData%\Kidda.MinecraftServerManager\UserProfiles`, so an app update does not overwrite them.
+
+Older generic profiles are upgraded on first load and re-detected from their server folder, so an existing import picks up JAR-first detection without being deleted and imported again. Stop a server before saving changes to its launch profile.
+
+## Managed Java runtimes
+
+The **Settings** page offers separate optional choices for Java 8 (Minecraft 1.16.5 and older), Java 16 (Minecraft 1.17 only), Java 17 (Minecraft 1.18–1.20.4), and Java 21 (Minecraft 1.20.5 and newer). Java 16 is clearly marked as an archived end-of-support runtime; the other choices use the latest Eclipse Temurin release in that maintained line.
+
+Nothing downloads automatically. Selecting **Install** retrieves the official x64 ZIP metadata from Adoptium, verifies the archive's published SHA-256 checksum, and extracts it under `%LocalAppData%\Kidda.MinecraftServerManager\Runtimes`. This location is outside Velopack's replaceable `current` folder, so app updates do not remove managed Java installations. The one-click Velopack installer cannot display optional component pages, so the same choices are presented safely in Settings and beside an imported profile instead.
 
 ## Player playtime
 

@@ -9,7 +9,9 @@ public sealed class JsonProfileService : IProfileService
 {
     private const string ProfilesDirectoryName = "Profiles";
     private const string UserProfilesDirectoryName = "UserProfiles";
-    private const int CurrentProfileFormatVersion = 3;
+    private const int CurrentProfileFormatVersion = 5;
+    private readonly IJavaRuntimeService _javaRuntimeService;
+    private readonly IServerLaunchRecommendationService _launchRecommendationService;
 
     private static readonly IReadOnlyList<string> DefaultFailurePatterns =
     [
@@ -36,6 +38,14 @@ public sealed class JsonProfileService : IProfileService
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Kidda.MinecraftServerManager",
         UserProfilesDirectoryName);
+
+    public JsonProfileService(
+        IJavaRuntimeService javaRuntimeService,
+        IServerLaunchRecommendationService launchRecommendationService)
+    {
+        _javaRuntimeService = javaRuntimeService;
+        _launchRecommendationService = launchRecommendationService;
+    }
 
     public async Task<ServerProfile> LoadAsync(
         string fileName,
@@ -138,9 +148,9 @@ public sealed class JsonProfileService : IProfileService
                 folderName,
                 detection,
                 templates.FirstOrDefault());
-            var launcher = string.IsNullOrWhiteSpace(detection.LaunchScript)
-                ? detection.ServerJar
-                : detection.LaunchScript;
+            var launcher = string.IsNullOrWhiteSpace(detection.ServerJar)
+                ? "the detected Forge argument files"
+                : detection.ServerJar;
             message = $"Created a {detection.ServerType} profile for '{folderName}' using {launcher}.";
         }
 
@@ -241,7 +251,7 @@ public sealed class JsonProfileService : IProfileService
         };
     }
 
-    private static ServerProfile CreateGenericProfile(
+    private ServerProfile CreateGenericProfile(
         string folderPath,
         string folderName,
         ServerFolderDetection detection,
@@ -252,7 +262,12 @@ public sealed class JsonProfileService : IProfileService
             folderPath,
             detection,
             sharedMinecraftDefaults);
-        var recommendedJava = GetRecommendedJavaMajor(detection.MinecraftVersion);
+        var recommendation = _launchRecommendationService.Recommend(
+            folderPath,
+            detection.ServerType,
+            detection.MinecraftVersion,
+            detection.RequiredJavaMajorVersion);
+        var recommendedJava = recommendation.JavaMajorVersion;
         return new ServerProfile
         {
             ProfileFormatVersion = CurrentProfileFormatVersion,
@@ -267,10 +282,10 @@ public sealed class JsonProfileService : IProfileService
             JavaExecutable = javaExecutable,
             ServerJar = detection.ServerJar,
             LaunchScript = detection.LaunchScript,
-            JavaArguments = detection.EffectiveJavaArguments.Count == 0
-                && detection.EffectiveDirectLaunchArguments.Count == 0
-                ? ["-Xms1G", "-Xmx2G"]
-                : detection.EffectiveJavaArguments,
+            JavaArguments = JavaArgumentUtilities.ReplaceMemoryArguments(
+                [],
+                recommendation.InitialMemoryMb,
+                recommendation.MaximumMemoryMb),
             ServerArguments = detection.EffectiveServerArguments,
             DirectLaunchArguments = detection.EffectiveDirectLaunchArguments,
             RequiredFiles = string.IsNullOrWhiteSpace(detection.ServerJar) ? [] : [detection.ServerJar],
@@ -289,7 +304,7 @@ public sealed class JsonProfileService : IProfileService
         };
     }
 
-    private static void MigrateProfile(ServerProfile profile, ServerProfile? sharedMinecraftDefaults)
+    private void MigrateProfile(ServerProfile profile, ServerProfile? sharedMinecraftDefaults)
     {
         if (profile.Id.StartsWith("generic-", StringComparison.OrdinalIgnoreCase)
             && Directory.Exists(profile.ServerDirectory)
@@ -300,6 +315,15 @@ public sealed class JsonProfileService : IProfileService
                 profile.ServerDirectory,
                 detection,
                 sharedMinecraftDefaults);
+            var recommendation = _launchRecommendationService.Recommend(
+                profile.ServerDirectory,
+                detection.ServerType,
+                detection.MinecraftVersion,
+                detection.RequiredJavaMajorVersion);
+            profile.JavaArguments = JavaArgumentUtilities.ReplaceMemoryArguments(
+                [],
+                recommendation.InitialMemoryMb,
+                recommendation.MaximumMemoryMb);
         }
 
         if (profile.FailurePatterns.Count == 0)
@@ -310,7 +334,7 @@ public sealed class JsonProfileService : IProfileService
         profile.ProfileFormatVersion = CurrentProfileFormatVersion;
     }
 
-    private static void ApplyDetection(ServerProfile profile, ServerFolderDetection detection)
+    private void ApplyDetection(ServerProfile profile, ServerFolderDetection detection)
     {
         profile.ServerJar = detection.ServerJar;
         profile.LaunchScript = detection.LaunchScript;
@@ -332,11 +356,12 @@ public sealed class JsonProfileService : IProfileService
             profile.JavaExecutable = detection.JavaExecutable;
         }
 
-        var recommendedJava = GetRecommendedJavaMajor(detection.MinecraftVersion);
+        var recommendedJava = _javaRuntimeService.GetRecommendedJavaMajor(detection.MinecraftVersion)
+            ?? detection.RequiredJavaMajorVersion;
         profile.JavaVersion = recommendedJava is null ? profile.JavaVersion : $"Java {recommendedJava}";
     }
 
-    private static string SelectJavaExecutable(
+    private string SelectJavaExecutable(
         string folderPath,
         ServerFolderDetection detection,
         ServerProfile? sharedMinecraftDefaults)
@@ -347,8 +372,16 @@ public sealed class JsonProfileService : IProfileService
             return detection.JavaExecutable;
         }
 
-        var discovered = FindJavaExecutable(folderPath);
-        var recommendedJava = GetRecommendedJavaMajor(detection.MinecraftVersion);
+        var recommendedJava = _javaRuntimeService.GetRecommendedJavaMajor(detection.MinecraftVersion)
+            ?? detection.RequiredJavaMajorVersion;
+        var managed = recommendedJava is null
+            ? null
+            : FindManagedJavaExecutable(recommendedJava.Value);
+        if (managed is not null)
+        {
+            return managed;
+        }
+
         if (recommendedJava == 8
             && sharedMinecraftDefaults is not null
             && File.Exists(sharedMinecraftDefaults.JavaExecutable))
@@ -356,16 +389,11 @@ public sealed class JsonProfileService : IProfileService
             return sharedMinecraftDefaults.JavaExecutable;
         }
 
-        return discovered;
-    }
-
-    private static int? GetRecommendedJavaMajor(string minecraftVersion)
-    {
-        if (!Version.TryParse(minecraftVersion, out var version)) return null;
-        if (version >= new Version(1, 20, 5)) return 21;
-        if (version >= new Version(1, 18)) return 17;
-        if (version >= new Version(1, 17)) return 16;
-        return 8;
+        var discovered = FindJavaExecutable(folderPath);
+        var resolved = _javaRuntimeService.ResolveExecutablePath(
+            discovered,
+            recommendedJava is null ? string.Empty : $"Java {recommendedJava}");
+        return resolved;
     }
 
     private static async Task SaveProfileFileAsync(
@@ -434,6 +462,29 @@ public sealed class JsonProfileService : IProfileService
         }
 
         return "java";
+    }
+
+    private static string? FindManagedJavaExecutable(int majorVersion)
+    {
+        var runtimeDirectory = ManagedJavaRuntimeService.GetRuntimeDirectory(majorVersion);
+        if (!Directory.Exists(runtimeDirectory))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Directory.EnumerateFiles(runtimeDirectory, "java.exe", SearchOption.AllDirectories)
+                .FirstOrDefault(path => string.Equals(
+                    new DirectoryInfo(Path.GetDirectoryName(path)!).Name,
+                    "bin",
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or PathTooLongException)
+        {
+            return null;
+        }
     }
 
     private static string CreatePathHash(string folderPath)

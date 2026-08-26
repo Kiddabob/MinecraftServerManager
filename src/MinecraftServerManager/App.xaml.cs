@@ -31,9 +31,11 @@ public partial class App : Application
 
         services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
         services.AddSingleton<IWindowPlacementService, JsonWindowPlacementService>();
-        services.AddSingleton<IProfileService, JsonProfileService>();
         services.AddSingleton<IPlayerPlaytimeService, JsonPlayerPlaytimeService>();
         services.AddSingleton<IJavaRuntimeService, JavaRuntimeService>();
+        services.AddSingleton<IServerLaunchRecommendationService, ServerLaunchRecommendationService>();
+        services.AddSingleton<IManagedJavaRuntimeService, ManagedJavaRuntimeService>();
+        services.AddSingleton<IProfileService, JsonProfileService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerConfigurationService, ServerConfigurationService>();

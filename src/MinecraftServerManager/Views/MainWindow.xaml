@@ -1391,7 +1391,7 @@
                                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Launch settings" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Detection follows this server's own launch script. Settings are saved only to the selected profile."
+                                            Text="The app inspects server JARs directly. Launch scripts are used only as a hint when several JARs are present; their Java path, memory, and extra arguments are ignored."
                                             TextWrapping="Wrap" />
                                     </StackPanel>
 
@@ -1440,6 +1440,11 @@
                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                 Text="{Binding ProfileCompatibilityText, Mode=OneWay}"
                                                 TextWrapping="Wrap" />
+                                            <Button
+                                                HorizontalAlignment="Left"
+                                                Click="InstallRecommendedJava_Click"
+                                                Content="{Binding RecommendedJavaInstallText, Mode=OneWay}"
+                                                Visibility="{Binding IsRecommendedJavaInstallVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                         </StackPanel>
 
                                         <Grid ColumnSpacing="16">
@@ -1496,6 +1501,9 @@
                                             Text="{Binding ProfileEditorStatus, Mode=OneWay}"
                                             TextWrapping="Wrap" />
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                            <Button
+                                                Command="{Binding ApplyRecommendedSettingsCommand}"
+                                                Content="Use recommended settings" />
                                             <Button
                                                 Command="{Binding RedetectProfileCommand}"
                                                 Content="Re-detect" />
@@ -1563,6 +1571,45 @@
                                         SelectedItem="{Binding SelectedAccentOption, Mode=TwoWay}"
                                         SelectionChanged="AppearanceSelectionChanged" />
                                 </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <StackPanel Spacing="16">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Managed Java runtimes" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Optional Eclipse Temurin runtimes are downloaded only when you choose Install. They are kept outside the app update folder and can be shared by all server profiles." />
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding ManagedJavaRuntimeOptions, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="0,8" ColumnSpacing="16">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                                        <TextBlock
+                                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                                            Text="{Binding SupportText}" />
+                                                    </StackPanel>
+                                                    <Button
+                                                        Grid.Column="1"
+                                                        MinWidth="132"
+                                                        VerticalAlignment="Center"
+                                                        Click="InstallManagedJava_Click"
+                                                        Content="{Binding ActionText}"
+                                                        IsEnabled="{Binding CanInstall}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        Style="{StaticResource BodySecondaryTextStyle}"
+                                        Text="Java 16 is offered only for Minecraft 1.17 compatibility. It is an archived, end-of-support runtime; Java 8, 17, and 21 are maintained long-term-support lines." />
+                                </StackPanel>
                             </Border>
 
                             <Border Style="{StaticResource AppCardStyle}">

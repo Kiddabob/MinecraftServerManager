@@ -16,6 +16,8 @@ public sealed class MainViewModel : BindableBase
     private readonly IServerProcessServiceFactory _processServiceFactory;
     private readonly IPlayerPlaytimeService _playerPlaytimeService;
     private readonly IJavaRuntimeService _javaRuntimeService;
+    private readonly IManagedJavaRuntimeService _managedJavaRuntimeService;
+    private readonly IServerLaunchRecommendationService _launchRecommendationService;
     private readonly IAppUpdateService _appUpdateService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly IServerFileService _serverFileService;
@@ -48,6 +50,8 @@ public sealed class MainViewModel : BindableBase
     private string _profileAdditionalJavaArgumentsText = string.Empty;
     private string _profileServerArgumentsText = string.Empty;
     private string _profileCompatibilityText = "Select a profile to review Java compatibility.";
+    private bool _isRecommendedJavaInstallVisible;
+    private string _recommendedJavaInstallText = "Install recommended Java";
     private string _profileEditorStatus = "Profile changes are stored for this Windows account.";
 
     public MainViewModel(
@@ -58,6 +62,8 @@ public sealed class MainViewModel : BindableBase
         IServerProcessServiceFactory processServiceFactory,
         IPlayerPlaytimeService playerPlaytimeService,
         IJavaRuntimeService javaRuntimeService,
+        IManagedJavaRuntimeService managedJavaRuntimeService,
+        IServerLaunchRecommendationService launchRecommendationService,
         IAppUpdateService appUpdateService,
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
@@ -71,6 +77,8 @@ public sealed class MainViewModel : BindableBase
         _processServiceFactory = processServiceFactory;
         _playerPlaytimeService = playerPlaytimeService;
         _javaRuntimeService = javaRuntimeService;
+        _managedJavaRuntimeService = managedJavaRuntimeService;
+        _launchRecommendationService = launchRecommendationService;
         _appUpdateService = appUpdateService;
         _appSettingsService = appSettingsService;
         _serverFileService = serverFileService;
@@ -109,6 +117,9 @@ public sealed class MainViewModel : BindableBase
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
         SaveProfileCommand = new AsyncRelayCommand(SaveProfileAsync, CanEditSelectedProfile);
         RedetectProfileCommand = new AsyncRelayCommand(RedetectProfileAsync, CanEditSelectedProfile);
+        ApplyRecommendedSettingsCommand = new AsyncRelayCommand(
+            ApplyRecommendedSettingsAsync,
+            CanEditSelectedProfile);
 
         _appUpdateService.StatusChanged += OnUpdateStatusChanged;
         _playerPlaytimeService.Changed += OnPlayerPlaytimeChanged;
@@ -125,6 +136,8 @@ public sealed class MainViewModel : BindableBase
     public ObservableCollection<ServerFolderDetection> ProfileLauncherOptions { get; } = [];
 
     public ObservableCollection<JavaRuntimeInfo> JavaRuntimeOptions { get; } = [];
+
+    public ObservableCollection<ManagedJavaRuntimeOption> ManagedJavaRuntimeOptions { get; } = [];
 
     public ServerDashboardViewModel Dashboard { get; }
 
@@ -149,6 +162,8 @@ public sealed class MainViewModel : BindableBase
     public AsyncRelayCommand SaveProfileCommand { get; }
 
     public AsyncRelayCommand RedetectProfileCommand { get; }
+
+    public AsyncRelayCommand ApplyRecommendedSettingsCommand { get; }
 
     public ServerSessionViewModel? SelectedProfile
     {
@@ -254,6 +269,18 @@ public sealed class MainViewModel : BindableBase
     {
         get => _profileCompatibilityText;
         private set => SetProperty(ref _profileCompatibilityText, value);
+    }
+
+    public bool IsRecommendedJavaInstallVisible
+    {
+        get => _isRecommendedJavaInstallVisible;
+        private set => SetProperty(ref _isRecommendedJavaInstallVisible, value);
+    }
+
+    public string RecommendedJavaInstallText
+    {
+        get => _recommendedJavaInstallText;
+        private set => SetProperty(ref _recommendedJavaInstallText, value);
     }
 
     public string ProfileEditorStatus
@@ -399,6 +426,7 @@ public sealed class MainViewModel : BindableBase
             _appUpdateService.StartMonitoring();
 
             var loadedProfiles = await _profileService.LoadAllAsync();
+            RefreshManagedJavaOptions();
             await RefreshJavaRuntimesAsync(loadedProfiles.Select(profile => profile.JavaExecutable));
             await _playerPlaytimeService.InitializeAsync(loadedProfiles);
             PlayerScopeOptions.Add(new PlayerScopeOption("all", "All servers"));
@@ -511,6 +539,64 @@ public sealed class MainViewModel : BindableBase
         ProfileEditorStatus = "Java executable selected. Save the profile to keep this change.";
     }
 
+    public async Task InstallManagedJavaAsync(int majorVersion)
+    {
+        var option = ManagedJavaRuntimeOptions.FirstOrDefault(item => item.MajorVersion == majorVersion);
+        if (option?.IsInstalled == true)
+        {
+            SettingsStatus = $"Java {majorVersion} is already managed by the app.";
+            return;
+        }
+
+        var destination = majorVersion == 16
+            ? "the archived Java 16 JDK (Minecraft 1.17 only)"
+            : $"Java {majorVersion}";
+        SettingsStatus = $"Downloading {destination} from Eclipse Adoptium and verifying it…";
+        ProfileEditorStatus = SettingsStatus;
+        try
+        {
+            var runtime = await _managedJavaRuntimeService.InstallAsync(majorVersion);
+            RefreshManagedJavaOptions();
+            await RefreshJavaRuntimesAsync(
+                Profiles.Select(profile => profile.Profile.JavaExecutable)
+                    .Append(runtime.ExecutablePath));
+
+            var recommendedMajor = _javaRuntimeService.GetRecommendedJavaMajor(
+                SelectedProfileLauncher?.MinecraftVersion
+                    ?? SelectedProfile?.Profile.MinecraftVersion
+                    ?? string.Empty);
+            if (recommendedMajor == majorVersion && CanEditSelectedProfile())
+            {
+                SelectedJavaRuntime = JavaRuntimeOptions.FirstOrDefault(candidate =>
+                    PathsEqual(candidate.ExecutablePath, runtime.ExecutablePath)) ?? runtime;
+                ProfileJavaExecutable = runtime.ExecutablePath;
+                ProfileEditorStatus = $"Java {majorVersion} installed and selected. Save the profile to keep this runtime.";
+            }
+
+            SettingsStatus = $"Java {majorVersion} installed for {option?.MinecraftVersions ?? "compatible Minecraft servers"}.";
+            UpdateProfileCompatibility();
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or IOException or UnauthorizedAccessException
+                or InvalidDataException or JsonException or ArgumentException or OperationCanceledException)
+        {
+            SettingsStatus = $"Java {majorVersion} could not be installed: {exception.Message}";
+            ProfileEditorStatus = SettingsStatus;
+        }
+    }
+
+    public Task InstallRecommendedJavaAsync()
+    {
+        var minecraftVersion = SelectedProfileLauncher?.MinecraftVersion
+            ?? SelectedProfile?.Profile.MinecraftVersion
+            ?? string.Empty;
+        var majorVersion = _javaRuntimeService.GetRecommendedJavaMajor(minecraftVersion);
+        majorVersion ??= SelectedProfileLauncher?.RequiredJavaMajorVersion;
+        return majorVersion is null
+            ? Task.CompletedTask
+            : InstallManagedJavaAsync(majorVersion.Value);
+    }
+
     private async Task LoadProfileEditorAsync(ServerSessionViewModel session)
     {
         var loadVersion = Interlocked.Increment(ref _profileEditorLoadVersion);
@@ -556,9 +642,14 @@ public sealed class MainViewModel : BindableBase
                 session.Profile.JavaVersion);
             SelectedJavaRuntime = JavaRuntimeOptions.FirstOrDefault(runtime =>
                 PathsEqual(runtime.ExecutablePath, resolvedJava));
+            var recommendation = _launchRecommendationService.Recommend(
+                session.ServerDirectory,
+                SelectedProfileLauncher?.ServerType ?? session.Profile.ServerType,
+                SelectedProfileLauncher?.MinecraftVersion ?? session.Profile.MinecraftVersion,
+                SelectedProfileLauncher?.RequiredJavaMajorVersion);
             ProfileEditorStatus = session.IsServerActive
                 ? "Stop this server before changing its launch settings."
-                : "Review the detected launcher, Java runtime, memory, and arguments before saving.";
+                : $"{recommendation.Summary} Review the detected settings before saving.";
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or ArgumentException)
@@ -589,6 +680,17 @@ public sealed class MainViewModel : BindableBase
         {
             JavaRuntimeOptions.Add(runtime);
         }
+    }
+
+    private void RefreshManagedJavaOptions()
+    {
+        ManagedJavaRuntimeOptions.Clear();
+        foreach (var option in _managedJavaRuntimeService.GetOptions())
+        {
+            ManagedJavaRuntimeOptions.Add(option);
+        }
+
+        UpdateRecommendedJavaInstallState();
     }
 
     private void ApplyLauncherToEditor(ServerFolderDetection detection)
@@ -710,6 +812,40 @@ public sealed class MainViewModel : BindableBase
         return session is null ? Task.CompletedTask : LoadProfileEditorAsync(session);
     }
 
+    private Task ApplyRecommendedSettingsAsync()
+    {
+        var session = SelectedProfile;
+        var launcher = SelectedProfileLauncher;
+        if (session is null || launcher is null || !CanEditSelectedProfile())
+        {
+            return Task.CompletedTask;
+        }
+
+        var recommendation = _launchRecommendationService.Recommend(
+            session.ServerDirectory,
+            launcher.ServerType,
+            launcher.MinecraftVersion,
+            launcher.RequiredJavaMajorVersion);
+        ProfileInitialMemoryMb = recommendation.InitialMemoryMb;
+        ProfileMaximumMemoryMb = recommendation.MaximumMemoryMb;
+
+        if (recommendation.JavaMajorVersion is { } javaMajor)
+        {
+            var runtime = JavaRuntimeOptions
+                .Where(candidate => candidate.MajorVersion == javaMajor)
+                .OrderBy(candidate => candidate.Source.StartsWith("Managed", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .FirstOrDefault();
+            if (runtime is not null)
+            {
+                SelectedJavaRuntime = runtime;
+                ProfileJavaExecutable = runtime.ExecutablePath;
+            }
+        }
+
+        ProfileEditorStatus = $"{recommendation.Summary} Save the profile to apply it.";
+        return Task.CompletedTask;
+    }
+
     private bool CanEditSelectedProfile() => SelectedProfile is { IsServerActive: false };
 
     private void UpdateProfileCompatibility()
@@ -719,9 +855,35 @@ public sealed class MainViewModel : BindableBase
             ?? string.Empty;
         var runtime = SelectedJavaRuntime
             ?? _javaRuntimeService.FindKnownRuntime(ProfileJavaExecutable);
-        ProfileCompatibilityText = _javaRuntimeService.GetCompatibilityMessage(
-            minecraftVersion,
-            runtime);
+        var recommendedJava = _javaRuntimeService.GetRecommendedJavaMajor(minecraftVersion)
+            ?? SelectedProfileLauncher?.RequiredJavaMajorVersion;
+        ProfileCompatibilityText = recommendedJava is not null
+            && _javaRuntimeService.GetRecommendedJavaMajor(minecraftVersion) is null
+            ? runtime is null
+                ? $"The selected JAR bytecode requires Java {recommendedJava} or newer. Select a matching runtime before starting."
+                : runtime.MajorVersion < recommendedJava
+                    ? $"Compatibility warning: the selected JAR requires Java {recommendedJava} or newer, but Java {runtime.MajorVersion} is selected."
+                    : $"Java {runtime.MajorVersion} meets the Java {recommendedJava}-or-newer requirement detected from the selected JAR."
+            : _javaRuntimeService.GetCompatibilityMessage(minecraftVersion, runtime);
+        UpdateRecommendedJavaInstallState();
+    }
+
+    private void UpdateRecommendedJavaInstallState()
+    {
+        var minecraftVersion = SelectedProfileLauncher?.MinecraftVersion
+            ?? SelectedProfile?.Profile.MinecraftVersion
+            ?? string.Empty;
+        var majorVersion = _javaRuntimeService.GetRecommendedJavaMajor(minecraftVersion);
+        majorVersion ??= SelectedProfileLauncher?.RequiredJavaMajorVersion;
+        if (majorVersion is null)
+        {
+            IsRecommendedJavaInstallVisible = false;
+            return;
+        }
+
+        RecommendedJavaInstallText = $"Install managed Java {majorVersion} (optional)";
+        IsRecommendedJavaInstallVisible = ManagedJavaRuntimeOptions.Any(option =>
+            option.MajorVersion == majorVersion && !option.IsInstalled);
     }
 
     private void NotifyProfileEditorCanExecuteChanged()
@@ -729,6 +891,7 @@ public sealed class MainViewModel : BindableBase
         OnPropertyChanged(nameof(IsProfileEditorEnabled));
         SaveProfileCommand.NotifyCanExecuteChanged();
         RedetectProfileCommand.NotifyCanExecuteChanged();
+        ApplyRecommendedSettingsCommand.NotifyCanExecuteChanged();
     }
 
     private static bool PathsEqual(string left, string right)
