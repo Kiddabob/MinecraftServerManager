@@ -14,6 +14,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerProfile.cs" Link="Models\ServerProfile.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\JavaRuntimeInfo.cs" Link="Models\JavaRuntimeInfo.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ManagedJavaRuntimeOption.cs" Link="Models\ManagedJavaRuntimeOption.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ManagedJavaInstallProgress.cs" Link="Models\ManagedJavaInstallProgress.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRecommendation.cs" Link="Models\ServerLaunchRecommendation.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRequest.cs" Link="Models\ServerLaunchRequest.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConsoleParseResult.cs" Link="Models\ServerConsoleParseResult.cs" />

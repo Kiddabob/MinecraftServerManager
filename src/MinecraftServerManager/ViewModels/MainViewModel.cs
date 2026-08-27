@@ -31,6 +31,11 @@ public sealed class MainViewModel : BindableBase
     private string _currentFilesPath = string.Empty;
     private string _filesStatus = "Select a profile to browse its server files.";
     private string _settingsStatus = "Settings are stored for this Windows account.";
+    private string _javaRuntimeSummary = "Scanning for Java installations…";
+    private bool _isJavaInstallInProgress;
+    private string _javaInstallProgressText = string.Empty;
+    private double _javaInstallProgressPercent;
+    private bool _isJavaInstallProgressIndeterminate;
     private bool _canNavigateUp;
     private bool _isUpdateReady;
     private AppThemeOption? _selectedThemeOption;
@@ -120,6 +125,9 @@ public sealed class MainViewModel : BindableBase
         ApplyRecommendedSettingsCommand = new AsyncRelayCommand(
             ApplyRecommendedSettingsAsync,
             CanEditSelectedProfile);
+        RefreshJavaRuntimesCommand = new AsyncRelayCommand(
+            RefreshInstalledJavaAsync,
+            () => !IsJavaInstallInProgress);
 
         _appUpdateService.StatusChanged += OnUpdateStatusChanged;
         _playerPlaytimeService.Changed += OnPlayerPlaytimeChanged;
@@ -164,6 +172,8 @@ public sealed class MainViewModel : BindableBase
     public AsyncRelayCommand RedetectProfileCommand { get; }
 
     public AsyncRelayCommand ApplyRecommendedSettingsCommand { get; }
+
+    public AsyncRelayCommand RefreshJavaRuntimesCommand { get; }
 
     public ServerSessionViewModel? SelectedProfile
     {
@@ -527,6 +537,42 @@ public sealed class MainViewModel : BindableBase
         return true;
     }
 
+    public string JavaRuntimeSummary
+    {
+        get => _javaRuntimeSummary;
+        private set => SetProperty(ref _javaRuntimeSummary, value);
+    }
+
+    public bool IsJavaInstallInProgress
+    {
+        get => _isJavaInstallInProgress;
+        private set
+        {
+            if (SetProperty(ref _isJavaInstallInProgress, value))
+            {
+                RefreshJavaRuntimesCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string JavaInstallProgressText
+    {
+        get => _javaInstallProgressText;
+        private set => SetProperty(ref _javaInstallProgressText, value);
+    }
+
+    public double JavaInstallProgressPercent
+    {
+        get => _javaInstallProgressPercent;
+        private set => SetProperty(ref _javaInstallProgressPercent, value);
+    }
+
+    public bool IsJavaInstallProgressIndeterminate
+    {
+        get => _isJavaInstallProgressIndeterminate;
+        private set => SetProperty(ref _isJavaInstallProgressIndeterminate, value);
+    }
+
     public void SetProfileJavaExecutable(string executablePath)
     {
         if (!CanEditSelectedProfile() || string.IsNullOrWhiteSpace(executablePath))
@@ -541,6 +587,12 @@ public sealed class MainViewModel : BindableBase
 
     public async Task InstallManagedJavaAsync(int majorVersion)
     {
+        if (IsJavaInstallInProgress)
+        {
+            SettingsStatus = "Another Java installation is already in progress.";
+            return;
+        }
+
         var option = ManagedJavaRuntimeOptions.FirstOrDefault(item => item.MajorVersion == majorVersion);
         if (option?.IsInstalled == true)
         {
@@ -553,9 +605,14 @@ public sealed class MainViewModel : BindableBase
             : $"Java {majorVersion}";
         SettingsStatus = $"Downloading {destination} from Eclipse Adoptium and verifying it…";
         ProfileEditorStatus = SettingsStatus;
+        IsJavaInstallInProgress = true;
+        JavaInstallProgressPercent = 0;
+        IsJavaInstallProgressIndeterminate = true;
+        JavaInstallProgressText = $"Preparing Java {majorVersion}…";
+        var progress = new Progress<ManagedJavaInstallProgress>(UpdateManagedJavaInstallProgress);
         try
         {
-            var runtime = await _managedJavaRuntimeService.InstallAsync(majorVersion);
+            var runtime = await _managedJavaRuntimeService.InstallAsync(majorVersion, progress);
             RefreshManagedJavaOptions();
             await RefreshJavaRuntimesAsync(
                 Profiles.Select(profile => profile.Profile.JavaExecutable)
@@ -582,6 +639,11 @@ public sealed class MainViewModel : BindableBase
         {
             SettingsStatus = $"Java {majorVersion} could not be installed: {exception.Message}";
             ProfileEditorStatus = SettingsStatus;
+        }
+        finally
+        {
+            IsJavaInstallInProgress = false;
+            IsJavaInstallProgressIndeterminate = false;
         }
     }
 
@@ -680,6 +742,44 @@ public sealed class MainViewModel : BindableBase
         {
             JavaRuntimeOptions.Add(runtime);
         }
+
+        JavaRuntimeSummary = JavaRuntimeOptions.Count switch
+        {
+            0 => "No usable Java installations were detected.",
+            1 => "1 usable Java installation detected.",
+            _ => $"{JavaRuntimeOptions.Count} usable Java installations detected."
+        };
+    }
+
+    private async Task RefreshInstalledJavaAsync()
+    {
+        JavaRuntimeSummary = "Scanning for Java installations…";
+        try
+        {
+            RefreshManagedJavaOptions();
+            await RefreshJavaRuntimesAsync(
+                Profiles.Select(profile => profile.Profile.JavaExecutable));
+            SettingsStatus = JavaRuntimeSummary;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            JavaRuntimeSummary = $"Java installations could not be scanned: {exception.Message}";
+            SettingsStatus = JavaRuntimeSummary;
+        }
+    }
+
+    private void UpdateManagedJavaInstallProgress(ManagedJavaInstallProgress progress)
+    {
+        JavaInstallProgressText = progress.Message;
+        IsJavaInstallProgressIndeterminate = progress.Percent is null;
+        if (progress.Percent is not null)
+        {
+            JavaInstallProgressPercent = progress.Percent.Value;
+        }
+
+        SettingsStatus = progress.Message;
+        ProfileEditorStatus = progress.Message;
     }
 
     private void RefreshManagedJavaOptions()

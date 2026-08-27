@@ -33,6 +33,7 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
 
     public async Task<JavaRuntimeInfo> InstallAsync(
         int majorVersion,
+        IProgress<ManagedJavaInstallProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (!SupportedMajors.Contains(majorVersion))
@@ -51,6 +52,9 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
             {
                 try
                 {
+                    progress?.Report(new(
+                        ManagedJavaInstallStage.Validating,
+                        $"Checking the existing Java {majorVersion} runtime…"));
                     return await DiscoverInstalledRuntimeAsync(existingExecutable, cancellationToken);
                 }
                 catch (InvalidDataException)
@@ -59,6 +63,9 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
                 }
             }
 
+            progress?.Report(new(
+                ManagedJavaInstallStage.Checking,
+                $"Finding the latest compatible Java {majorVersion} package…"));
             var asset = await GetLatestAssetAsync(majorVersion, cancellationToken);
             Directory.CreateDirectory(RuntimesRoot);
             var operationId = Guid.NewGuid().ToString("N");
@@ -66,8 +73,21 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
             var extractionDirectory = Path.Combine(RuntimesRoot, $"extract-{majorVersion}-{operationId}");
             try
             {
-                await DownloadAsync(asset.DownloadUri, archivePath, cancellationToken);
-                await VerifyChecksumAsync(archivePath, asset.Sha256, cancellationToken);
+                await DownloadAsync(
+                    majorVersion,
+                    asset,
+                    archivePath,
+                    progress,
+                    cancellationToken);
+                await VerifyChecksumAsync(
+                    majorVersion,
+                    archivePath,
+                    asset.Sha256,
+                    progress,
+                    cancellationToken);
+                progress?.Report(new(
+                    ManagedJavaInstallStage.Extracting,
+                    $"Extracting Java {majorVersion}…"));
                 Directory.CreateDirectory(extractionDirectory);
                 ZipFile.ExtractToDirectory(archivePath, extractionDirectory);
 
@@ -79,12 +99,24 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
                     Directory.Delete(targetDirectory, recursive: true);
                 }
 
+                progress?.Report(new(
+                    ManagedJavaInstallStage.Installing,
+                    $"Installing Java {majorVersion} for Minecraft Server Manager…"));
                 Directory.Move(javaHome, targetDirectory);
                 var installedExecutable = FindJavaExecutable(targetDirectory)
                     ?? throw new InvalidDataException("Java was extracted but its executable could not be found.");
                 try
                 {
-                    return await DiscoverInstalledRuntimeAsync(installedExecutable, cancellationToken);
+                    progress?.Report(new(
+                        ManagedJavaInstallStage.Validating,
+                        $"Starting Java {majorVersion} once to verify the installation…"));
+                    var runtime = await DiscoverInstalledRuntimeAsync(installedExecutable, cancellationToken);
+                    progress?.Report(new(
+                        ManagedJavaInstallStage.Completed,
+                        $"Java {majorVersion} is installed and ready.",
+                        asset.Size,
+                        asset.Size));
+                    return runtime;
                 }
                 catch (Exception exception) when (
                     exception is InvalidDataException or OperationCanceledException)
@@ -150,43 +182,125 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
             throw new InvalidDataException($"Adoptium did not return a Java {majorVersion} Windows package.");
         }
 
-        string? link;
-        string? checksum;
-        try
+        return ParseAssetMetadata(document.RootElement, majorVersion, imageType);
+    }
+
+    internal static AdoptiumAsset ParseAssetMetadata(
+        JsonElement root,
+        int majorVersion,
+        string? expectedImageType = null)
+    {
+        if (root.ValueKind != JsonValueKind.Array)
         {
-            var binary = document.RootElement[0].GetProperty("binaries")[0];
-            var package = binary.GetProperty("package");
-            link = package.GetProperty("link").GetString();
-            checksum = package.GetProperty("checksum").GetString();
+            throw new InvalidDataException("Adoptium returned invalid Java package metadata.");
         }
-        catch (Exception exception) when (
-            exception is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
+
+        expectedImageType ??= majorVersion == 16 ? "jdk" : "jre";
+        foreach (var release in root.EnumerateArray())
         {
-            throw new InvalidDataException("Adoptium returned incomplete Java package metadata.", exception);
+            foreach (var binary in EnumerateBinaries(release))
+            {
+                if (!MatchesBinary(binary, expectedImageType)
+                    || !binary.TryGetProperty("package", out var package)
+                    || !TryReadPackage(package, out var asset))
+                {
+                    continue;
+                }
+
+                return asset;
+            }
         }
+
+        throw new InvalidDataException(
+            $"Adoptium did not return a complete Java {majorVersion} Windows x64 ZIP package.");
+    }
+
+    private static IEnumerable<JsonElement> EnumerateBinaries(JsonElement release)
+    {
+        if (release.ValueKind != JsonValueKind.Object)
+        {
+            yield break;
+        }
+
+        if (release.TryGetProperty("binary", out var binary)
+            && binary.ValueKind == JsonValueKind.Object)
+        {
+            yield return binary;
+        }
+
+        if (!release.TryGetProperty("binaries", out var binaries)
+            || binaries.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (var arrayBinary in binaries.EnumerateArray())
+        {
+            if (arrayBinary.ValueKind == JsonValueKind.Object)
+            {
+                yield return arrayBinary;
+            }
+        }
+    }
+
+    private static bool MatchesBinary(JsonElement binary, string expectedImageType) =>
+        HasStringValue(binary, "architecture", "x64")
+        && HasStringValue(binary, "os", "windows")
+        && HasStringValue(binary, "image_type", expectedImageType);
+
+    private static bool HasStringValue(JsonElement element, string propertyName, string expected) =>
+        element.TryGetProperty(propertyName, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && string.Equals(value.GetString(), expected, StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryReadPackage(JsonElement package, out AdoptiumAsset asset)
+    {
+        asset = default!;
+        if (package.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var link = package.TryGetProperty("link", out var linkElement)
+            && linkElement.ValueKind == JsonValueKind.String
+            ? linkElement.GetString()
+            : null;
+        var checksum = package.TryGetProperty("checksum", out var checksumElement)
+            && checksumElement.ValueKind == JsonValueKind.String
+            ? checksumElement.GetString()
+            : null;
+        var size = package.TryGetProperty("size", out var sizeElement)
+            && sizeElement.TryGetInt64(out var packageSize)
+                ? packageSize
+                : (long?)null;
         if (!Uri.TryCreate(link, UriKind.Absolute, out var downloadUri)
             || downloadUri.Scheme != Uri.UriSchemeHttps
             || !downloadUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+            || !downloadUri.AbsolutePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
             || checksum is null
             || checksum.Length != 64
             || !checksum.All(Uri.IsHexDigit))
         {
-            throw new InvalidDataException("Adoptium returned invalid download metadata.");
+            return false;
         }
 
-        return new AdoptiumAsset(downloadUri, checksum);
+        asset = new AdoptiumAsset(downloadUri, checksum, size);
+        return true;
     }
 
     private static async Task DownloadAsync(
-        Uri downloadUri,
+        int majorVersion,
+        AdoptiumAsset asset,
         string destinationPath,
+        IProgress<ManagedJavaInstallProgress>? progress,
         CancellationToken cancellationToken)
     {
         using var response = await HttpClient.GetAsync(
-            downloadUri,
+            asset.DownloadUri,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
         response.EnsureSuccessStatusCode();
+        var totalBytes = response.Content.Headers.ContentLength ?? asset.Size;
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var destination = new FileStream(
             destinationPath,
@@ -195,13 +309,37 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
             FileShare.None,
             81920,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await source.CopyToAsync(destination, cancellationToken);
+        var buffer = new byte[81920];
+        long completedBytes = 0;
+        var lastReportedPercent = -1;
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            completedBytes += read;
+            lastReportedPercent = ReportByteProgress(
+                ManagedJavaInstallStage.Downloading,
+                majorVersion,
+                "Downloading",
+                completedBytes,
+                totalBytes,
+                lastReportedPercent,
+                progress);
+        }
+
         await destination.FlushAsync(cancellationToken);
     }
 
     private static async Task VerifyChecksumAsync(
+        int majorVersion,
         string path,
         string expectedSha256,
+        IProgress<ManagedJavaInstallProgress>? progress,
         CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(
@@ -211,11 +349,65 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
             FileShare.Read,
             81920,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[81920];
+        long completedBytes = 0;
+        var lastReportedPercent = -1;
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            hash.AppendData(buffer, 0, read);
+            completedBytes += read;
+            lastReportedPercent = ReportByteProgress(
+                ManagedJavaInstallStage.Verifying,
+                majorVersion,
+                "Verifying",
+                completedBytes,
+                stream.Length,
+                lastReportedPercent,
+                progress);
+        }
+
+        var actual = Convert.ToHexString(hash.GetHashAndReset());
         if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("The Java download failed its SHA-256 integrity check.");
         }
+    }
+
+    private static int ReportByteProgress(
+        ManagedJavaInstallStage stage,
+        int majorVersion,
+        string action,
+        long completedBytes,
+        long? totalBytes,
+        int lastReportedPercent,
+        IProgress<ManagedJavaInstallProgress>? progress)
+    {
+        if (progress is null)
+        {
+            return lastReportedPercent;
+        }
+
+        var percent = totalBytes is > 0
+            ? (int)Math.Clamp(completedBytes * 100L / totalBytes.Value, 0L, 100L)
+            : -1;
+        if (percent >= 0 && percent == lastReportedPercent)
+        {
+            return lastReportedPercent;
+        }
+
+        var completedMegabytes = completedBytes / 1024d / 1024d;
+        var message = totalBytes is > 0
+            ? $"{action} Java {majorVersion}… {percent}% ({completedMegabytes:0.0} of {totalBytes.Value / 1024d / 1024d:0.0} MB)"
+            : $"{action} Java {majorVersion}… {completedMegabytes:0.0} MB";
+        progress.Report(new(stage, message, completedBytes, totalBytes));
+        return percent;
     }
 
     private static string? FindJavaExecutable(string directory)
@@ -288,5 +480,5 @@ public sealed class ManagedJavaRuntimeService : IManagedJavaRuntimeService
         }
     }
 
-    private sealed record AdoptiumAsset(Uri DownloadUri, string Sha256);
+    internal sealed record AdoptiumAsset(Uri DownloadUri, string Sha256, long? Size);
 }

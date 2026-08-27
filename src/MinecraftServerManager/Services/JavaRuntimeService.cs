@@ -14,6 +14,14 @@ public sealed partial class JavaRuntimeService : IJavaRuntimeService
         IEnumerable<string> configuredExecutables,
         CancellationToken cancellationToken = default)
     {
+        foreach (var knownPath in _knownRuntimes.Keys)
+        {
+            if (!File.Exists(knownPath))
+            {
+                _knownRuntimes.TryRemove(knownPath, out _);
+            }
+        }
+
         var candidates = EnumerateCandidatePaths(configuredExecutables)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -257,7 +265,13 @@ public sealed partial class JavaRuntimeService : IJavaRuntimeService
             var major = ParseMajorVersion(version);
             return major is null
                 ? null
-                : new JavaRuntimeInfo(Path.GetFullPath(executablePath), version, major.Value, source);
+                : new JavaRuntimeInfo(
+                    Path.GetFullPath(executablePath),
+                    version,
+                    major.Value,
+                    source,
+                    DetectVendor(versionOutput, executablePath),
+                    DetectExecutableArchitecture(executablePath));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -356,6 +370,86 @@ public sealed partial class JavaRuntimeService : IJavaRuntimeService
             : path.Contains(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase)
                 ? "Installed runtime"
                 : "Configured profile";
+
+    private static string DetectVendor(string versionOutput, string executablePath)
+    {
+        var combined = $"{versionOutput}\n{executablePath}";
+        if (combined.Contains("Temurin", StringComparison.OrdinalIgnoreCase)
+            || combined.Contains("Eclipse Adoptium", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Eclipse Temurin";
+        }
+
+        if (combined.Contains("Microsoft", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Microsoft OpenJDK";
+        }
+
+        if (combined.Contains("Zulu", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Azul Zulu";
+        }
+
+        if (combined.Contains("Corretto", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Amazon Corretto";
+        }
+
+        if (combined.Contains("Liberica", StringComparison.OrdinalIgnoreCase)
+            || combined.Contains("BellSoft", StringComparison.OrdinalIgnoreCase))
+        {
+            return "BellSoft Liberica";
+        }
+
+        if (versionOutput.Contains("Java(TM)", StringComparison.OrdinalIgnoreCase)
+            || executablePath.Contains("\\Java\\", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Oracle Java";
+        }
+
+        return versionOutput.Contains("OpenJDK", StringComparison.OrdinalIgnoreCase)
+            ? "OpenJDK"
+            : "Java runtime";
+    }
+
+    private static string DetectExecutableArchitecture(string executablePath)
+    {
+        try
+        {
+            using var stream = File.OpenRead(executablePath);
+            using var reader = new BinaryReader(stream);
+            if (reader.ReadUInt16() != 0x5A4D || stream.Length < 0x40)
+            {
+                return string.Empty;
+            }
+
+            stream.Position = 0x3C;
+            var peOffset = reader.ReadInt32();
+            if (peOffset < 0 || peOffset > stream.Length - 6)
+            {
+                return string.Empty;
+            }
+
+            stream.Position = peOffset;
+            if (reader.ReadUInt32() != 0x00004550)
+            {
+                return string.Empty;
+            }
+
+            return reader.ReadUInt16() switch
+            {
+                0x014C => "x86",
+                0x8664 => "x64",
+                0xAA64 => "ARM64",
+                _ => string.Empty
+            };
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or EndOfStreamException)
+        {
+            return string.Empty;
+        }
+    }
 
     [GeneratedRegex("(?:java|openjdk) version \\\"(?<version>[^\\\"]+)\\\"", RegexOptions.IgnoreCase)]
     private static partial Regex VersionPattern();

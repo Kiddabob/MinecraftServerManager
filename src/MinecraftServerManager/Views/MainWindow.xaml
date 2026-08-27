@@ -1606,9 +1606,71 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <StackPanel
+                                        Spacing="8"
+                                        Visibility="{Binding IsJavaInstallInProgress, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding JavaInstallProgressText, Mode=OneWay}" />
+                                        <ProgressBar
+                                            AutomationProperties.Name="Java installation progress"
+                                            IsIndeterminate="{Binding IsJavaInstallProgressIndeterminate, Mode=OneWay}"
+                                            Maximum="100"
+                                            Value="{Binding JavaInstallProgressPercent, Mode=OneWay}" />
+                                    </StackPanel>
                                     <TextBlock
                                         Style="{StaticResource BodySecondaryTextStyle}"
                                         Text="Java 16 is offered only for Minecraft 1.17 compatibility. It is an archived, end-of-support runtime; Java 8, 17, and 21 are maintained long-term-support lines." />
+                                    <TextBlock
+                                        Style="{StaticResource BodySecondaryTextStyle}"
+                                        Text="Java 7 and older are not installed automatically. A legacy modpack that genuinely requires one can use a manually selected Java executable in its profile." />
+
+                                    <Border
+                                        Height="1"
+                                        Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock FontWeight="SemiBold" Text="Detected Java installations" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding JavaRuntimeSummary, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <Button
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Command="{Binding RefreshJavaRuntimesCommand}"
+                                            Content="Scan again" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding JavaRuntimeOptions, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="0,4"
+                                                    Padding="12"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                    <StackPanel Spacing="3">
+                                                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                                                        <TextBlock
+                                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                                            Text="{Binding DetailsText}" />
+                                                        <TextBlock
+                                                            FontFamily="Cascadia Mono"
+                                                            FontSize="12"
+                                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                                            Text="{Binding ExecutablePath}"
+                                                            TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                             </Border>
 

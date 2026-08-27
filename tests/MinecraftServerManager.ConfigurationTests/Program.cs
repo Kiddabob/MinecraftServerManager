@@ -1,5 +1,6 @@
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
+using System.Text.Json;
 
 if (args is ["--detect", .. var folders])
 {
@@ -352,6 +353,57 @@ try
     AssertTrue(
         managedOptions.Single(option => option.MajorVersion == 16).MinecraftVersions.Contains("1.17", StringComparison.Ordinal),
         "Java 16 Minecraft version label");
+
+    using var latestAssetDocument = JsonDocument.Parse("""
+        [{
+          "binary": {
+            "architecture": "x64",
+            "image_type": "jre",
+            "os": "windows",
+            "package": {
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "link": "https://github.com/adoptium/temurin17-binaries/releases/download/test/java17.zip",
+              "size": 43780109
+            }
+          }
+        }]
+        """);
+    var latestAsset = ManagedJavaRuntimeService.ParseAssetMetadata(
+        latestAssetDocument.RootElement,
+        17);
+    AssertEqual(43780109L, latestAsset.Size!.Value, "Adoptium latest binary package size");
+    AssertTrue(
+        latestAsset.DownloadUri.AbsolutePath.EndsWith("java17.zip", StringComparison.Ordinal),
+        "Adoptium latest binary response shape");
+
+    using var featureReleaseDocument = JsonDocument.Parse("""
+        [{
+          "binaries": [{
+            "architecture": "x64",
+            "image_type": "jdk",
+            "os": "windows",
+            "package": {
+              "checksum": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "link": "https://github.com/adoptium/temurin16-binaries/releases/download/test/java16.zip",
+              "size": 190000000
+            }
+          }]
+        }]
+        """);
+    var featureReleaseAsset = ManagedJavaRuntimeService.ParseAssetMetadata(
+        featureReleaseDocument.RootElement,
+        16);
+    AssertEqual(190000000L, featureReleaseAsset.Size!.Value, "Adoptium feature release package size");
+    AssertTrue(
+        featureReleaseAsset.DownloadUri.AbsolutePath.EndsWith("java16.zip", StringComparison.Ordinal),
+        "Adoptium feature release binaries response shape");
+
+    var installProgress = new ManagedJavaInstallProgress(
+        ManagedJavaInstallStage.Downloading,
+        "Downloading Java 17",
+        25,
+        100);
+    AssertEqual(25d, installProgress.Percent!.Value, "managed Java progress percentage");
 
     var modernProfile = new ServerProfile
     {

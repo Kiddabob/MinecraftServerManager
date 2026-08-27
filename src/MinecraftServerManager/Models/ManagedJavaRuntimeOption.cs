@@ -13,7 +13,9 @@ public sealed record ManagedJavaRuntimeOption(
         ? $"For {MinecraftVersions} • Long-term support"
         : $"For {MinecraftVersions} • Legacy runtime; no longer supported upstream";
 
-    public string ActionText => IsInstalled ? "Installed" : $"Install Java {MajorVersion}";
+    public string ActionText => IsInstalled
+        ? "Managed copy installed"
+        : $"Install managed Java {MajorVersion}";
 
     public bool CanInstall => !IsInstalled;
 }

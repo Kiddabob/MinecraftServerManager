@@ -25,7 +25,9 @@ Older generic profiles are upgraded on first load and re-detected from their ser
 
 The **Settings** page offers separate optional choices for Java 8 (Minecraft 1.16.5 and older), Java 16 (Minecraft 1.17 only), Java 17 (Minecraft 1.18–1.20.4), and Java 21 (Minecraft 1.20.5 and newer). Java 16 is clearly marked as an archived end-of-support runtime; the other choices use the latest Eclipse Temurin release in that maintained line.
 
-Nothing downloads automatically. Selecting **Install** retrieves the official x64 ZIP metadata from Adoptium, verifies the archive's published SHA-256 checksum, and extracts it under `%LocalAppData%\Kidda.MinecraftServerManager\Runtimes`. This location is outside Velopack's replaceable `current` folder, so app updates do not remove managed Java installations. The one-click Velopack installer cannot display optional component pages, so the same choices are presented safely in Settings and beside an imported profile instead.
+Nothing downloads automatically. Selecting **Install** retrieves the official x64 ZIP metadata from Adoptium, shows download and checksum progress, verifies the archive's published SHA-256 checksum, and extracts it under `%LocalAppData%\Kidda.MinecraftServerManager\Runtimes`. This location is outside Velopack's replaceable `current` folder, so app updates do not remove managed Java installations. Settings also lists every usable managed, system, and profile-specific Java runtime the app detects, including its exact version, vendor, architecture, source, and executable path. The one-click Velopack installer cannot display optional component pages, so the same choices are presented safely in Settings and beside an imported profile instead.
+
+Java 7 and older are not downloaded automatically. Very old vanilla server classes are generally accepted by newer JVMs, while a small number of historical Forge/coremod stacks can depend on legacy Java behaviour. Those exceptional profiles can still point to a user-supplied runtime, but unsupported Java releases are kept out of the normal managed-install choices and should not be exposed to untrusted server code or the public internet.
 
 ## Player playtime
 

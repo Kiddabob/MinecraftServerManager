@@ -8,5 +8,6 @@ public interface IManagedJavaRuntimeService
 
     Task<JavaRuntimeInfo> InstallAsync(
         int majorVersion,
+        IProgress<ManagedJavaInstallProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
