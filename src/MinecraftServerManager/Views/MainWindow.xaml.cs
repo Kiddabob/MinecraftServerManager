@@ -175,6 +175,7 @@ public sealed partial class MainWindow : Window
         PlayersPage.Visibility = destination == "players" ? Visibility.Visible : Visibility.Collapsed;
         FilesPage.Visibility = destination == "files" ? Visibility.Visible : Visibility.Collapsed;
         ProfilesPage.Visibility = destination == "profiles" ? Visibility.Visible : Visibility.Collapsed;
+        ModpacksPage.Visibility = destination == "modpacks" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = destination == "settings" ? Visibility.Visible : Visibility.Collapsed;
 
         if (destination == "files")
@@ -190,6 +191,83 @@ public sealed partial class MainWindow : Window
         if (destination == "console")
         {
             ScrollConsoleToLatest();
+        }
+
+        if (destination == "modpacks")
+        {
+            ViewModel.Modpacks.EnsureLoaded();
+        }
+    }
+
+    private void ModpackSearchTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Enter || !ViewModel.Modpacks.SearchCommand.CanExecute(null))
+        {
+            return;
+        }
+
+        args.Handled = true;
+        ViewModel.Modpacks.SearchCommand.Execute(null);
+    }
+
+    private async void ImportModpackToManagedInstances_Click(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Modpacks.CanImport)
+        {
+            return;
+        }
+
+        await ImportModpackAndOpenProfileAsync(
+            ViewModel.Modpacks.ImportToManagedInstancesAsync);
+    }
+
+    private async void ImportModpackToCustomFolder_Click(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Modpacks.CanImport)
+        {
+            return;
+        }
+
+        var picker = new FolderPicker(AppWindow.Id)
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            ViewMode = PickerViewMode.List,
+            CommitButtonText = "Create server folder here"
+        };
+
+        var location = await picker.PickSingleFolderAsync();
+        if (location is null)
+        {
+            return;
+        }
+
+        await ImportModpackAndOpenProfileAsync(
+            () => ViewModel.Modpacks.ImportAsync(location.Path));
+    }
+
+    private async Task ImportModpackAndOpenProfileAsync(
+        Func<Task<ModpackImportResult?>> import)
+    {
+        try
+        {
+            var result = await import();
+            if (result is not null)
+            {
+                await ViewModel.AcceptProfileImportAsync(result.ProfileImport);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "The server pack was installed",
+                Content = $"Its profile was saved, but the app could not open it immediately: {exception.Message}\n\nRestarting the app will load the saved profile.",
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close
+            };
+            await dialog.ShowAsync();
         }
     }
 

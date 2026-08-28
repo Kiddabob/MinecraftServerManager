@@ -15,7 +15,11 @@
     <Compile Include="..\..\src\MinecraftServerManager\Models\JavaRuntimeInfo.cs" Link="Models\JavaRuntimeInfo.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ManagedJavaRuntimeOption.cs" Link="Models\ManagedJavaRuntimeOption.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ManagedJavaInstallProgress.cs" Link="Models\ManagedJavaInstallProgress.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ModpackCatalogModels.cs" Link="Models\ModpackCatalogModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ModpackImportModels.cs" Link="Models\ModpackImportModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ProfileImportResult.cs" Link="Models\ProfileImportResult.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRecommendation.cs" Link="Models\ServerLaunchRecommendation.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerBaselineModels.cs" Link="Models\ServerBaselineModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRequest.cs" Link="Models\ServerLaunchRequest.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConsoleParseResult.cs" Link="Models\ServerConsoleParseResult.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConsoleSignal.cs" Link="Models\ServerConsoleSignal.cs" />
@@ -34,6 +38,20 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\JavaRuntimeService.cs" Link="Services\JavaRuntimeService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IManagedJavaRuntimeService.cs" Link="Services\IManagedJavaRuntimeService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ManagedJavaRuntimeService.cs" Link="Services\ManagedJavaRuntimeService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackCatalogService.cs" Link="Services\IModpackCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthModpackCatalogService.cs" Link="Services\ModrinthModpackCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackInstallLocationService.cs" Link="Services\IModpackInstallLocationService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModpackInstallLocationService.cs" Link="Services\ModpackInstallLocationService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IProfileService.cs" Link="Services\IProfileService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackImportService.cs" Link="Services\IModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthModpackImportService.cs" Link="Services\ModrinthModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerBaselineInstaller.cs" Link="Services\IServerBaselineInstaller.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\FabricServerBaselineInstaller.cs" Link="Services\FabricServerBaselineInstaller.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\VanillaServerBaselineInstaller.cs" Link="Services\VanillaServerBaselineInstaller.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\JavaServerInstallerUtilities.cs" Link="Services\JavaServerInstallerUtilities.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ForgeServerBaselineInstaller.cs" Link="Services\ForgeServerBaselineInstaller.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\NeoForgeServerBaselineInstaller.cs" Link="Services\NeoForgeServerBaselineInstaller.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\QuiltServerBaselineInstaller.cs" Link="Services\QuiltServerBaselineInstaller.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerLaunchRecommendationService.cs" Link="Services\IServerLaunchRecommendationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerLaunchRecommendationService.cs" Link="Services\ServerLaunchRecommendationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerLaunchRequestFactory.cs" Link="Services\IServerLaunchRequestFactory.cs" />

@@ -72,6 +72,7 @@ public sealed class MainViewModel : BindableBase
         IAppUpdateService appUpdateService,
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
+        ModpackCatalogViewModel modpacks,
         ServerDashboardViewModel dashboard,
         IUiDispatcher uiDispatcher)
     {
@@ -88,6 +89,7 @@ public sealed class MainViewModel : BindableBase
         _appSettingsService = appSettingsService;
         _serverFileService = serverFileService;
         _uiDispatcher = uiDispatcher;
+        Modpacks = modpacks;
         Dashboard = dashboard;
 
         ThemeOptions =
@@ -148,6 +150,8 @@ public sealed class MainViewModel : BindableBase
     public ObservableCollection<ManagedJavaRuntimeOption> ManagedJavaRuntimeOptions { get; } = [];
 
     public ServerDashboardViewModel Dashboard { get; }
+
+    public ModpackCatalogViewModel Modpacks { get; }
 
     public IReadOnlyList<AppThemeOption> ThemeOptions { get; }
 
@@ -479,28 +483,7 @@ public sealed class MainViewModel : BindableBase
         try
         {
             var result = await _profileService.ImportFolderAsync(folderPath);
-            ProfileImportStatus = result.Message;
-            if (result.Profile is null)
-            {
-                return;
-            }
-
-            var profile = Profiles.FirstOrDefault(item => item.Id == result.Profile.Id);
-            if (profile is null)
-            {
-                await _playerPlaytimeService.InitializeAsync([result.Profile]);
-                profile = AddProfile(result.Profile);
-                PlayerScopeOptions.Add(new PlayerScopeOption(result.Profile.Id, result.Profile.DisplayName));
-                OnPropertyChanged(nameof(ProfileCountText));
-            }
-
-            profile.IsSelectedForBulk = true;
-            SetSelectedProfileWithoutCallback(profile);
-            CurrentFilesPath = profile.ServerDirectory;
-            await Dashboard.SelectProfileAsync(profile);
-            await LoadProfileEditorAsync(profile);
-            await RefreshServerFilesAsync();
-            await PersistPreferencesAsync("Profile selection saved.");
+            await AcceptProfileImportAsync(result);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or ArgumentException)
@@ -553,6 +536,33 @@ public sealed class MainViewModel : BindableBase
                 RefreshJavaRuntimesCommand.NotifyCanExecuteChanged();
             }
         }
+    }
+
+    public async Task AcceptProfileImportAsync(ProfileImportResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ProfileImportStatus = result.Message;
+        if (result.Profile is null)
+        {
+            return;
+        }
+
+        var profile = Profiles.FirstOrDefault(item => item.Id == result.Profile.Id);
+        if (profile is null)
+        {
+            await _playerPlaytimeService.InitializeAsync([result.Profile]);
+            profile = AddProfile(result.Profile);
+            PlayerScopeOptions.Add(new PlayerScopeOption(result.Profile.Id, result.Profile.DisplayName));
+            OnPropertyChanged(nameof(ProfileCountText));
+        }
+
+        profile.IsSelectedForBulk = true;
+        SetSelectedProfileWithoutCallback(profile);
+        CurrentFilesPath = profile.ServerDirectory;
+        await Dashboard.SelectProfileAsync(profile);
+        await LoadProfileEditorAsync(profile);
+        await RefreshServerFilesAsync();
+        await PersistPreferencesAsync("Profile selection saved.");
     }
 
     public string JavaInstallProgressText

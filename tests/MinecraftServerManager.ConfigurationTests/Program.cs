@@ -333,6 +333,16 @@ try
     AssertTrue(replacedMemory.SequenceEqual(["-Xms2G", "-Xmx6G", "-server", "-Dexample=true"]), "memory argument replacement");
 
     var runtimeService = new JavaRuntimeService();
+    var installLocationService = new ModpackInstallLocationService(
+        Path.Combine(testRoot, "local-app-data"));
+    var managedInstancesDirectory = installLocationService.EnsureManagedInstancesDirectory();
+    AssertEqual(
+        Path.Combine(testRoot, "local-app-data", "Kidda.MinecraftServerManager", "Instances"),
+        managedInstancesDirectory,
+        "app-managed instances location");
+    AssertTrue(
+        Directory.Exists(managedInstancesDirectory),
+        "app-managed instances directory creation");
     AssertEqual(8, runtimeService.GetRecommendedJavaMajor("1.16.5")!.Value, "Java 8 baseline");
     AssertEqual(16, runtimeService.GetRecommendedJavaMajor("1.17")!.Value, "Java 16 baseline");
     AssertEqual(17, runtimeService.GetRecommendedJavaMajor("1.18.2")!.Value, "Java 17 baseline");
@@ -404,6 +414,392 @@ try
         25,
         100);
     AssertEqual(25d, installProgress.Percent!.Value, "managed Java progress percentage");
+
+    using var modpackSearchDocument = JsonDocument.Parse("""
+        {
+          "hits": [{
+            "project_id": "AABBCCDD",
+            "slug": "example-pack",
+            "title": "Example Pack",
+            "description": "A server-capable example pack.",
+            "author": "PackAuthor",
+            "downloads": 12345,
+            "icon_url": "https://cdn.modrinth.com/data/AABBCCDD/icon.png",
+            "versions": ["1.20.1"],
+            "display_categories": ["forge", "adventure"],
+            "environment": ["client_and_server"]
+          }],
+          "offset": 0,
+          "limit": 20,
+          "total_hits": 1
+        }
+        """);
+    var modpackSearch = ModrinthModpackCatalogService.ParseSearchResponse(
+        modpackSearchDocument.RootElement);
+    AssertEqual(1, modpackSearch.TotalHits, "Modrinth search total");
+    AssertEqual("Example Pack", modpackSearch.Items.Single().Title, "Modrinth search title");
+    AssertTrue(
+        modpackSearch.Items.Single().IconUrl.StartsWith("https://cdn.modrinth.com/", StringComparison.Ordinal),
+        "Modrinth icon host validation");
+
+    var modpackVersionsJson = """
+        [{
+          "id": "VVVVVVVV",
+          "project_id": "AABBCCDD",
+          "name": "Example Pack 1.0",
+          "version_number": "1.0.0",
+          "version_type": "release",
+          "date_published": "2026-08-01T12:00:00Z",
+          "game_versions": ["1.20.1"],
+          "loaders": ["forge"],
+          "environment": "client_and_server",
+          "files": [{
+            "hashes": {
+              "sha1": "dddddddddddddddddddddddddddddddddddddddd",
+              "sha512": "__SHA512__"
+            },
+            "url": "https://cdn.modrinth.com/data/AABBCCDD/versions/VVVVVVVV/example.mrpack",
+            "filename": "example.mrpack",
+            "primary": true,
+            "size": 500000
+          }]
+        }]
+        """.Replace("__SHA512__", new string('c', 128), StringComparison.Ordinal);
+    using var modpackVersionsDocument = JsonDocument.Parse(modpackVersionsJson);
+    var modpackVersions = ModrinthModpackCatalogService.ParseVersionsResponse(
+        modpackVersionsDocument.RootElement);
+    var modpackVersion = modpackVersions.Single();
+    AssertTrue(modpackVersion.IsServerCompatible, "Modrinth server environment");
+    AssertEqual("forge", modpackVersion.Loaders.Single(), "Modrinth loader metadata");
+    AssertEqual("example.mrpack", modpackVersion.PackFile!.FileName, "Modrinth package selection");
+    AssertEqual(500000L, modpackVersion.PackFile.Size, "Modrinth package size");
+
+    var unconfirmedServerVersion = modpackVersion with { Environment = string.Empty };
+    AssertTrue(
+        !unconfirmedServerVersion.IsServerCompatible,
+        "Modrinth versions without confirmed server support are rejected");
+    AssertTrue(
+        (modpackVersion with { Environment = "client_only_server_optional" }).IsServerCompatible,
+        "Modrinth optional server environment");
+
+    var packManifestJson = """
+        {
+          "formatVersion": 1,
+          "game": "minecraft",
+          "versionId": "example-pack-1.0",
+          "name": "Example Pack",
+          "dependencies": {
+            "minecraft": "1.20.1",
+            "forge": "47.3.0"
+          },
+          "files": [{
+            "path": "mods/server-mod.jar",
+            "hashes": {
+              "sha1": "__SHA1__",
+              "sha512": "__SHA512__"
+            },
+            "env": {
+              "client": "required",
+              "server": "required"
+            },
+            "downloads": ["https://cdn.modrinth.com/data/AABBCCDD/versions/VVVVVVVV/server-mod.jar"],
+            "fileSize": 125000
+          }, {
+            "path": "mods/client-only.jar",
+            "hashes": {
+              "sha1": "__SHA1__",
+              "sha512": "__SHA512__"
+            },
+            "env": {
+              "client": "required",
+              "server": "unsupported"
+            },
+            "downloads": ["https://cdn.modrinth.com/data/AABBCCDD/versions/VVVVVVVV/client-only.jar"],
+            "fileSize": 25000
+          }]
+        }
+        """
+        .Replace("__SHA1__", new string('a', 40), StringComparison.Ordinal)
+        .Replace("__SHA512__", new string('b', 128), StringComparison.Ordinal);
+    using var packManifestDocument = JsonDocument.Parse(packManifestJson);
+    var packManifest = ModrinthModpackImportService.ParseManifest(packManifestDocument.RootElement);
+    AssertEqual("1.20.1", packManifest.Dependencies["minecraft"], ".mrpack Minecraft dependency");
+    AssertEqual("47.3.0", packManifest.Dependencies["forge"], ".mrpack Forge dependency");
+    AssertEqual(2, packManifest.Files.Count, ".mrpack file count");
+    AssertEqual("unsupported", packManifest.Files[1].ServerSide, ".mrpack client-only filtering");
+    var importedProfile = new ServerProfile
+    {
+        JavaVersion = "Java 8",
+        JavaExecutable = @"C:\managed-java-8\bin\java.exe"
+    };
+    ModrinthModpackImportService.ApplyManifestMetadata(
+        importedProfile,
+        modpackSearch.Items.Single(),
+        modpackVersion,
+        packManifest,
+        new KeyValuePair<string, string>("forge", "47.3.0"),
+        17,
+        @"C:\managed-java-17\bin\java.exe");
+    AssertEqual("Java 17", importedProfile.JavaVersion, "modpack profile recommended Java label");
+    AssertEqual(
+        @"C:\managed-java-17\bin\java.exe",
+        importedProfile.JavaExecutable,
+        "modpack profile replaces an incompatible detected Java executable");
+    AssertEqual(
+        "Example Pack 1.0.0",
+        ModrinthModpackImportService.CreateServerFolderName("Example Pack", "1.0.0"),
+        "modpack server folder naming");
+    AssertThrows<InvalidDataException>(
+        () => ModrinthModpackImportService.ResolveSafePath(testRoot, "../escape.jar"),
+        ".mrpack path traversal rejection");
+    var conflictingLoaderJson = packManifestJson.Replace(
+        "\"forge\": \"47.3.0\"",
+        "\"forge\": \"47.3.0\", \"fabric-loader\": \"0.16.0\"",
+        StringComparison.Ordinal);
+    using var conflictingLoaderDocument = JsonDocument.Parse(conflictingLoaderJson);
+    AssertThrows<InvalidDataException>(
+        () => ModrinthModpackImportService.ParseManifest(conflictingLoaderDocument.RootElement),
+        ".mrpack conflicting loader rejection");
+
+    var overridePackagePath = Path.Combine(testRoot, "override-order.mrpack");
+    using (var overrideArchive = System.IO.Compression.ZipFile.Open(
+        overridePackagePath,
+        System.IO.Compression.ZipArchiveMode.Create))
+    {
+        var normalOverride = overrideArchive.CreateEntry("overrides/config/example.cfg");
+        await using (var writer = new StreamWriter(normalOverride.Open()))
+        {
+            await writer.WriteAsync("normal");
+        }
+
+        var serverOverride = overrideArchive.CreateEntry("server-overrides/config/example.cfg");
+        await using (var writer = new StreamWriter(serverOverride.Open()))
+        {
+            await writer.WriteAsync("server");
+        }
+    }
+
+    var overrideDestination = Path.Combine(testRoot, "override-destination");
+    Directory.CreateDirectory(overrideDestination);
+    using (var overrideArchive = System.IO.Compression.ZipFile.OpenRead(overridePackagePath))
+    {
+        await ModrinthModpackImportService.ExtractLayerAsync(
+            overrideArchive,
+            "overrides/",
+            overrideDestination,
+            null,
+            CancellationToken.None);
+        await ModrinthModpackImportService.ExtractLayerAsync(
+            overrideArchive,
+            "server-overrides/",
+            overrideDestination,
+            null,
+            CancellationToken.None);
+    }
+
+    AssertEqual(
+        "server",
+        await File.ReadAllTextAsync(Path.Combine(overrideDestination, "config", "example.cfg")),
+        ".mrpack server override layer order");
+
+    using var fabricInstallerDocument = JsonDocument.Parse("""
+        [
+          { "version": "1.0.4", "stable": false },
+          { "version": "1.0.3", "stable": true }
+        ]
+        """);
+    AssertEqual(
+        "1.0.3",
+        FabricServerBaselineInstaller.ParseStableInstallerVersion(fabricInstallerDocument.RootElement),
+        "stable Fabric installer selection");
+    AssertTrue(
+        new FabricServerBaselineInstaller().CanInstall("fabric-loader"),
+        "Fabric baseline routing");
+    var fabricLauncherPath = Path.Combine(testRoot, "fabric-server-launch.jar");
+    CreateJar(
+        fabricLauncherPath,
+        "net.fabricmc.installer.ServerLauncher",
+        ["net/fabricmc/installer/ServerLauncher.class"]);
+    FabricServerBaselineInstaller.ValidateLauncherJar(fabricLauncherPath);
+
+    using var mojangManifestDocument = JsonDocument.Parse("""
+        {
+          "versions": [{
+            "id": "1.20.1",
+            "url": "https://piston-meta.mojang.com/v1/packages/metadata/1.20.1.json",
+            "sha1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }]
+        }
+        """);
+    var mojangMetadataReference = VanillaServerBaselineInstaller.ParseVersionMetadataReference(
+        mojangManifestDocument.RootElement,
+        "1.20.1");
+    AssertEqual(
+        "piston-meta.mojang.com",
+        mojangMetadataReference.Uri.Host,
+        "Mojang metadata host validation");
+    using var mojangVersionDocument = JsonDocument.Parse("""
+        {
+          "downloads": {
+            "server": {
+              "url": "https://piston-data.mojang.com/v1/objects/server/server.jar",
+              "sha1": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "size": 50000000
+            }
+          }
+        }
+        """);
+    var mojangServerDownload = VanillaServerBaselineInstaller.ParseServerDownload(
+        mojangVersionDocument.RootElement);
+    AssertEqual(50000000L, mojangServerDownload.Size, "Mojang server JAR size metadata");
+    AssertTrue(
+        new VanillaServerBaselineInstaller().CanInstall("minecraft"),
+        "Vanilla baseline routing");
+    var vanillaServerPath = Path.Combine(testRoot, "minecraft_server.1.20.1.jar");
+    CreateJar(
+        vanillaServerPath,
+        "net.minecraft.server.Main",
+        ["net/minecraft/server/Main.class"]);
+    VanillaServerBaselineInstaller.ValidateServerJar(vanillaServerPath);
+
+    var mavenVersions = JavaServerInstallerUtilities.ParseMavenVersions("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <metadata>
+          <versioning>
+            <versions>
+              <version>1.7.10-10.13.4.1614-1.7.10</version>
+              <version>1.20.1-47.3.0</version>
+              <version>47.3.0</version>
+              <version>21.4.111-beta</version>
+            </versions>
+          </versioning>
+        </metadata>
+        """);
+    AssertEqual(
+        "1.20.1-47.3.0",
+        JavaServerInstallerUtilities.ResolveForgeArtifactVersion(
+            mavenVersions,
+            "1.20.1",
+            "47.3.0"),
+        "modern Forge Maven coordinate");
+    AssertEqual(
+        "1.20.1-47.3.0",
+        JavaServerInstallerUtilities.ResolveForgeArtifactVersion(
+            mavenVersions,
+            "1.20.1",
+            "1.20.1-47.3.0"),
+        "fully qualified Forge Maven coordinate");
+    AssertEqual(
+        "1.7.10-10.13.4.1614-1.7.10",
+        JavaServerInstallerUtilities.ResolveForgeArtifactVersion(
+            mavenVersions,
+            "1.7.10",
+            "10.13.4.1614"),
+        "legacy Forge Maven coordinate");
+    AssertEqual(
+        "21.4.111-beta",
+        JavaServerInstallerUtilities.ResolveExactArtifactVersion(
+            mavenVersions,
+            "NeoForge",
+            "21.4.111-beta"),
+        "NeoForge Maven coordinate");
+    var installerSourcePath = Path.Combine(testRoot, "example-installer-source.jar");
+    CreateJar(
+        installerSourcePath,
+        "example.Installer",
+        ["example/Installer.class"]);
+    var installerBytes = await File.ReadAllBytesAsync(installerSourcePath);
+    var installerHash = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(installerBytes));
+    var verifiedInstallerPath = Path.Combine(testRoot, "example-installer-verified.jar");
+    await using (var installerStream = new MemoryStream(installerBytes, writable: false))
+    {
+        await JavaServerInstallerUtilities.WriteVerifiedInstallerAsync(
+            installerStream,
+            verifiedInstallerPath,
+            installerHash,
+            CancellationToken.None);
+    }
+
+    using (var exclusiveInstaller = new FileStream(
+        verifiedInstallerPath,
+        FileMode.Open,
+        FileAccess.ReadWrite,
+        FileShare.None))
+    {
+        AssertTrue(
+            exclusiveInstaller.Length > 0,
+            "verified installer stream released before JAR validation");
+    }
+
+    AssertTrue(new ForgeServerBaselineInstaller(runtimeService).CanInstall("forge"), "Forge baseline routing");
+    AssertTrue(
+        new NeoForgeServerBaselineInstaller(runtimeService).CanInstall("neoforge"),
+        "NeoForge baseline routing");
+    using var quiltInstallerDocument = JsonDocument.Parse("""
+        [{
+          "version": "0.15.1",
+          "url": "https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/0.15.1/quilt-installer-0.15.1.jar",
+          "hashes": {
+            "sha256": "2bd88a1429eaeb3ce3f5e9c49c591c551012937b35bf332ca277b4d93d70408d"
+          }
+        }]
+        """);
+    var quiltInstaller = QuiltServerBaselineInstaller.ParseInstallerArtifact(
+        quiltInstallerDocument.RootElement);
+    AssertEqual("0.15.1", quiltInstaller.Version, "Quilt installer metadata version");
+    AssertEqual("maven.quiltmc.org", quiltInstaller.DownloadUri.Host, "Quilt installer host validation");
+    using var untrustedQuiltInstallerDocument = JsonDocument.Parse("""
+        [{
+          "version": "0.15.1",
+          "url": "https://example.com/quilt-installer-0.15.1.jar",
+          "hashes": {
+            "sha256": "2bd88a1429eaeb3ce3f5e9c49c591c551012937b35bf332ca277b4d93d70408d"
+          }
+        }]
+        """);
+    AssertThrows<InvalidDataException>(
+        () => QuiltServerBaselineInstaller.ParseInstallerArtifact(
+            untrustedQuiltInstallerDocument.RootElement),
+        "Quilt installer host rejection");
+    using var quiltLoaderDocument = JsonDocument.Parse("""
+        [{ "loader": { "version": "0.20.0-beta.9" } }]
+        """);
+    QuiltServerBaselineInstaller.ValidateLoaderVersion(
+        quiltLoaderDocument.RootElement,
+        "0.20.0-beta.9");
+    AssertThrows<InvalidDataException>(
+        () => QuiltServerBaselineInstaller.ValidateLoaderVersion(
+            quiltLoaderDocument.RootElement,
+            "0.19.0"),
+        "Quilt exact loader validation");
+    AssertTrue(
+        new QuiltServerBaselineInstaller(runtimeService).CanInstall("quilt-loader"),
+        "Quilt baseline routing");
+
+    var quiltMergeSource = Path.Combine(testRoot, "quilt-merge-source");
+    var quiltMergeDestination = Path.Combine(testRoot, "quilt-merge-destination");
+    Directory.CreateDirectory(Path.Combine(quiltMergeSource, "libraries"));
+    Directory.CreateDirectory(Path.Combine(quiltMergeDestination, "libraries"));
+    File.WriteAllText(Path.Combine(quiltMergeSource, "libraries", "same.jar"), "same");
+    File.WriteAllText(Path.Combine(quiltMergeDestination, "libraries", "same.jar"), "same");
+    File.WriteAllText(Path.Combine(quiltMergeSource, "quilt-server-launch.jar"), "launcher");
+    QuiltServerBaselineInstaller.MergeInstalledServer(quiltMergeSource, quiltMergeDestination);
+    AssertTrue(
+        File.Exists(Path.Combine(quiltMergeDestination, "quilt-server-launch.jar")),
+        "Quilt staged output merge");
+
+    var quiltConflictSource = Path.Combine(testRoot, "quilt-conflict-source");
+    var quiltConflictDestination = Path.Combine(testRoot, "quilt-conflict-destination");
+    Directory.CreateDirectory(quiltConflictSource);
+    Directory.CreateDirectory(quiltConflictDestination);
+    File.WriteAllText(Path.Combine(quiltConflictSource, "server.jar"), "generated");
+    File.WriteAllText(Path.Combine(quiltConflictDestination, "server.jar"), "pack");
+    AssertThrows<InvalidDataException>(
+        () => QuiltServerBaselineInstaller.MergeInstalledServer(
+            quiltConflictSource,
+            quiltConflictDestination),
+        "Quilt conflicting pack file protection");
 
     var modernProfile = new ServerProfile
     {
@@ -496,6 +892,22 @@ static void AssertEqual<T>(T expected, T actual, string description)
         throw new InvalidOperationException(
             $"Assertion failed: {description}. Expected {expected}; received {actual}.");
     }
+}
+
+static void AssertThrows<TException>(Action action, string description)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException(
+        $"Assertion failed: {description}. Expected {typeof(TException).Name}.");
 }
 
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string description)
