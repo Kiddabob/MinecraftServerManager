@@ -71,6 +71,11 @@
                         <FontIcon Glyph="&#xE8B7;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Modpacks" Tag="modpacks">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8F1;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Profiles" Tag="profiles">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8D4;" />
@@ -1234,6 +1239,260 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{Binding FilesStatus, Mode=OneWay}" />
                     </Grid>
+
+                    <ScrollViewer
+                        x:Name="ModpacksPage"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        Visibility="Collapsed">
+                        <StackPanel
+                            MaxWidth="1120"
+                            Margin="32,28,32,40"
+                            HorizontalAlignment="Stretch"
+                            Spacing="20">
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Find a modpack" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Search a provider catalogue and review the exact Minecraft, loader, Java, and server-package requirements before creating a profile." />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox
+                                            x:Name="ModpackSearchTextBox"
+                                            AutomationProperties.Name="Search Modrinth modpacks"
+                                            KeyDown="ModpackSearchTextBox_KeyDown"
+                                            PlaceholderText="Search Modrinth, for example: Tekkit, Create, SkyFactory"
+                                            Text="{Binding Modpacks.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Command="{Binding Modpacks.SearchCommand}"
+                                            Content="Search"
+                                            Style="{StaticResource AppAccentButtonStyle}" />
+                                    </Grid>
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressRing
+                                            Width="18"
+                                            Height="18"
+                                            IsActive="{Binding Modpacks.IsBusy, Mode=OneWay}"
+                                            Visibility="{Binding Modpacks.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Modpacks.StatusText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Provider: Modrinth" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*" MinWidth="420" />
+                                    <ColumnDefinition Width="2*" MinWidth="320" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Style="{StaticResource AppCardStyle}">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Search results" />
+                                        <ListView
+                                            Height="560"
+                                            ItemsSource="{Binding Modpacks.Results, Mode=OneWay}"
+                                            SelectedItem="{Binding Modpacks.SelectedPack, Mode=TwoWay}"
+                                            SelectionMode="Single">
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid MinHeight="104" Padding="8" ColumnSpacing="12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="56" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border
+                                                            Width="52"
+                                                            Height="52"
+                                                            VerticalAlignment="Top"
+                                                            Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                            CornerRadius="8">
+                                                            <Image
+                                                                Stretch="UniformToFill"
+                                                                Source="{Binding IconUrl}" />
+                                                        </Border>
+                                                        <StackPanel Grid.Column="1" Spacing="3">
+                                                            <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding MetadataText}" />
+                                                            <TextBlock
+                                                                MaxLines="2"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding Description}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Foreground="{StaticResource AppAccentBrush}"
+                                                                Text="{Binding VersionSummary}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1" Style="{StaticResource AppCardStyle}">
+                                    <StackPanel Spacing="14">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="52" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Width="48"
+                                                Height="48"
+                                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                CornerRadius="8">
+                                                <Image
+                                                    Stretch="UniformToFill"
+                                                    Source="{Binding Modpacks.SelectedPack.IconUrl, Mode=OneWay}" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Spacing="3">
+                                                <TextBlock
+                                                    FontSize="20"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding Modpacks.SelectedPack.Title, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.SelectedPack.MetadataText, Mode=OneWay}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Modpacks.SelectedPack.Description, Mode=OneWay}" />
+                                        <TextBlock
+                                            Foreground="{StaticResource AppAccentBrush}"
+                                            Text="{Binding Modpacks.SelectedPack.CategorySummary, Mode=OneWay}" />
+
+                                        <StackPanel Spacing="5">
+                                            <TextBlock FontWeight="SemiBold" Text="Published version" />
+                                            <ComboBox
+                                                HorizontalAlignment="Stretch"
+                                                DisplayMemberPath="DisplayName"
+                                                ItemsSource="{Binding Modpacks.Versions, Mode=OneWay}"
+                                                PlaceholderText="Select a version"
+                                                SelectedItem="{Binding Modpacks.SelectedVersion, Mode=TwoWay}" />
+                                        </StackPanel>
+
+                                        <Border
+                                            Padding="12"
+                                            Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding Modpacks.SelectedVersion.MinecraftVersionsText, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.SelectedVersion.LoadersText, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.SelectedVersion.ServerCompatibilityText, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.JavaRecommendationText, Mode=OneWay}" />
+                                                <TextBlock
+                                                    FontFamily="Cascadia Mono"
+                                                    FontSize="12"
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.SelectedVersion.PackageText, Mode=OneWay}" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border
+                                            Padding="12"
+                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                            CornerRadius="6">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock FontWeight="SemiBold" Text="Verified server-pack install" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.SelectedVersion.ImportReadinessText, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="The app verifies every published SHA-512 checksum, skips client-only files, applies server overrides last, and never overwrites an existing server folder." />
+                                                <Border
+                                                    Margin="0,6,0,0"
+                                                    Padding="10"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                    <StackPanel Spacing="3">
+                                                        <TextBlock FontWeight="SemiBold" Text="App-managed instances" />
+                                                        <TextBlock
+                                                            FontFamily="Cascadia Mono"
+                                                            FontSize="11"
+                                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                                            Text="{Binding Modpacks.ManagedInstancesDirectory, Mode=OneWay}"
+                                                            TextWrapping="Wrap" />
+                                                        <TextBlock
+                                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                                            Text="Stored outside the replaceable application files so app updates cannot remove a server."
+                                                            TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <StackPanel
+                                                    Margin="0,8,0,0"
+                                                    Spacing="8">
+                                                    <Button
+                                                        Click="ImportModpackToManagedInstances_Click"
+                                                        Content="{Binding Modpacks.ImportButtonText, Mode=OneWay}"
+                                                        HorizontalAlignment="Stretch"
+                                                        IsEnabled="{Binding Modpacks.CanImport, Mode=OneWay}"
+                                                        Style="{StaticResource AppAccentButtonStyle}" />
+                                                    <Button
+                                                        Click="ImportModpackToCustomFolder_Click"
+                                                        Content="Choose custom folder"
+                                                        HorizontalAlignment="Stretch"
+                                                        IsEnabled="{Binding Modpacks.CanImport, Mode=OneWay}" />
+                                                </StackPanel>
+                                                <ProgressBar
+                                                    Margin="0,6,0,0"
+                                                    IsIndeterminate="{Binding Modpacks.IsImportProgressIndeterminate, Mode=OneWay}"
+                                                    Maximum="100"
+                                                    Minimum="0"
+                                                    Value="{Binding Modpacks.ImportProgressValue, Mode=OneWay}"
+                                                    Visibility="{Binding Modpacks.IsImporting, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock
+                                                    Margin="0,4,0,0"
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Modpacks.ImportStatusText, Mode=OneWay}"
+                                                    TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
 
                     <ScrollViewer
                         x:Name="ProfilesPage"
