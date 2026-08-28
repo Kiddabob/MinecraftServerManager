@@ -35,7 +35,15 @@ public partial class App : Application
         services.AddSingleton<IJavaRuntimeService, JavaRuntimeService>();
         services.AddSingleton<IServerLaunchRecommendationService, ServerLaunchRecommendationService>();
         services.AddSingleton<IManagedJavaRuntimeService, ManagedJavaRuntimeService>();
+        services.AddSingleton<IModpackCatalogService, ModrinthModpackCatalogService>();
+        services.AddSingleton<IModpackInstallLocationService, ModpackInstallLocationService>();
+        services.AddSingleton<IServerBaselineInstaller, VanillaServerBaselineInstaller>();
+        services.AddSingleton<IServerBaselineInstaller, FabricServerBaselineInstaller>();
+        services.AddSingleton<IServerBaselineInstaller, ForgeServerBaselineInstaller>();
+        services.AddSingleton<IServerBaselineInstaller, NeoForgeServerBaselineInstaller>();
+        services.AddSingleton<IServerBaselineInstaller, QuiltServerBaselineInstaller>();
         services.AddSingleton<IProfileService, JsonProfileService>();
+        services.AddSingleton<IModpackImportService, ModrinthModpackImportService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerConfigurationService, ServerConfigurationService>();
@@ -46,6 +54,7 @@ public partial class App : Application
         services.AddSingleton<IAppUpdateService, GitHubAppUpdateService>();
         services.AddSingleton<IUiDispatcher, DispatcherQueueUiDispatcher>();
         services.AddSingleton<ServerDashboardViewModel>();
+        services.AddSingleton<ModpackCatalogViewModel>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
 
