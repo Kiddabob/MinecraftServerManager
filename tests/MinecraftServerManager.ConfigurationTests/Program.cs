@@ -1,6 +1,9 @@
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
 using MinecraftServerManager.ViewModels;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 if (args is ["--detect", .. var folders])
@@ -45,6 +48,44 @@ if (args is ["--content", .. var contentFolders])
         foreach (var item in inventory.Items)
         {
             Console.WriteLine($"  {item.KindText}: {item.Name} • {item.VersionText} • {item.FileName}");
+        }
+    }
+
+    return;
+}
+
+if (args is ["--modpack-search", .. var modpackTerms])
+{
+    var query = string.Join(' ', modpackTerms).Trim();
+    var catalog = new ModpackCatalogService(
+    [
+        new ModrinthModpackCatalogService(),
+        new TechnicModpackCatalogService(),
+        new FtbModpackCatalogService()
+    ]);
+    var page = await catalog.SearchAsync(query);
+    foreach (var status in page.ProviderStatuses)
+    {
+        Console.WriteLine(
+            $"{status.ProviderName}: {(status.Succeeded ? status.Message : $"unavailable - {status.Message}")}");
+    }
+
+    foreach (var pack in page.Items)
+    {
+        Console.WriteLine($"  [{pack.ProviderName}] {pack.Title} ({pack.Slug})");
+    }
+
+    var exactTechnicPack = page.Items.FirstOrDefault(pack =>
+        pack.ProviderId.Equals("technic", StringComparison.OrdinalIgnoreCase)
+        && (pack.Title.Equals(query, StringComparison.CurrentCultureIgnoreCase)
+            || pack.Slug.Equals(query, StringComparison.OrdinalIgnoreCase)));
+    if (exactTechnicPack is not null)
+    {
+        var versions = await catalog.GetVersionsAsync(exactTechnicPack);
+        foreach (var version in versions)
+        {
+            Console.WriteLine(
+                $"    {version.DisplayName} - {version.ImportReadinessText}");
         }
     }
 
@@ -701,6 +742,109 @@ try
         modpackSearch.Items.Single().IconUrl.StartsWith("https://cdn.modrinth.com/", StringComparison.Ordinal),
         "Modrinth icon host validation");
 
+    using var technicSearchDocument = JsonDocument.Parse("""
+        {
+          "modpacks": [{
+            "id": "552560",
+            "name": "Tekkit Classic",
+            "slug": "tekkit",
+            "url": "https://www.technicpack.net/modpack/tekkit.552560",
+            "iconUrl": "https://cdn.technicpack.net/platform2/pack-icons/552560.png"
+          }]
+        }
+        """);
+    var technicSearch = TechnicModpackCatalogService.ParseSearchResponse(
+        technicSearchDocument.RootElement);
+    var technicPack = technicSearch.Items.Single();
+    AssertEqual("technic", technicPack.ProviderId, "Technic provider identity");
+    AssertEqual("Tekkit Classic", technicPack.Title, "Technic Tekkit search result");
+    AssertTrue(
+        technicPack.IconUrl.StartsWith("https://cdn.technicpack.net/", StringComparison.Ordinal),
+        "Technic icon host validation");
+
+    using var technicPackDocument = JsonDocument.Parse("""
+        {
+          "id": 552560,
+          "name": "tekkit",
+          "displayName": "Tekkit Classic",
+          "user": "sct",
+          "minecraft": "1.2.5",
+          "version": "3.1.2",
+          "isOfficial": true,
+          "serverPackUrl": "https://servers.technicpack.net/Technic/servers/tekkit/Tekkit_Server_3.1.2.zip",
+          "feed": [{ "date": 1720000000 }]
+        }
+        """);
+    var technicVersion = TechnicModpackCatalogService.ParsePackResponse(
+        technicPackDocument.RootElement,
+        technicPack).Single();
+    AssertEqual("1.2.5", technicVersion.MinecraftVersions.Single(), "Technic Minecraft version");
+    AssertEqual(
+        ModpackPackageKind.TechnicServerArchive,
+        technicVersion.PackFile!.PackageKind,
+        "Technic server archive selection");
+    AssertTrue(technicVersion.IsServerCompatible, "Technic published server archive compatibility");
+
+    using var untrustedTechnicPackDocument = JsonDocument.Parse("""
+        {
+          "id": 552560,
+          "name": "tekkit",
+          "displayName": "Tekkit Classic",
+          "minecraft": "1.2.5",
+          "version": "3.1.2",
+          "serverPackUrl": "https://example.invalid/untrusted.zip"
+        }
+        """);
+    AssertTrue(
+        TechnicModpackCatalogService.ParsePackResponse(
+            untrustedTechnicPackDocument.RootElement,
+            technicPack).Single().PackFile is null,
+        "Technic third-party server archive rejection");
+
+    using var ftbSearchDocument = JsonDocument.Parse("""
+        { "status": "success", "packs": [88, 88, 126], "count": 2 }
+        """);
+    AssertEqual(2, FtbModpackCatalogService.ParsePackIds(ftbSearchDocument.RootElement).Count, "FTB search IDs");
+
+    using var ftbPackDocument = JsonDocument.Parse("""
+        {
+          "status": "success",
+          "id": 88,
+          "name": "FTB Academy 1.16",
+          "slug": "ftb-academy-116",
+          "synopsis": "A modpack for beginners",
+          "installs": 125273,
+          "tags": [{ "name": "FTB" }, { "name": "Tech" }],
+          "authors": [{ "name": "FTB Team" }],
+          "art": [{
+            "url": "https://cdn.feed-the-beast.com/blob/example.png",
+            "type": "square"
+          }],
+          "versions": [{
+            "id": 100026,
+            "name": "1.4.1",
+            "type": "release",
+            "released": 1739361055,
+            "targets": [
+              { "name": "minecraft", "version": "1.16.5", "type": "game" },
+              { "name": "forge", "version": "36.2.34", "type": "modloader" },
+              { "name": "java", "version": "8.0.312+7", "type": "runtime" }
+            ]
+          }]
+        }
+        """);
+    var ftbPack = FtbModpackCatalogService.ParsePackItem(ftbPackDocument.RootElement)!;
+    AssertEqual("ftb", ftbPack.ProviderId, "FTB provider identity");
+    AssertEqual("FTB Academy 1.16", ftbPack.Title, "FTB catalogue title");
+    var ftbVersion = FtbModpackCatalogService.ParseVersions(
+        ftbPackDocument.RootElement,
+        ftbPack).Single();
+    AssertEqual("forge", ftbVersion.Loaders.Single(), "FTB loader metadata");
+    AssertEqual(
+        ModpackPackageKind.FtbManifest,
+        ftbVersion.PackFile!.PackageKind,
+        "FTB manifest package selection");
+
     using var contentSearchDocument = JsonDocument.Parse("""
         {
           "hits": [{
@@ -822,6 +966,186 @@ try
     AssertTrue(
         builderMinecraftVersions.SequenceEqual(["1.21.8", "1.20.1"]),
         "builder Minecraft release metadata excludes snapshots");
+
+    var curseForgeSearchRequest = new PackCatalogSearchRequest(
+        "Croptopia",
+        "1.20.1",
+        ServerContentKind.Mod,
+        PackBuildTarget.ClientAndServer,
+        ["forge"],
+        []);
+    var curseForgeSearchUri = CurseForgePackContentCatalogProvider.BuildSearchRequestUri(
+        curseForgeSearchRequest,
+        CurseForgePackContentCatalogProvider.ToModLoaderType("forge"));
+    AssertTrue(
+        curseForgeSearchUri.Contains("gameId=432", StringComparison.Ordinal)
+        && curseForgeSearchUri.Contains("classId=6", StringComparison.Ordinal)
+        && curseForgeSearchUri.Contains("gameVersion=1.20.1", StringComparison.Ordinal)
+        && curseForgeSearchUri.Contains("modLoaderType=1", StringComparison.Ordinal),
+        "CurseForge search targets Minecraft mods, release, and Forge loader");
+    using var curseForgeSearchDocument = JsonDocument.Parse("""
+        {
+          "data": [{
+            "id": 415438,
+            "name": "Croptopia",
+            "slug": "croptopia",
+            "summary": "Adds crops and foods.",
+            "downloadCount": 25000000,
+            "isAvailable": true,
+            "authors": [{ "name": "thethonk" }],
+            "logo": { "thumbnailUrl": "https://media.forgecdn.net/avatars/croptopia.png" },
+            "categories": [{ "name": "Food" }],
+            "latestFilesIndexes": [{
+              "gameVersion": "1.20.1",
+              "fileId": 4800000,
+              "filename": "Croptopia-1.20.1-FORGE.jar",
+              "releaseType": 1,
+              "modLoader": 1
+            }]
+          }],
+          "pagination": {
+            "index": 0,
+            "pageSize": 20,
+            "resultCount": 1,
+            "totalCount": 1
+          }
+        }
+        """);
+    var curseForgeSearch = CurseForgePackContentCatalogProvider.ParseSearchResponse(
+        curseForgeSearchDocument.RootElement,
+        ServerContentKind.Mod);
+    AssertEqual(1, curseForgeSearch.Items.Count, "CurseForge Croptopia search parsing");
+    AssertEqual("curseforge", curseForgeSearch.Items.Single().ProviderId, "CurseForge provider identity");
+    AssertTrue(
+        curseForgeSearch.Items.Single().MinecraftVersions.Contains("1.20.1"),
+        "CurseForge search retains Minecraft 1.20.1 compatibility");
+
+    using var curseForgeFilesDocument = JsonDocument.Parse("""
+        {
+          "data": [{
+            "id": 4800000,
+            "modId": 415438,
+            "isAvailable": true,
+            "displayName": "Croptopia 3.0.4 for Forge 1.20.1",
+            "fileName": "Croptopia-1.20.1-FORGE-3.0.4.jar",
+            "releaseType": 1,
+            "hashes": [{
+              "value": "0123456789abcdef0123456789abcdef01234567",
+              "algo": 1
+            }],
+            "fileDate": "2024-01-01T12:00:00Z",
+            "fileLength": 4200000,
+            "downloadUrl": "https://edge.forgecdn.net/files/4800/000/Croptopia-1.20.1-FORGE-3.0.4.jar",
+            "gameVersions": ["1.20.1", "Forge"],
+            "dependencies": [{ "modId": 885449, "relationType": 3 }, { "modId": 999999, "relationType": 2 }]
+          }],
+          "pagination": {
+            "index": 0,
+            "pageSize": 50,
+            "resultCount": 1,
+            "totalCount": 1
+          }
+        }
+        """);
+    var curseForgeFiles = CurseForgePackContentCatalogProvider.ParseFilesResponse(
+        curseForgeFilesDocument.RootElement);
+    var curseForgeVersion = curseForgeFiles.Items.Single();
+    AssertEqual("415438:4800000", curseForgeVersion.VersionId, "CurseForge composite version identity");
+    AssertEqual("forge", curseForgeVersion.Loaders.Single(), "CurseForge file loader parsing");
+    AssertEqual(
+        "0123456789abcdef0123456789abcdef01234567",
+        curseForgeVersion.PrimaryFile!.Sha1,
+        "CurseForge SHA-1 metadata parsing");
+    AssertTrue(
+        curseForgeVersion.Dependencies.Any(dependency =>
+            dependency.ProjectId == "885449" && dependency.DependencyType == "required"),
+        "CurseForge required dependency relation parsing");
+    AssertTrue(
+        curseForgeVersion.Dependencies.Any(dependency =>
+            dependency.ProjectId == "999999" && dependency.DependencyType == "optional"),
+        "CurseForge optional dependency relation parsing");
+
+    var curseForgeApplicationText = CurseForgeApplicationTemplate.CreatePlainText();
+    AssertTrue(
+        CurseForgeApplicationTemplate.ProjectName.Length <= 30,
+        "CurseForge application project name remains form friendly");
+    AssertTrue(
+        curseForgeApplicationText.Contains("applicant's own local installation", StringComparison.Ordinal)
+        && curseForgeApplicationText.Contains("no central API proxy", StringComparison.Ordinal)
+        && curseForgeApplicationText.Contains("Windows Credential Manager", StringComparison.Ordinal),
+        "CurseForge application template explains the per-installation key boundary");
+    AssertTrue(
+        curseForgeApplicationText.Contains("No monetization and no business model", StringComparison.Ordinal)
+        && curseForgeApplicationText.Contains("does not collect or save", StringComparison.Ordinal)
+        && curseForgeApplicationText.Contains("does not accept or submit", StringComparison.Ordinal),
+        "CurseForge application template remains accurate and user-controlled");
+    AssertTrue(
+        curseForgeApplicationText.Contains("asks Overwolf to confirm", StringComparison.Ordinal)
+        && curseForgeApplicationText.Contains("audit manifest", StringComparison.Ordinal),
+        "CurseForge application template requests approval for retained local metadata");
+
+    var curseForgeKeyStore = new InMemoryCurseForgeApiKeyStore();
+    var curseForgeValidationHandler = new StubHttpMessageHandler(request =>
+    {
+        AssertEqual("v1/games/432", request.RequestUri!.PathAndQuery.TrimStart('/'), "CurseForge key validation endpoint");
+        AssertTrue(
+            request.Headers.TryGetValues("x-api-key", out var values)
+            && values.Single() == "approved-test-key",
+            "CurseForge validation sends the candidate key only in the supported header");
+        return new HttpResponseMessage(HttpStatusCode.OK);
+    });
+    var curseForgeKeyService = new CurseForgeApiKeyService(
+        curseForgeKeyStore,
+        new HttpClient(curseForgeValidationHandler)
+        {
+            BaseAddress = new Uri("https://api.curseforge.com/")
+        });
+    var connectedCurseForge = await curseForgeKeyService.ValidateAndStoreAsync(" approved-test-key ");
+    AssertTrue(
+        connectedCurseForge.HasStoredKey && connectedCurseForge.IsValid,
+        "approved CurseForge key is validated before storage");
+    AssertEqual("approved-test-key", curseForgeKeyStore.Value, "approved CurseForge key storage normalization");
+    AssertEqual("approved-test-key", curseForgeKeyService.GetApiKey(), "stored CurseForge key retrieval");
+
+    var rejectedKeyStore = new InMemoryCurseForgeApiKeyStore { Value = "existing-approved-key" };
+    var rejectedKeyService = new CurseForgeApiKeyService(
+        rejectedKeyStore,
+        new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.Forbidden)))
+        {
+            BaseAddress = new Uri("https://api.curseforge.com/")
+        });
+    var rejectedCurseForge = await rejectedKeyService.ValidateAndStoreAsync("rejected-replacement-key");
+    AssertTrue(
+        rejectedCurseForge.HasStoredKey && !rejectedCurseForge.IsValid,
+        "rejected replacement reports the unchanged stored CurseForge connection");
+    AssertEqual(
+        "existing-approved-key",
+        rejectedKeyStore.Value,
+        "rejected CurseForge replacement never overwrites an existing key");
+    rejectedKeyService.Remove();
+    AssertEqual<string?>(null, rejectedKeyStore.Value, "CurseForge disconnect removes the stored key");
+
+    if (OperatingSystem.IsWindows())
+    {
+        var testCredentialTarget = $"Kiddabob.MinecraftServerManager.Tests/{Guid.NewGuid():N}";
+        var windowsKeyStore = new WindowsCredentialManagerApiKeyStore(testCredentialTarget);
+        try
+        {
+            AssertEqual<string?>(null, windowsKeyStore.Read(), "isolated Windows credential starts empty");
+            windowsKeyStore.Save("non-secret-round-trip-test-key");
+            AssertEqual(
+                "non-secret-round-trip-test-key",
+                windowsKeyStore.Read(),
+                "Windows Credential Manager CurseForge key round trip");
+            windowsKeyStore.Remove();
+            AssertEqual<string?>(null, windowsKeyStore.Read(), "Windows credential removal");
+        }
+        finally
+        {
+            windowsKeyStore.Remove();
+        }
+    }
 
     var dependencyVersion = new ServerContentVersion(
         "modrinth",
@@ -1032,6 +1356,132 @@ try
     AssertThrows<InvalidDataException>(
         () => ModrinthModpackImportService.ParseManifest(conflictingLoaderDocument.RootElement),
         ".mrpack conflicting loader rejection");
+
+    var ftbManifestJson = """
+        {
+          "status": "success",
+          "parent": 88,
+          "id": 100026,
+          "targets": [
+            { "name": "minecraft", "version": "1.16.5", "type": "game" },
+            { "name": "forge", "version": "36.2.34", "type": "modloader" }
+          ],
+          "files": [{
+            "path": "./mods",
+            "name": "example.jar",
+            "url": "https://edge.forgecdn.net/files/1/2/example.jar",
+            "mirrors": [],
+            "size": 123,
+            "hashes": { "sha512": "__SHA512__" }
+          }, {
+            "path": ".",
+            "name": "eula.txt",
+            "url": "https://files.feed-the-beast.com/blob/eula.txt",
+            "mirrors": [],
+            "size": 9,
+            "hashes": { "sha512": "__SHA512__" }
+          }]
+        }
+        """.Replace("__SHA512__", new string('f', 128), StringComparison.Ordinal);
+    using var ftbManifestDocument = JsonDocument.Parse(ftbManifestJson);
+    var ftbManifest = FtbModpackImportService.ParseManifest(
+        ftbManifestDocument.RootElement,
+        ftbPack,
+        ftbVersion);
+    AssertEqual("1.16.5", ftbManifest.MinecraftVersion, "FTB manifest Minecraft target");
+    AssertEqual("forge", ftbManifest.LoaderId, "FTB manifest loader target");
+    AssertEqual(1, ftbManifest.Files.Count, "FTB manifest leaves EULA acceptance to the app");
+    AssertEqual("mods/example.jar", ftbManifest.Files.Single().RelativePath, "FTB safe file path");
+
+    using var unsafeFtbManifestDocument = JsonDocument.Parse(
+        ftbManifestJson.Replace("./mods", "../escape", StringComparison.Ordinal));
+    AssertThrows<InvalidDataException>(
+        () => FtbModpackImportService.ParseManifest(
+            unsafeFtbManifestDocument.RootElement,
+            ftbPack,
+            ftbVersion),
+        "FTB manifest path traversal rejection");
+
+    var duplicateSource = Path.Combine(testRoot, "duplicate-source");
+    Directory.CreateDirectory(duplicateSource);
+    File.WriteAllText(
+        Path.Combine(duplicateSource, "server.properties"),
+        "level-name=academy-world\r\n");
+    var duplicateWorldRoots = ServerProfileDuplicateService.ReadWorldRoots(duplicateSource);
+    AssertTrue(duplicateWorldRoots.Contains("academy-world"), "duplicate custom world detection");
+    AssertTrue(
+        ServerProfileDuplicateService.ShouldExcludeRelativePath(
+            "academy-world/level.dat",
+            false,
+            duplicateWorldRoots),
+        "clean duplicate excludes world data");
+    AssertTrue(
+        ServerProfileDuplicateService.ShouldExcludeRelativePath(
+            "eula.txt",
+            false,
+            duplicateWorldRoots),
+        "duplicate always resets EULA acceptance");
+    AssertTrue(
+        ServerProfileDuplicateService.ShouldExcludeRelativePath(
+            "logs/latest.log",
+            true,
+            duplicateWorldRoots),
+        "duplicate excludes transient logs");
+    AssertTrue(
+        !ServerProfileDuplicateService.ShouldExcludeRelativePath(
+            "mods/example.jar",
+            false,
+            duplicateWorldRoots),
+        "duplicate retains editable server content");
+
+    var technicArchivePath = Path.Combine(testRoot, "technic-server.zip");
+    using (var technicArchive = System.IO.Compression.ZipFile.Open(
+        technicArchivePath,
+        System.IO.Compression.ZipArchiveMode.Create))
+    {
+        var serverJar = technicArchive.CreateEntry("Tekkit Server/server.jar");
+        await using (var serverJarStream = serverJar.Open())
+        {
+            await serverJarStream.WriteAsync(new byte[] { 0x01, 0x02, 0x03 });
+        }
+
+        var eula = technicArchive.CreateEntry("Tekkit Server/eula.txt");
+        await using var eulaWriter = new StreamWriter(eula.Open());
+        await eulaWriter.WriteAsync("eula=true");
+    }
+
+    var technicExtractDirectory = Path.Combine(testRoot, "technic-extracted");
+    Directory.CreateDirectory(technicExtractDirectory);
+    var technicExtractedFiles = await TechnicModpackImportService.ExtractArchiveAsync(
+        technicArchivePath,
+        technicExtractDirectory,
+        progress: null,
+        CancellationToken.None);
+    AssertEqual(1, technicExtractedFiles, "Technic archive leaves EULA acceptance to the app");
+    AssertTrue(
+        File.Exists(Path.Combine(technicExtractDirectory, "server.jar")),
+        "Technic single root folder flattening");
+    AssertTrue(
+        !File.Exists(Path.Combine(technicExtractDirectory, "eula.txt")),
+        "Technic archived EULA rejection");
+
+    var unsafeTechnicArchivePath = Path.Combine(testRoot, "unsafe-technic-server.zip");
+    using (var unsafeTechnicArchive = System.IO.Compression.ZipFile.Open(
+        unsafeTechnicArchivePath,
+        System.IO.Compression.ZipArchiveMode.Create))
+    {
+        unsafeTechnicArchive.CreateEntry("../escape.jar");
+    }
+
+    var unsafeTechnicExtractDirectory = Path.Combine(testRoot, "unsafe-technic-extracted");
+    Directory.CreateDirectory(unsafeTechnicExtractDirectory);
+    await AssertThrowsAsync<InvalidDataException>(
+        () => TechnicModpackImportService.ExtractArchiveAsync(
+            unsafeTechnicArchivePath,
+            unsafeTechnicExtractDirectory,
+            progress: null,
+            CancellationToken.None),
+        "Technic archive path traversal rejection");
 
     var overridePackagePath = Path.Combine(testRoot, "override-order.mrpack");
     using (var overrideArchive = System.IO.Compression.ZipFile.Open(
@@ -1376,6 +1826,23 @@ try
     AssertTrue(
         aggregatedSearch.Providers.Any(provider => !provider.IsAvailable),
         "pack catalogue isolates a provider failure");
+    var unconfiguredCurseForge = new CurseForgePackContentCatalogProvider(
+        new HttpClient { BaseAddress = new Uri("https://api.curseforge.com/") },
+        string.Empty);
+    var providerConfigurationSearch = await new PackContentCatalogService(
+        [packProvider, unconfiguredCurseForge]).SearchAsync(new PackCatalogSearchRequest(
+            "root",
+            "1.20.1",
+            ServerContentKind.Mod,
+            PackBuildTarget.ClientAndServer,
+            ["fabric"],
+            []));
+    AssertTrue(
+        providerConfigurationSearch.Providers.Any(provider =>
+            provider.ProviderId == "curseforge"
+            && !provider.IsAvailable
+            && provider.Message.Contains("API key", StringComparison.OrdinalIgnoreCase)),
+        "pack catalogue explains an unconfigured CurseForge provider without hiding Modrinth results");
 
     var resolver = new PackDependencyResolver(packCatalog);
     var readyPlan = await resolver.ResolveAsync(new PackResolveRequest(
@@ -1402,6 +1869,228 @@ try
     AssertTrue(
         readyPlan.Warnings.Any(warning => warning.Contains("optional", StringComparison.OrdinalIgnoreCase)),
         "pack resolver surfaces optional dependency without auto-adding it");
+
+    var rootOutputBytes = Encoding.UTF8.GetBytes("verified root content");
+    var libraryOutputBytes = Encoding.UTF8.GetBytes("verified client library");
+    var rootOutputFile = new ServerContentFile(
+        "root-project.jar",
+        new Uri("https://downloads.example.test/root-project.jar"),
+        rootOutputBytes.Length,
+        Convert.ToHexString(SHA512.HashData(rootOutputBytes)).ToLowerInvariant(),
+        true);
+    var libraryOutputFile = new ServerContentFile(
+        "library-project.jar",
+        new Uri("https://downloads.example.test/library-project.jar"),
+        libraryOutputBytes.Length,
+        Convert.ToHexString(SHA512.HashData(libraryOutputBytes)).ToLowerInvariant(),
+        true);
+    var outputRootVersion = packRootVersion with { Files = [rootOutputFile] };
+    var outputLibraryVersion = compatibleLibrary with { Files = [libraryOutputFile] };
+    var outputProvider = new StubPackContentCatalogProvider(
+        "stub",
+        [packRootProject],
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["root-project"] = [outputRootVersion],
+            ["library-project"] = [outputLibraryVersion]
+        },
+        new Dictionary<string, ServerContentVersion>(StringComparer.OrdinalIgnoreCase)
+        {
+            [outputRootVersion.VersionId] = outputRootVersion,
+            [outputLibraryVersion.VersionId] = outputLibraryVersion
+        });
+    var outputCatalog = new PackContentCatalogService([outputProvider]);
+    var outputDownloads = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        [rootOutputFile.DownloadUri.AbsoluteUri] = rootOutputBytes,
+        [libraryOutputFile.DownloadUri.AbsoluteUri] = libraryOutputBytes
+    };
+    var outputService = new PackDraftOutputService(
+        outputCatalog,
+        [new StubPackContentDownloadProvider("stub", outputDownloads)],
+        [],
+        runtimeService);
+    var outputParent = Path.Combine(testRoot, "builder-output");
+    Directory.CreateDirectory(outputParent);
+    var outputRequest = new PackOutputRequest(
+        "Example Built Pack",
+        PackBuildTarget.ClientAndServer,
+        "1.20.1",
+        "fabric-client",
+        "fabric-server",
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        outputParent,
+        readyPlan.Items);
+    var outputPlan = await outputService.CreatePlanAsync(outputRequest);
+    AssertEqual(2, outputPlan.Items.Count, "builder output plan resolves every draft version");
+    AssertEqual(3, outputPlan.Items.Sum(item => item.RelativePaths.Count), "builder output side placement count");
+    var outputResult = await outputService.CreateOutputAsync(outputPlan);
+    AssertEqual(2, outputResult.DownloadedFileCount, "builder output unique verified download count");
+    AssertEqual(3, outputResult.ArrangedFileCount, "builder output arranged file copy count");
+    AssertTrue(
+        File.Exists(Path.Combine(outputResult.OutputDirectory, "Client", "mods", rootOutputFile.FileName))
+        && File.Exists(Path.Combine(outputResult.OutputDirectory, "Server", "mods", rootOutputFile.FileName)),
+        "shared builder content is arranged on client and server");
+    AssertTrue(
+        File.Exists(Path.Combine(outputResult.OutputDirectory, "Client", "mods", libraryOutputFile.FileName))
+        && !File.Exists(Path.Combine(outputResult.OutputDirectory, "Server", "mods", libraryOutputFile.FileName)),
+        "client-only builder dependency stays out of server output");
+    AssertTrue(
+        !Directory.Exists(Path.Combine(outputResult.OutputDirectory, ".downloads")),
+        "builder output removes its verified download cache");
+    using (var outputManifest = JsonDocument.Parse(File.ReadAllText(outputResult.ManifestPath)))
+    {
+        AssertTrue(
+            outputManifest.RootElement.GetProperty("contentOnly").GetBoolean(),
+            "builder manifest declares content-only output");
+        AssertEqual(2, outputManifest.RootElement.GetProperty("items").GetArrayLength(), "builder manifest item count");
+    }
+
+    var serverOutputParent = Path.Combine(testRoot, "builder-runnable-server");
+    Directory.CreateDirectory(serverOutputParent);
+    var serverOutputService = new PackDraftOutputService(
+        outputCatalog,
+        [new StubPackContentDownloadProvider("stub", outputDownloads)],
+        [new StubServerBaselineInstaller()],
+        runtimeService);
+    var serverOutputPlan = await serverOutputService.CreatePlanAsync(new PackOutputRequest(
+        "Runnable Built Pack",
+        PackBuildTarget.Server,
+        "1.20.1",
+        string.Empty,
+        "fabric-server",
+        string.Empty,
+        string.Empty,
+        "stub-loader",
+        "1.2.3",
+        serverOutputParent,
+        []));
+    AssertTrue(serverOutputPlan.PreparesServerBaseline, "builder plans exact runnable server baseline");
+    AssertEqual(0, serverOutputPlan.Items.Count, "builder permits an empty supported server baseline");
+    AssertEqual(17, serverOutputPlan.RecommendedJavaMajor, "builder records recommended server Java");
+    var serverOutputResult = await serverOutputService.CreateOutputAsync(serverOutputPlan);
+    AssertTrue(serverOutputResult.ServerBaselinePrepared, "builder prepares runnable server baseline");
+    AssertTrue(
+        File.Exists(Path.Combine(serverOutputResult.ServerDirectory, serverOutputResult.ServerLauncherFileName)),
+        "builder result exposes the installed server launcher");
+    AssertTrue(
+        !File.Exists(Path.Combine(serverOutputResult.ServerDirectory, "eula.txt")),
+        "builder does not accept or create the Minecraft EULA");
+    using (var serverOutputManifest = JsonDocument.Parse(File.ReadAllText(serverOutputResult.ManifestPath)))
+    {
+        AssertTrue(
+            serverOutputManifest.RootElement.GetProperty("serverBaselinePrepared").GetBoolean(),
+            "builder manifest records runnable server baseline");
+        AssertTrue(
+            !serverOutputManifest.RootElement.GetProperty("serverEulaAccepted").GetBoolean(),
+            "builder manifest keeps EULA pending");
+        AssertEqual(
+            "1.2.3",
+            serverOutputManifest.RootElement.GetProperty("serverLoaderVersion").GetString(),
+            "builder manifest records exact server loader");
+    }
+
+    var rejectedEulaParent = Path.Combine(testRoot, "builder-rejected-eula");
+    Directory.CreateDirectory(rejectedEulaParent);
+    var rejectedEulaService = new PackDraftOutputService(
+        outputCatalog,
+        [new StubPackContentDownloadProvider("stub", outputDownloads)],
+        [new StubServerBaselineInstaller(writesAcceptedEula: true)],
+        runtimeService);
+    var rejectedEulaPlan = await rejectedEulaService.CreatePlanAsync(new PackOutputRequest(
+        "Rejected Eula Pack",
+        PackBuildTarget.Server,
+        "1.20.1",
+        string.Empty,
+        "fabric-server",
+        string.Empty,
+        string.Empty,
+        "stub-loader",
+        "1.2.3",
+        rejectedEulaParent,
+        []));
+    await AssertThrowsAsync<InvalidDataException>(
+        () => rejectedEulaService.CreateOutputAsync(rejectedEulaPlan),
+        "builder rejects a baseline installer that silently accepts the EULA");
+    AssertTrue(
+        !Directory.Exists(rejectedEulaPlan.DestinationDirectory)
+        && Directory.GetDirectories(rejectedEulaParent, ".msm-pack-*", SearchOption.TopDirectoryOnly).Length == 0,
+        "silent EULA acceptance rolls back the final and staging folders");
+
+    await AssertThrowsAsync<IOException>(
+        () => outputService.CreatePlanAsync(outputRequest),
+        "builder output never overwrites an existing pack folder");
+    AssertThrows<ArgumentException>(
+        () => PackDraftOutputService.NormalizePackName(".."),
+        "builder output rejects traversal-like pack names");
+
+    var failedOutputParent = Path.Combine(testRoot, "builder-output-failure");
+    Directory.CreateDirectory(failedOutputParent);
+    var failingOutputService = new PackDraftOutputService(
+        outputCatalog,
+        [new StubPackContentDownloadProvider("stub", outputDownloads, libraryOutputFile.FileName)],
+        [],
+        runtimeService);
+    var failedOutputPlan = await failingOutputService.CreatePlanAsync(outputRequest with
+    {
+        PackName = "Failed Built Pack",
+        DestinationParentDirectory = failedOutputParent
+    });
+    await AssertThrowsAsync<IOException>(
+        () => failingOutputService.CreateOutputAsync(failedOutputPlan),
+        "builder output reports a provider download failure");
+    AssertTrue(
+        !Directory.Exists(failedOutputPlan.DestinationDirectory)
+        && Directory.GetDirectories(failedOutputParent, ".msm-pack-*", SearchOption.TopDirectoryOnly).Length == 0,
+        "builder output rolls back its destination and staging folder after failure");
+
+    var modrinthDownloadBytes = Encoding.UTF8.GetBytes("modrinth verified payload");
+    var modrinthDownloadFile = new ServerContentFile(
+        "modrinth-test.jar",
+        new Uri("https://cdn.modrinth.com/data/test/modrinth-test.jar"),
+        modrinthDownloadBytes.Length,
+        Convert.ToHexString(SHA512.HashData(modrinthDownloadBytes)).ToLowerInvariant(),
+        true);
+    var modrinthDownloadProvider = new ModrinthPackContentDownloadProvider(
+        new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(modrinthDownloadBytes)
+            })));
+    var modrinthDownloadPath = Path.Combine(testRoot, "modrinth-download-test.jar");
+    await modrinthDownloadProvider.DownloadAndVerifyAsync(modrinthDownloadFile, modrinthDownloadPath);
+    AssertTrue(
+        File.ReadAllBytes(modrinthDownloadPath).SequenceEqual(modrinthDownloadBytes),
+        "Modrinth builder download verifies SHA-512 content");
+
+    var curseForgeDownloadBytes = Encoding.UTF8.GetBytes("curseforge verified payload");
+    var curseForgeDownloadFile = new ServerContentFile(
+        "curseforge-test.jar",
+        new Uri("https://edge.forgecdn.net/files/1234/567/curseforge-test.jar"),
+        curseForgeDownloadBytes.Length,
+        string.Empty,
+        true,
+        Convert.ToHexString(SHA1.HashData(curseForgeDownloadBytes)).ToLowerInvariant());
+    var curseForgeDownloadProvider = new CurseForgePackContentDownloadProvider(
+        new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(curseForgeDownloadBytes)
+            })));
+    var curseForgeDownloadPath = Path.Combine(testRoot, "curseforge-download-test.jar");
+    await curseForgeDownloadProvider.DownloadAndVerifyAsync(curseForgeDownloadFile, curseForgeDownloadPath);
+    AssertTrue(
+        File.ReadAllBytes(curseForgeDownloadPath).SequenceEqual(curseForgeDownloadBytes),
+        "CurseForge builder download verifies SHA-1 content from a trusted host");
+    AssertThrows<InvalidDataException>(
+        () => curseForgeDownloadProvider.ValidateFile(curseForgeDownloadFile with
+        {
+            DownloadUri = new Uri("https://example.com/curseforge-test.jar")
+        }),
+        "CurseForge builder download rejects untrusted hosts");
 
     var conflictPlan = await resolver.ResolveAsync(new PackResolveRequest(
         PackBuildTarget.ClientAndServer,
@@ -1471,12 +2160,81 @@ try
         5,
         platformCatalog.GetClientPlatforms("26.2").Count,
         "current Minecraft release exposes every compatible client option");
+    AssertEqual(21, runtimeService.GetRecommendedJavaMajor("26.2"), "calendar-version Minecraft Java baseline");
+
+    var fabricLoaderVersions = PackPlatformVersionService.ParseLoaderJson(
+        """
+        [
+          { "loader": { "version": "0.17.0-beta.1", "stable": false } },
+          { "loader": { "version": "0.16.10", "stable": true } }
+        ]
+        """,
+        "fabric-server",
+        "fabric-loader",
+        true,
+        true,
+        "Fabric");
+    AssertEqual("0.16.10", fabricLoaderVersions[0].Version, "Fabric stable loader is preferred");
+    AssertTrue(fabricLoaderVersions[0].CanPrepareServer, "Fabric server loader is runnable");
+
+    var quiltLoaderVersions = PackPlatformVersionService.ParseLoaderJson(
+        """
+        [
+          { "loader": { "version": "0.29.0-beta.3" } },
+          { "loader": { "version": "0.28.1" } }
+        ]
+        """,
+        "quilt-client",
+        "quilt-loader",
+        false,
+        false,
+        "Quilt");
+    AssertEqual("0.28.1", quiltLoaderVersions[0].Version, "Quilt release loader is preferred");
+    AssertTrue(!quiltLoaderVersions[0].CanPrepareServer, "client loader is recorded without server preparation");
+
+    var forgeLoaderVersions = PackPlatformVersionService.ParseForgeVersions(
+        """
+        <metadata><versioning><versions>
+          <version>1.20.1-47.1.0</version>
+          <version>1.20.1-47.2.0-beta</version>
+          <version>1.20.1-47.3.5</version>
+          <version>1.20.2-48.0.1</version>
+        </versions></versioning></metadata>
+        """,
+        "forge-server",
+        "1.20.1",
+        true);
+    AssertEqual("47.3.5", forgeLoaderVersions[0].Version, "Forge filters and prefers newest stable loader");
+    AssertTrue(
+        forgeLoaderVersions.All(option => !option.Version.StartsWith("48.", StringComparison.Ordinal)),
+        "Forge excludes builds for another Minecraft release");
+
+    var neoForgeLoaderVersions = PackPlatformVersionService.ParseNeoForgeVersions(
+        """
+        <metadata><versioning><versions>
+          <version>20.2.85</version>
+          <version>20.2.86-beta</version>
+          <version>20.4.10</version>
+        </versions></versioning></metadata>
+        """,
+        "neoforge-server",
+        "1.20.2",
+        true);
+    AssertEqual("20.2.85", neoForgeLoaderVersions[0].Version, "NeoForge maps official Minecraft version scheme");
+    AssertEqual("20.2.", PackPlatformVersionService.GetNeoForgeVersionPrefix("1.20.2"), "NeoForge 1.x prefix");
+    AssertEqual("26.1.0.", PackPlatformVersionService.GetNeoForgeVersionPrefix("26.1"), "NeoForge modern prefix");
+    AssertEqual("26.1.2.", PackPlatformVersionService.GetNeoForgeVersionPrefix("26.1.2"), "NeoForge patched modern prefix");
 
     var emptyPackCatalog = new PackContentCatalogService([]);
     var builderViewModel = new PackBuilderViewModel(
         emptyPackCatalog,
         new PackDependencyResolver(emptyPackCatalog),
-        platformCatalog);
+        platformCatalog,
+        new StubPackPlatformVersionService(),
+        runtimeService,
+        new StubCurseForgeApiKeyService(),
+        new StubPackDraftOutputService(),
+        new ModpackInstallLocationService(Path.Combine(testRoot, "builder-local-app-data")));
     builderViewModel.SelectedMinecraftVersion = "1.6.4";
     AssertEqual("forge-client", builderViewModel.SelectedClientPlatform!.Id, "legacy client fallback");
     AssertEqual("forge-server", builderViewModel.SelectedServerPlatform!.Id, "legacy server fallback");
@@ -1492,6 +2250,14 @@ try
     AssertTrue(
         builderViewModel.ClientPlatformGuidance.Contains("Available for Minecraft 1.20.1", StringComparison.Ordinal),
         "loader guidance names the selected Minecraft release");
+    builderViewModel.CommitPlan(readyPlan);
+    AssertEqual(2, builderViewModel.DraftItems.Count, "builder commits selected content and required dependency together");
+    AssertTrue(
+        builderViewModel.DraftItems.Any(item => item.IsDependency && item.VersionId == "library-compatible"),
+        "builder automatically places required dependency in draft");
+    AssertTrue(
+        builderViewModel.DraftStatusText.Contains("required dependency automatically", StringComparison.OrdinalIgnoreCase),
+        "builder explains automatic required dependency addition");
 
     var clientOnlyPlacement = PackDependencyResolver.DeterminePlacement(
         compatibleLibrary,
@@ -1771,6 +2537,142 @@ sealed class StubPackContentCatalogProvider : IPackContentCatalogProvider
         Task.FromResult<IReadOnlyList<string>>(["1.20.1"]);
 }
 
+sealed class StubPackContentDownloadProvider : IPackContentDownloadProvider
+{
+    private readonly IReadOnlyDictionary<string, byte[]> _content;
+    private readonly string? _failFileName;
+
+    public StubPackContentDownloadProvider(
+        string providerId,
+        IReadOnlyDictionary<string, byte[]> content,
+        string? failFileName = null)
+    {
+        ProviderId = providerId;
+        _content = content;
+        _failFileName = failFileName;
+    }
+
+    public string ProviderId { get; }
+
+    public void ValidateFile(ServerContentFile file)
+    {
+        if (!_content.ContainsKey(file.DownloadUri.AbsoluteUri))
+        {
+            throw new InvalidDataException($"No test content exists for {file.DownloadUri}.");
+        }
+    }
+
+    public async Task DownloadAndVerifyAsync(
+        ServerContentFile file,
+        string destinationPath,
+        Action<long>? reportDownloadedBytes = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateFile(file);
+        if (file.FileName.Equals(_failFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException("Simulated provider download failure.");
+        }
+
+        var bytes = _content[file.DownloadUri.AbsoluteUri];
+        await File.WriteAllBytesAsync(destinationPath, bytes, cancellationToken);
+        reportDownloadedBytes?.Invoke(bytes.LongLength);
+    }
+}
+
+sealed class StubServerBaselineInstaller(bool writesAcceptedEula = false) : IServerBaselineInstaller
+{
+    public bool CanInstall(string loaderId) =>
+        loaderId.Equals("stub-loader", StringComparison.OrdinalIgnoreCase);
+
+    public Task<ServerBaselineInstallResult> InstallAsync(
+        ServerBaselineInstallRequest request,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!CanInstall(request.LoaderId))
+        {
+            throw new NotSupportedException();
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        const string launcherFileName = "minecraft_server.1.20.1.jar";
+        var launcherPath = Path.Combine(request.ServerDirectory, launcherFileName);
+        using (var archive = System.IO.Compression.ZipFile.Open(
+            launcherPath,
+            System.IO.Compression.ZipArchiveMode.Create))
+        {
+            var manifestEntry = archive.CreateEntry("META-INF/MANIFEST.MF");
+            using (var writer = new StreamWriter(manifestEntry.Open()))
+            {
+                writer.Write("Manifest-Version: 1.0\r\nMain-Class: net.minecraft.server.Main\r\n\r\n");
+            }
+
+            var classEntry = archive.CreateEntry("net/minecraft/server/Main.class");
+            using var classStream = classEntry.Open();
+            classStream.Write([0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x00, 0x00, 0x3D]);
+        }
+
+        if (writesAcceptedEula)
+        {
+            File.WriteAllText(Path.Combine(request.ServerDirectory, "eula.txt"), "eula=true\r\n");
+        }
+
+        progress?.Report("Installed the deterministic test server baseline.");
+        return Task.FromResult(new ServerBaselineInstallResult(
+            true,
+            launcherFileName,
+            "Installed the deterministic test server baseline."));
+    }
+}
+
+sealed class StubPackDraftOutputService : IPackDraftOutputService
+{
+    public Task<PackOutputPlan> CreatePlanAsync(
+        PackOutputRequest request,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<PackOutputResult> CreateOutputAsync(
+        PackOutputPlan plan,
+        IProgress<PackOutputProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+}
+
+sealed class StubPackPlatformVersionService : IPackPlatformVersionService
+{
+    public bool CanResolve(string platformId) =>
+        !platformId.Equals("paper-server", StringComparison.OrdinalIgnoreCase)
+        && !platformId.Equals("hybrid-forge-server", StringComparison.OrdinalIgnoreCase);
+
+    public Task<IReadOnlyList<PackPlatformVersionOption>> GetVersionsAsync(
+        string platformId,
+        string minecraftVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var loaderId = platformId switch
+        {
+            "vanilla-client" or "vanilla-server" => "minecraft",
+            "fabric-client" or "fabric-server" => "fabric-loader",
+            "quilt-client" or "quilt-server" => "quilt-loader",
+            "forge-client" or "forge-server" => "forge",
+            "neoforge-client" or "neoforge-server" => "neoforge",
+            _ => throw new NotSupportedException()
+        };
+        var canPrepareServer = platformId.EndsWith("-server", StringComparison.OrdinalIgnoreCase);
+        return Task.FromResult<IReadOnlyList<PackPlatformVersionOption>>(
+        [
+            new PackPlatformVersionOption(
+                platformId,
+                loaderId,
+                loaderId == "minecraft" ? minecraftVersion : "1.0.0",
+                true,
+                canPrepareServer)
+        ]);
+    }
+}
+
 sealed class FailingPackContentCatalogProvider : IPackContentCatalogProvider
 {
     public string ProviderId => "failing";
@@ -1797,4 +2699,54 @@ sealed class FailingPackContentCatalogProvider : IPackContentCatalogProvider
     public Task<IReadOnlyList<string>> GetMinecraftVersionsAsync(
         CancellationToken cancellationToken = default) =>
         throw new HttpRequestException("Simulated provider outage.");
+}
+
+sealed class InMemoryCurseForgeApiKeyStore : ICurseForgeApiKeyStore
+{
+    public string? Value { get; set; }
+
+    public string? Read() => Value;
+
+    public void Save(string apiKey) => Value = apiKey;
+
+    public void Remove() => Value = null;
+}
+
+sealed class StubCurseForgeApiKeyService : ICurseForgeApiKeyService
+{
+    private string? _apiKey;
+
+    public string? GetApiKey() => _apiKey;
+
+    public Task<CurseForgeApiKeyStatus> ValidateStoredAsync(
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new CurseForgeApiKeyStatus(
+            _apiKey is not null,
+            _apiKey is not null,
+            _apiKey is null ? "Not connected." : "Connected."));
+
+    public Task<CurseForgeApiKeyStatus> ValidateAndStoreAsync(
+        string apiKey,
+        CancellationToken cancellationToken = default)
+    {
+        _apiKey = apiKey.Trim();
+        return Task.FromResult(new CurseForgeApiKeyStatus(true, true, "Connected."));
+    }
+
+    public void Remove() => _apiKey = null;
+}
+
+sealed class StubHttpMessageHandler : HttpMessageHandler
+{
+    private readonly Func<HttpRequestMessage, HttpResponseMessage> _responseFactory;
+
+    public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
+    {
+        _responseFactory = responseFactory;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_responseFactory(request));
 }

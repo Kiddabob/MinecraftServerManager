@@ -13,7 +13,7 @@ public sealed class ModpackCatalogViewModel : BindableBase
     private readonly IJavaRuntimeService _javaRuntimeService;
     private readonly IModpackInstallLocationService _installLocationService;
     private string _searchText = string.Empty;
-    private string _statusText = "Search Modrinth or browse the most downloaded server-capable modpacks.";
+    private string _statusText = "Search Modrinth, Technic, and Feed The Beast together.";
     private bool _isBusy;
     private bool _hasSearched;
     private ModpackCatalogItem? _selectedPack;
@@ -101,7 +101,7 @@ public sealed class ModpackCatalogViewModel : BindableBase
                 {
                     ImportStatusText = value is null
                         ? "Choose a server-compatible version, then install it to managed instances or pick a custom folder."
-                        : "Install to the app-managed instances folder, or choose a custom parent folder.";
+                        : value.ImportReadinessText;
                     ImportProgressValue = 0;
                     IsImportProgressIndeterminate = false;
                     LastImportedDirectory = string.Empty;
@@ -130,7 +130,8 @@ public sealed class ModpackCatalogViewModel : BindableBase
         !IsBusy
         && !IsImporting
         && SelectedPack is not null
-        && SelectedVersion is { PackFile: not null, IsServerCompatible: true };
+        && SelectedVersion is not null
+        && _importService.CanImport(SelectedPack, SelectedVersion);
 
     public string ImportButtonText => IsImporting
         ? "Installing server pack…"
@@ -199,7 +200,8 @@ public sealed class ModpackCatalogViewModel : BindableBase
     {
         if (!CanImport || SelectedPack is null || SelectedVersion is null)
         {
-            ImportStatusText = "Choose a server-compatible version with a verified .mrpack package first.";
+            ImportStatusText = SelectedVersion?.ImportReadinessText
+                ?? "Choose a server-compatible version first.";
             return null;
         }
 
@@ -258,8 +260,8 @@ public sealed class ModpackCatalogViewModel : BindableBase
     {
         IsBusy = true;
         StatusText = string.IsNullOrWhiteSpace(SearchText)
-            ? "Loading popular Modrinth modpacks…"
-            : $"Searching Modrinth for “{SearchText.Trim()}”…";
+            ? "Loading featured packs from the available providers…"
+            : $"Searching all available providers for “{SearchText.Trim()}”…";
         try
         {
             var page = await _catalogService.SearchAsync(SearchText);
@@ -270,19 +272,35 @@ public sealed class ModpackCatalogViewModel : BindableBase
                 Results.Add(item);
             }
 
-            StatusText = page.TotalHits switch
+            var availableProviders = page.ProviderStatuses
+                .Where(status => status.Succeeded)
+                .Select(status => status.ProviderName)
+                .ToArray();
+            var unavailableProviders = page.ProviderStatuses
+                .Where(status => !status.Succeeded)
+                .Select(status => status.ProviderName)
+                .ToArray();
+            var providerText = availableProviders.Length == 0
+                ? "no providers"
+                : string.Join(", ", availableProviders);
+            StatusText = Results.Count switch
             {
-                0 => "No Modrinth modpacks matched this search.",
-                1 => "1 Modrinth modpack found.",
-                _ => $"{page.TotalHits:N0} Modrinth modpacks found. Showing the first {Results.Count}."
+                0 => $"No modpacks matched across {providerText}.",
+                1 => $"1 modpack found across {providerText}.",
+                _ => $"{Results.Count:N0} modpacks shown across {providerText}."
             };
+            if (unavailableProviders.Length > 0)
+            {
+                StatusText += $" Temporarily unavailable: {string.Join(", ", unavailableProviders)}.";
+            }
+
             SelectedPack = Results.FirstOrDefault();
         }
         catch (Exception exception) when (
             exception is HttpRequestException or TaskCanceledException or JsonException
                 or InvalidDataException or ArgumentException)
         {
-            StatusText = $"Modrinth could not be searched: {exception.Message}";
+            StatusText = $"The modpack providers could not be searched: {exception.Message}";
         }
         finally
         {
@@ -303,7 +321,7 @@ public sealed class ModpackCatalogViewModel : BindableBase
         StatusText = $"Loading published versions of {pack.Title}…";
         try
         {
-            var versions = await _catalogService.GetVersionsAsync(pack.ProjectId);
+            var versions = await _catalogService.GetVersionsAsync(pack);
             if (requestId != _versionRequestId || !ReferenceEquals(pack, SelectedPack))
             {
                 return;
@@ -315,13 +333,13 @@ public sealed class ModpackCatalogViewModel : BindableBase
             }
 
             SelectedVersion = Versions.FirstOrDefault(version =>
-                    version.PackFile is not null && version.IsServerCompatible)
+                    _importService.CanImport(pack, version))
                 ?? Versions.FirstOrDefault();
             StatusText = Versions.Count switch
             {
-                0 => $"{pack.Title} has no public versions available for review.",
-                1 => $"1 version of {pack.Title} is available for review.",
-                _ => $"{Versions.Count} recent versions of {pack.Title} are available for review."
+                0 => $"{pack.ProviderName} lists no public versions of {pack.Title} for review.",
+                1 => $"1 {pack.ProviderName} version of {pack.Title} is available for review.",
+                _ => $"{Versions.Count} recent {pack.ProviderName} versions of {pack.Title} are available for review."
             };
         }
         catch (Exception exception) when (

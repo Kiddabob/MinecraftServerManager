@@ -6,7 +6,7 @@ using MinecraftServerManager.Models;
 
 namespace MinecraftServerManager.Services;
 
-public sealed class ModrinthModpackImportService : IModpackImportService
+public sealed class ModrinthModpackImportService : IModpackImportProvider
 {
     private const int MaximumManifestBytes = 4 * 1024 * 1024;
     private const int MaximumManifestFiles = 20_000;
@@ -28,6 +28,8 @@ public sealed class ModrinthModpackImportService : IModpackImportService
     private readonly IReadOnlyList<IServerBaselineInstaller> _baselineInstallers;
     private readonly IJavaRuntimeService _javaRuntimeService;
 
+    public string ProviderId => "modrinth";
+
     public ModrinthModpackImportService(
         IProfileService profileService,
         IEnumerable<IServerBaselineInstaller> baselineInstallers,
@@ -37,6 +39,17 @@ public sealed class ModrinthModpackImportService : IModpackImportService
         _baselineInstallers = baselineInstallers.ToArray();
         _javaRuntimeService = javaRuntimeService;
     }
+
+    public bool CanImport(ModpackCatalogItem pack, ModpackCatalogVersion version) =>
+        pack.ProviderId.Equals(ProviderId, StringComparison.OrdinalIgnoreCase)
+        && version.ProviderId.Equals(ProviderId, StringComparison.OrdinalIgnoreCase)
+        && pack.ProjectId.Equals(version.ProjectId, StringComparison.Ordinal)
+        && version.IsServerCompatible
+        && version.PackFile is
+        {
+            PackageKind: ModpackPackageKind.ModrinthMrpack,
+            HasPublishedSha512: true
+        };
 
     public async Task<ModpackImportResult> ImportAsync(
         ModpackCatalogItem pack,

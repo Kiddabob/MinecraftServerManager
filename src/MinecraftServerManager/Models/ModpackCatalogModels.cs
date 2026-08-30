@@ -4,7 +4,17 @@ public sealed record ModpackCatalogSearchPage(
     IReadOnlyList<ModpackCatalogItem> Items,
     int Offset,
     int Limit,
-    int TotalHits);
+    int TotalHits)
+{
+    public IReadOnlyList<ModpackProviderSearchStatus> ProviderStatuses { get; init; } = [];
+}
+
+public sealed record ModpackProviderSearchStatus(
+    string ProviderId,
+    string ProviderName,
+    bool Succeeded,
+    int ResultCount,
+    string Message);
 
 public sealed record ModpackCatalogItem(
     string ProviderId,
@@ -19,13 +29,17 @@ public sealed record ModpackCatalogItem(
     IReadOnlyList<string> Categories,
     IReadOnlyList<string> Environments)
 {
-    public string ProviderName => ProviderId.Equals("modrinth", StringComparison.OrdinalIgnoreCase)
-        ? "Modrinth"
-        : ProviderId;
+    public string ProviderName => ProviderId.ToLowerInvariant() switch
+    {
+        "modrinth" => "Modrinth",
+        "technic" => "Technic",
+        "ftb" => "Feed The Beast",
+        _ => ProviderId
+    };
 
     public string DownloadsText => $"{Downloads:N0} downloads";
 
-    public string MetadataText => $"By {Author} • {DownloadsText}";
+    public string MetadataText => $"{ProviderName} • By {Author} • {DownloadsText}";
 
     public string VersionSummary => MinecraftVersions.Count == 0
         ? "Minecraft versions not supplied"
@@ -41,6 +55,13 @@ public sealed record ModpackCatalogItem(
             .Select(part => char.ToUpperInvariant(part[0]) + part[1..]));
 }
 
+public enum ModpackPackageKind
+{
+    ModrinthMrpack,
+    TechnicServerArchive,
+    FtbManifest
+}
+
 public sealed record ModpackCatalogFile(
     string FileName,
     Uri DownloadUri,
@@ -48,9 +69,15 @@ public sealed record ModpackCatalogFile(
     string Sha1,
     string Sha512)
 {
-    public string SizeText => Size >= 1024 * 1024
+    public ModpackPackageKind PackageKind { get; init; } = ModpackPackageKind.ModrinthMrpack;
+
+    public string SizeText => Size <= 0
+        ? "size checked while downloading"
+        : Size >= 1024 * 1024
         ? $"{Size / 1024d / 1024d:0.0} MB"
         : $"{Math.Max(1d, Size / 1024d):0.0} KB";
+
+    public bool HasPublishedSha512 => Sha512.Length == 128 && Sha512.All(Uri.IsHexDigit);
 }
 
 public sealed record ModpackCatalogVersion(
@@ -96,14 +123,29 @@ public sealed record ModpackCatalogVersion(
         _ => "Server compatibility is not confirmed by the publisher"
     };
 
-    public string PackageText => PackFile is null
-        ? "No .mrpack download is available for this version."
-        : $"{PackFile.FileName} • {PackFile.SizeText} • SHA-512 available";
+    public string PackageText => PackFile?.PackageKind switch
+    {
+        null => "No supported server download is published for this version.",
+        ModpackPackageKind.ModrinthMrpack =>
+            $"{PackFile.FileName} • {PackFile.SizeText} • SHA-512 published",
+        ModpackPackageKind.TechnicServerArchive =>
+            $"{PackFile.FileName} • official Technic server archive • no checksum published",
+        ModpackPackageKind.FtbManifest =>
+            "First-party FTB server manifest • every listed file has a published SHA-512 checksum",
+        _ => PackFile.FileName
+    };
 
     public string ImportReadinessText => PackFile is null
-        ? "Choose another version before importing."
+        ? "This provider has not published a supported server download for this version."
         : IsServerCompatible
-            ? "Ready for verified server-pack installation."
+            ? PackFile.PackageKind switch
+            {
+                ModpackPackageKind.TechnicServerArchive =>
+                    "Ready for bounded installation from Technic's first-party server host. Technic does not publish an archive checksum.",
+                ModpackPackageKind.FtbManifest =>
+                    "Ready for a file-by-file verified FTB server installation.",
+                _ => "Ready for verified server-pack installation."
+            }
             : Environment is "client_only" or "singleplayer_only"
                 ? "This client-only version will not be offered for server installation."
                 : "The publisher has not confirmed server support, so import is unavailable.";

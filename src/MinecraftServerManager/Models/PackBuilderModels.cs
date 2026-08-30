@@ -68,6 +68,18 @@ public sealed record PackPlatformOption(
     public string GuidanceText => $"{BestFor}  •  {Details}";
 }
 
+public sealed record PackPlatformVersionOption(
+    string PlatformId,
+    string LoaderId,
+    string Version,
+    bool IsStable,
+    bool CanPrepareServer)
+{
+    public string StabilityText => IsStable ? "Stable" : "Preview";
+
+    public string DisplayName => $"{Version}  •  {StabilityText}";
+}
+
 public sealed record PackCategoryOption(string Id, string DisplayName);
 
 public sealed record PackCatalogSearchRequest(

@@ -21,6 +21,8 @@ public sealed class MainViewModel : BindableBase
     private readonly IAppUpdateService _appUpdateService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly IServerFileService _serverFileService;
+    private readonly IServerProfileDuplicateService _profileDuplicateService;
+    private readonly IModpackInstallLocationService _installLocationService;
     private readonly IUiDispatcher _uiDispatcher;
 
     private ServerSessionViewModel? _selectedProfile;
@@ -72,6 +74,8 @@ public sealed class MainViewModel : BindableBase
         IAppUpdateService appUpdateService,
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
+        IServerProfileDuplicateService profileDuplicateService,
+        IModpackInstallLocationService installLocationService,
         ModpackCatalogViewModel modpacks,
         PackBuilderViewModel builder,
         ServerDashboardViewModel dashboard,
@@ -90,6 +94,8 @@ public sealed class MainViewModel : BindableBase
         _appUpdateService = appUpdateService;
         _appSettingsService = appSettingsService;
         _serverFileService = serverFileService;
+        _profileDuplicateService = profileDuplicateService;
+        _installLocationService = installLocationService;
         _uiDispatcher = uiDispatcher;
         Modpacks = modpacks;
         Builder = builder;
@@ -200,6 +206,7 @@ public sealed class MainViewModel : BindableBase
             _selectedProfile = value;
             CurrentFilesPath = value.ServerDirectory;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanDuplicateSelectedProfile));
             RefreshFilesCommand.NotifyCanExecuteChanged();
             _ = RefreshServerFilesAsync();
             _ = Dashboard.SelectProfileAsync(value);
@@ -406,6 +413,10 @@ public sealed class MainViewModel : BindableBase
 
     public bool IsServerActive => Profiles.Any(profile => profile.IsServerActive);
 
+    public bool CanDuplicateSelectedProfile => SelectedProfile is { IsServerActive: false };
+
+    public string ManagedInstancesDirectory => _installLocationService.ManagedInstancesDirectory;
+
     public string ProfileCountText => Profiles.Count == 1
         ? "1 server profile"
         : $"{Profiles.Count} server profiles";
@@ -488,17 +499,97 @@ public sealed class MainViewModel : BindableBase
         }
     }
 
-    public async Task ImportServerFolderAsync(string folderPath)
+    public async Task<ProfileImportResult?> ImportServerFolderAsync(
+        string folderPath,
+        string? preferredDisplayName = null)
     {
         try
         {
             var result = await _profileService.ImportFolderAsync(folderPath);
+            if (result.Profile is not null
+                && !string.IsNullOrWhiteSpace(preferredDisplayName)
+                && !result.Profile.DisplayName.Equals(
+                    preferredDisplayName.Trim(),
+                    StringComparison.CurrentCultureIgnoreCase))
+            {
+                result.Profile.DisplayName = preferredDisplayName.Trim();
+                await _profileService.SaveAsync(result.Profile);
+                result = result with
+                {
+                    Message = result.WasCreated
+                        ? $"Created the server profile '{result.Profile.DisplayName}'."
+                        : $"Opened the server profile '{result.Profile.DisplayName}'."
+                };
+            }
+
             await AcceptProfileImportAsync(result);
+            return result;
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             ProfileImportStatus = $"The folder could not be opened: {exception.Message}";
+            return null;
+        }
+    }
+
+    public async Task<ServerProfileDuplicateResult?> DuplicateSelectedProfileAsync(
+        string displayName,
+        string destinationParentDirectory,
+        bool includeWorldData)
+    {
+        var selected = SelectedProfile;
+        if (selected is null)
+        {
+            ProfileImportStatus = "Select a server profile to duplicate.";
+            return null;
+        }
+
+        if (selected.IsServerActive)
+        {
+            ProfileImportStatus = "Stop the selected server before duplicating its files.";
+            return null;
+        }
+
+        var progress = new Progress<string>(message => ProfileImportStatus = message);
+        try
+        {
+            var result = await _profileDuplicateService.DuplicateAsync(
+                new ServerProfileDuplicateRequest(
+                    selected.Profile,
+                    displayName,
+                    destinationParentDirectory,
+                    includeWorldData),
+                progress);
+            ProfileImportStatus = result.ProfileImport.Message;
+            await AcceptProfileImportAsync(result.ProfileImport);
+            return result;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException
+                or InvalidDataException or InvalidOperationException or NotSupportedException)
+        {
+            ProfileImportStatus = $"The server could not be duplicated: {exception.Message}";
+            return null;
+        }
+    }
+
+    public Task<ServerProfileDuplicateResult?> DuplicateSelectedProfileToManagedInstancesAsync(
+        string displayName,
+        bool includeWorldData)
+    {
+        try
+        {
+            return DuplicateSelectedProfileAsync(
+                displayName,
+                _installLocationService.EnsureManagedInstancesDirectory(),
+                includeWorldData);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ProfileImportStatus = $"The managed instances folder could not be prepared: {exception.Message}";
+            return Task.FromResult<ServerProfileDuplicateResult?>(null);
         }
     }
 
@@ -1052,6 +1143,7 @@ public sealed class MainViewModel : BindableBase
         _changingProfile = true;
         _selectedProfile = profile;
         OnPropertyChanged(nameof(SelectedProfile));
+        OnPropertyChanged(nameof(CanDuplicateSelectedProfile));
         _changingProfile = false;
     }
 
@@ -1216,6 +1308,10 @@ public sealed class MainViewModel : BindableBase
         {
             OnPropertyChanged(nameof(IsServerActive));
             OnPropertyChanged(nameof(ActiveServerCountText));
+            if (ReferenceEquals(sender, SelectedProfile))
+            {
+                OnPropertyChanged(nameof(CanDuplicateSelectedProfile));
+            }
             StartSelectedCommand.NotifyCanExecuteChanged();
             StopSelectedCommand.NotifyCanExecuteChanged();
         }

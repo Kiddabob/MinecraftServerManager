@@ -2,8 +2,12 @@ using MinecraftServerManager.Models;
 
 namespace MinecraftServerManager.Services;
 
-public interface IModpackCatalogService
+public interface IModpackCatalogProvider
 {
+    string ProviderId { get; }
+
+    string DisplayName { get; }
+
     Task<ModpackCatalogSearchPage> SearchAsync(
         string query,
         int offset = 0,

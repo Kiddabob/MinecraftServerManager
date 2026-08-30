@@ -457,6 +457,6 @@ public sealed partial class JavaRuntimeService : IJavaRuntimeService
     [GeneratedRegex(@"\d+")]
     private static partial Regex NumberPattern();
 
-    [GeneratedRegex(@"(?<!\d)(?<version>1\.\d{1,2}(?:\.\d{1,2})?)(?!\d)")]
+    [GeneratedRegex(@"(?<!\d)(?<version>(?:1|[2-9]\d?)\.\d{1,2}(?:\.\d{1,2})?)(?!\d)")]
     private static partial Regex MinecraftVersionPattern();
 }

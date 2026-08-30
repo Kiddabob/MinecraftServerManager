@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\MinecraftServerManager\Infrastructure\AsyncRelayCommand.cs" Link="Infrastructure\AsyncRelayCommand.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Infrastructure\BindableBase.cs" Link="Infrastructure\BindableBase.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationModels.cs" Link="Models\ServerConfigurationModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationEditorModels.cs" Link="Models\ServerConfigurationEditorModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationSchema.cs" Link="Models\ServerConfigurationSchema.cs" />
@@ -18,10 +20,13 @@
     <Compile Include="..\..\src\MinecraftServerManager\Models\ModpackCatalogModels.cs" Link="Models\ModpackCatalogModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ModpackImportModels.cs" Link="Models\ModpackImportModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ProfileImportResult.cs" Link="Models\ProfileImportResult.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\ServerProfileDuplicateModels.cs" Link="Models\ServerProfileDuplicateModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ProfileValidationResult.cs" Link="Models\ProfileValidationResult.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerReadinessModels.cs" Link="Models\ServerReadinessModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerContentModels.cs" Link="Models\ServerContentModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\PackBuilderModels.cs" Link="Models\PackBuilderModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\PackOutputModels.cs" Link="Models\PackOutputModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\CurseForgeApplicationTemplate.cs" Link="Models\CurseForgeApplicationTemplate.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRecommendation.cs" Link="Models\ServerLaunchRecommendation.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerBaselineModels.cs" Link="Models\ServerBaselineModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRequest.cs" Link="Models\ServerLaunchRequest.cs" />
@@ -43,7 +48,11 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IManagedJavaRuntimeService.cs" Link="Services\IManagedJavaRuntimeService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ManagedJavaRuntimeService.cs" Link="Services\ManagedJavaRuntimeService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackCatalogService.cs" Link="Services\IModpackCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackCatalogProvider.cs" Link="Services\IModpackCatalogProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModpackCatalogService.cs" Link="Services\ModpackCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthModpackCatalogService.cs" Link="Services\ModrinthModpackCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\TechnicModpackCatalogService.cs" Link="Services\TechnicModpackCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\FtbModpackCatalogService.cs" Link="Services\FtbModpackCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackInstallLocationService.cs" Link="Services\IModpackInstallLocationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModpackInstallLocationService.cs" Link="Services\ModpackInstallLocationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IProfileService.cs" Link="Services\IProfileService.cs" />
@@ -57,14 +66,34 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackContentCatalogService.cs" Link="Services\IPackContentCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackDependencyResolver.cs" Link="Services\IPackDependencyResolver.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackPlatformCatalogService.cs" Link="Services\IPackPlatformCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackPlatformVersionService.cs" Link="Services\IPackPlatformVersionService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackContentDownloadProvider.cs" Link="Services\IPackContentDownloadProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackDraftOutputService.cs" Link="Services\IPackDraftOutputService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackContentCatalogService.cs" Link="Services\PackContentCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackDependencyResolver.cs" Link="Services\PackDependencyResolver.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackPlatformCatalogService.cs" Link="Services\PackPlatformCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PackPlatformVersionService.cs" Link="Services\PackPlatformVersionService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthServerContentCatalogService.cs" Link="Services\ModrinthServerContentCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgePackContentCatalogProvider.cs" Link="Services\CurseForgePackContentCatalogProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PackContentDownloadUtilities.cs" Link="Services\PackContentDownloadUtilities.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthPackContentDownloadProvider.cs" Link="Services\ModrinthPackContentDownloadProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgePackContentDownloadProvider.cs" Link="Services\CurseForgePackContentDownloadProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PackDraftOutputService.cs" Link="Services\PackDraftOutputService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyStore.cs" Link="Services\ICurseForgeApiKeyStore.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyService.cs" Link="Services\ICurseForgeApiKeyService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgeApiKeyService.cs" Link="Services\CurseForgeApiKeyService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\WindowsCredentialManagerApiKeyStore.cs" Link="Services\WindowsCredentialManagerApiKeyStore.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerContentInstallService.cs" Link="Services\IServerContentInstallService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerContentInstallService.cs" Link="Services\ServerContentInstallService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackImportService.cs" Link="Services\IModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackImportProvider.cs" Link="Services\IModpackImportProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModpackImportService.cs" Link="Services\ModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ModpackImportUtilities.cs" Link="Services\ModpackImportUtilities.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthModpackImportService.cs" Link="Services\ModrinthModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\TechnicModpackImportService.cs" Link="Services\TechnicModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\FtbModpackImportService.cs" Link="Services\FtbModpackImportService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IServerProfileDuplicateService.cs" Link="Services\IServerProfileDuplicateService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ServerProfileDuplicateService.cs" Link="Services\ServerProfileDuplicateService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerBaselineInstaller.cs" Link="Services\IServerBaselineInstaller.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\FabricServerBaselineInstaller.cs" Link="Services\FabricServerBaselineInstaller.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\VanillaServerBaselineInstaller.cs" Link="Services\VanillaServerBaselineInstaller.cs" />
@@ -79,5 +108,6 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConsoleParser.cs" Link="Services\IServerConsoleParser.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConsoleParserFactory.cs" Link="Services\IServerConsoleParserFactory.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ProfileConsoleParserFactory.cs" Link="Services\ProfileConsoleParserFactory.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\ViewModels\PackBuilderViewModel.cs" Link="ViewModels\PackBuilderViewModel.cs" />
   </ItemGroup>
 </Project>

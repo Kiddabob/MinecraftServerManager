@@ -12,6 +12,7 @@ using Microsoft.Windows.Storage.Pickers;
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
 using MinecraftServerManager.ViewModels;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.System;
 using Windows.UI;
@@ -222,6 +223,245 @@ public sealed partial class MainWindow : Window
         ViewModel.Builder.SearchCommand.Execute(null);
     }
 
+    private async void PrepareCurseForgeApplication_Click(object sender, RoutedEventArgs args)
+    {
+        var content = new StackPanel
+        {
+            Width = 500,
+            Spacing = 14
+        };
+        content.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Informational,
+            Title = "Your application and your key",
+            Message = "This helper describes a key for your own local installation. It does not collect your personal details, accept Overwolf's terms, submit the form, or imply approval. Review every answer before using it."
+        });
+
+        content.Children.Add(new TextBlock
+        {
+            Text = "Enter these personal fields directly in the official form",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = string.Join("  •  ", CurseForgeApplicationTemplate.PersonalFields),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        foreach (var field in CurseForgeApplicationTemplate.SuggestedAnswers)
+        {
+            var copyButton = new Button
+            {
+                Content = "Copy answer",
+                Tag = field.SuggestedAnswer,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            copyButton.Click += CopyCurseForgeApplicationText_Click;
+
+            var heading = new Grid
+            {
+                ColumnSpacing = 10
+            };
+            heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            heading.Children.Add(new TextBlock
+            {
+                Text = field.FormArea,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
+            });
+            Grid.SetColumn(copyButton, 1);
+            heading.Children.Add(copyButton);
+
+            var fieldContent = new StackPanel { Spacing = 6 };
+            fieldContent.Children.Add(heading);
+            fieldContent.Children.Add(new TextBox
+            {
+                Text = field.SuggestedAnswer,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                MinHeight = field.SuggestedAnswer.Length > 360
+                    ? 150
+                    : field.SuggestedAnswer.Length > 150
+                        ? 110
+                        : 50
+            });
+            content.Children.Add(fieldContent);
+        }
+
+        content.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Warning,
+            Title = "You must make the declarations yourself",
+            Message = "Read the current form, API terms, and privacy policy. Only tick statements you personally understand and accept. The suggested wording deliberately asks Overwolf to approve the per-installation key model and the minimal local audit manifest."
+        });
+
+        var copyAllButton = new Button
+        {
+            Content = "Copy full template",
+            Tag = CurseForgeApplicationTemplate.CreatePlainText()
+        };
+        copyAllButton.Click += CopyCurseForgeApplicationText_Click;
+        var guideButton = new Button
+        {
+            Content = "Read application guide",
+            Tag = CurseForgeApplicationTemplate.ApplicationGuideUrl
+        };
+        guideButton.Click += OpenCurseForgeApplicationLink_Click;
+        var formButton = new Button
+        {
+            Content = "Open official form",
+            Tag = CurseForgeApplicationTemplate.ApplicationFormUrl
+        };
+        formButton.Click += OpenCurseForgeApplicationLink_Click;
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8
+        };
+        actions.Children.Add(copyAllButton);
+        actions.Children.Add(guideButton);
+        actions.Children.Add(formButton);
+        content.Children.Add(actions);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Prepare your CurseForge application",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 590,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            },
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close,
+            MaxWidth = 760
+        };
+        await dialog.ShowAsync();
+    }
+
+    private static void CopyCurseForgeApplicationText_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { Tag: string text } button)
+        {
+            return;
+        }
+
+        try
+        {
+            var dataPackage = new DataPackage();
+            dataPackage.SetText(text);
+            Clipboard.SetContent(dataPackage);
+            Clipboard.Flush();
+            button.Content = "Copied";
+        }
+        catch (Exception)
+        {
+            button.Content = "Copy failed";
+        }
+    }
+
+    private static async void OpenCurseForgeApplicationLink_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { Tag: string url })
+        {
+            return;
+        }
+
+        await Launcher.LaunchUriAsync(new Uri(url));
+    }
+
+    private async void AddCurseForgeApiKey_Click(object sender, RoutedEventArgs args)
+    {
+        if (ViewModel.Builder.IsCurseForgeConnectionBusy)
+        {
+            return;
+        }
+
+        var passwordBox = new PasswordBox
+        {
+            Header = "Approved CurseForge developer API key",
+            PlaceholderText = "Paste the key issued by CurseForge",
+            PasswordRevealMode = PasswordRevealMode.Peek,
+            MaxLength = 1024
+        };
+        var content = new StackPanel
+        {
+            Width = 520,
+            Spacing = 12
+        };
+        content.Children.Add(new TextBlock
+        {
+            Text = "Only continue after CurseForge has approved your own developer application. The official application—not this dialog—records your acceptance of CurseForge's developer terms.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(new TextBlock
+        {
+            FontSize = 12,
+            Text = "The key is validated directly with CurseForge, then stored in Windows Credential Manager for this Windows account. It is never added to a server profile, installer, GitHub repository, or application log.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(passwordBox);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = ViewModel.Builder.IsCurseForgeApiKeyStored
+                ? "Replace CurseForge developer key?"
+                : "Connect CurseForge developer access",
+            Content = content,
+            PrimaryButtonText = "Validate and save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false
+        };
+        passwordBox.PasswordChanged += (_, _) =>
+            dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(passwordBox.Password);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            passwordBox.Password = string.Empty;
+            return;
+        }
+
+        var apiKey = passwordBox.Password;
+        passwordBox.Password = string.Empty;
+        await ViewModel.Builder.ConnectCurseForgeAsync(apiKey);
+    }
+
+    private async void RemoveCurseForgeApiKey_Click(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Builder.IsCurseForgeApiKeyStored
+            || ViewModel.Builder.IsCurseForgeConnectionBusy)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Disconnect CurseForge?",
+            Content = "This removes the developer API key from Windows Credential Manager. Modrinth and other available sources will continue to work.",
+            PrimaryButtonText = "Disconnect",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            ViewModel.Builder.RemoveCurseForgeConnection();
+        }
+    }
+
     private void ModpackSearchTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key != VirtualKey.Enter || !ViewModel.Modpacks.SearchCommand.CanExecute(null))
@@ -319,6 +559,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (plan.IsReady)
+        {
+            ViewModel.Builder.CommitPlan(plan);
+            return;
+        }
+
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(new TextBlock
         {
@@ -369,7 +615,7 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = RootGrid.XamlRoot,
-            Title = plan.IsReady ? "Add to pack draft?" : "Compatibility needs attention",
+            Title = "Compatibility needs attention",
             Content = new ScrollViewer
             {
                 MaxHeight = 520,
@@ -377,13 +623,163 @@ public sealed partial class MainWindow : Window
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = content
             },
-            PrimaryButtonText = plan.IsReady ? "Add to draft" : string.Empty,
-            CloseButtonText = plan.IsReady ? "Cancel" : "Close",
+            CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Close
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && plan.IsReady)
+        await dialog.ShowAsync();
+    }
+
+    private async void DownloadBuilderDraftToManaged_Click(object sender, RoutedEventArgs args)
+    {
+        var plan = await ViewModel.Builder.PrepareManagedOutputAsync();
+        if (plan is not null)
         {
-            ViewModel.Builder.CommitPlan(plan);
+            await ConfirmAndCreateBuilderOutputAsync(plan);
+        }
+    }
+
+    private async void DownloadBuilderDraftToFolder_Click(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Builder.CanCreateOutput)
+        {
+            return;
+        }
+
+        var picker = new FolderPicker(AppWindow.Id)
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            ViewMode = PickerViewMode.List,
+            CommitButtonText = "Use this output folder"
+        };
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        var plan = await ViewModel.Builder.PrepareOutputAsync(folder.Path);
+        if (plan is not null)
+        {
+            await ConfirmAndCreateBuilderOutputAsync(plan);
+        }
+    }
+
+    private async Task ConfirmAndCreateBuilderOutputAsync(PackOutputPlan plan)
+    {
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 600,
+            Text = plan.SummaryText,
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 600,
+            FontFamily = new FontFamily("Cascadia Mono"),
+            FontSize = 12,
+            Text = $"Output: {plan.DestinationDirectory}\nMinecraft: {plan.MinecraftVersion}\nTarget: {plan.Target}\nServer setup: {plan.ServerBaselineText}",
+            TextWrapping = TextWrapping.Wrap
+        });
+        foreach (var item in plan.Items.Take(12))
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 600,
+                FontSize = 12,
+                Text = $"• {item.DisplayName} ({item.ProviderId})\n  {item.DestinationText}",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        if (plan.Items.Count > 12)
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 600,
+                FontSize = 12,
+                Text = $"…and {plan.Items.Count - 12:N0} more verified files.",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        content.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Warning,
+            Title = plan.PreparesServerBaseline ? "Runnable server baseline" : "Content-only output",
+            Message = plan.PreparesServerBaseline
+                ? "The exact official server loader will be installed in the atomic staging folder and the completed server will be added as a profile. Java must already be available. The Minecraft EULA remains unaccepted until you explicitly review it in the app. Client output still needs a launcher export."
+                : "This creates verified Client/Server mod and plugin folders plus a manifest. The selected platform does not yet have a safe runnable baseline installer here, and no Minecraft EULA is accepted."
+        });
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = plan.PreparesServerBaseline
+                ? "Build the reviewed server pack?"
+                : "Download the reviewed draft?",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 540,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            },
+            PrimaryButtonText = plan.PreparesServerBaseline
+                ? "Build server pack"
+                : "Download verified files",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var result = await ViewModel.Builder.CreateOutputAsync(plan);
+            if (result?.ServerBaselinePrepared == true)
+            {
+                var importResult = await ViewModel.ImportServerFolderAsync(
+                    result.ServerDirectory,
+                    plan.PackName);
+                var importedProfile = ViewModel.SelectedProfile;
+                if (importedProfile is not null
+                    && importedProfile.Id == importResult?.Profile?.Id)
+                {
+                    MainNavigationView.SelectedItem = OverviewNavigationItem;
+                    if (importedProfile.Readiness.NeedsEulaAcceptance)
+                    {
+                        await ShowEulaAcceptanceDialogAsync(importedProfile, afterImport: true);
+                    }
+                }
+            }
+        }
+    }
+
+    private async void OpenBuilderOutputFolder_Click(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Builder.HasLastOutput)
+        {
+            return;
+        }
+
+        try
+        {
+            var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(
+                ViewModel.Builder.LastOutputDirectory);
+            await Launcher.LaunchFolderAsync(folder);
+        }
+        catch (Exception exception) when (
+            exception is FileNotFoundException or DirectoryNotFoundException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "Output folder could not be opened",
+                Content = exception.Message,
+                CloseButtonText = "Close",
+                DefaultButton = ContentDialogButton.Close
+            };
+            await dialog.ShowAsync();
         }
     }
 
@@ -468,6 +864,126 @@ public sealed partial class MainWindow : Window
         if (result is not null)
         {
             await ViewModel.ImportServerFolderAsync(result.Path);
+        }
+    }
+
+    private async void DuplicateServerProfile_Click(object sender, RoutedEventArgs args)
+    {
+        var selected = ViewModel.SelectedProfile;
+        if (selected is null || selected.IsServerActive)
+        {
+            return;
+        }
+
+        var nameBox = new TextBox
+        {
+            Header = "New profile name",
+            Text = $"{selected.DisplayName} copy"
+        };
+        var includeWorlds = new CheckBox
+        {
+            Content = "Include worlds and player data",
+            IsChecked = false
+        };
+        var validationText = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Colors.OrangeRed),
+            Text = "Enter a name for the copied profile.",
+            Visibility = Visibility.Collapsed
+        };
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 560,
+            Text = "The original server is never changed. The copy keeps mods, plugins, configuration, and launch settings; logs, crash reports, backups, caches, and the previous EULA acceptance are left out.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(nameBox);
+        content.Children.Add(includeWorlds);
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 560,
+            Style = (Style)Application.Current.Resources["BodySecondaryTextStyle"],
+            Text = "Leave this unticked for a clean editable copy. Tick it to clone the current worlds, inventories, and player data too.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(new Border
+        {
+            Padding = new Thickness(10),
+            Background = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"],
+            CornerRadius = new CornerRadius(6),
+            Child = new TextBlock
+            {
+                FontFamily = new FontFamily("Cascadia Mono"),
+                FontSize = 11,
+                Text = ViewModel.ManagedInstancesDirectory,
+                TextWrapping = TextWrapping.Wrap
+            }
+        });
+        content.Children.Add(validationText);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = $"Duplicate {selected.DisplayName}",
+            Content = content,
+            PrimaryButtonText = "Copy to Instances",
+            SecondaryButtonText = "Choose location",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        void ValidateName(ContentDialog _, ContentDialogButtonClickEventArgs clickArgs)
+        {
+            if (!string.IsNullOrWhiteSpace(nameBox.Text))
+            {
+                return;
+            }
+
+            validationText.Visibility = Visibility.Visible;
+            clickArgs.Cancel = true;
+        }
+
+        dialog.PrimaryButtonClick += ValidateName;
+        dialog.SecondaryButtonClick += ValidateName;
+        var choice = await dialog.ShowAsync();
+        if (choice == ContentDialogResult.None)
+        {
+            return;
+        }
+
+        ServerProfileDuplicateResult? result;
+        if (choice == ContentDialogResult.Primary)
+        {
+            result = await ViewModel.DuplicateSelectedProfileToManagedInstancesAsync(
+                nameBox.Text,
+                includeWorlds.IsChecked == true);
+        }
+        else
+        {
+            var picker = new FolderPicker(AppWindow.Id)
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                ViewMode = PickerViewMode.List,
+                CommitButtonText = "Create copied server here"
+            };
+            var destination = await picker.PickSingleFolderAsync();
+            if (destination is null)
+            {
+                return;
+            }
+
+            result = await ViewModel.DuplicateSelectedProfileAsync(
+                nameBox.Text,
+                destination.Path,
+                includeWorlds.IsChecked == true);
+        }
+
+        var copiedProfile = ViewModel.SelectedProfile;
+        if (result?.ProfileImport.Profile is not null
+            && copiedProfile?.Id == result.ProfileImport.Profile.Id
+            && copiedProfile.Readiness.NeedsEulaAcceptance)
+        {
+            await ShowEulaAcceptanceDialogAsync(copiedProfile, afterImport: true);
         }
     }
 

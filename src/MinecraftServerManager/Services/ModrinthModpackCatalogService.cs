@@ -4,12 +4,14 @@ using MinecraftServerManager.Models;
 
 namespace MinecraftServerManager.Services;
 
-public sealed class ModrinthModpackCatalogService : IModpackCatalogService
+public sealed class ModrinthModpackCatalogService : IModpackCatalogProvider
 {
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private const string ModpackFacet = "[[\"project_type:modpack\"]]";
 
     public string ProviderId => "modrinth";
+
+    public string DisplayName => "Modrinth";
 
     public async Task<ModpackCatalogSearchPage> SearchAsync(
         string query,
@@ -39,9 +41,16 @@ public sealed class ModrinthModpackCatalogService : IModpackCatalogService
     }
 
     public async Task<IReadOnlyList<ModpackCatalogVersion>> GetVersionsAsync(
-        string projectId,
+        ModpackCatalogItem pack,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(pack);
+        if (!pack.ProviderId.Equals(ProviderId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The selected pack is not from Modrinth.", nameof(pack));
+        }
+
+        var projectId = pack.ProjectId;
         if (string.IsNullOrWhiteSpace(projectId))
         {
             throw new ArgumentException("A Modrinth project ID is required.", nameof(projectId));

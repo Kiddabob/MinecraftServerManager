@@ -114,7 +114,8 @@ public sealed record ServerContentFile(
     Uri DownloadUri,
     long Size,
     string Sha512,
-    bool IsPrimary)
+    bool IsPrimary,
+    string Sha1 = "")
 {
     public string SizeText => Size >= 1024 * 1024
         ? $"{Size / 1024d / 1024d:0.0} MB"

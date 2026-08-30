@@ -2,8 +2,10 @@ using MinecraftServerManager.Models;
 
 namespace MinecraftServerManager.Services;
 
-public interface IModpackImportService
+public interface IModpackImportProvider
 {
+    string ProviderId { get; }
+
     bool CanImport(ModpackCatalogItem pack, ModpackCatalogVersion version);
 
     Task<ModpackImportResult> ImportAsync(

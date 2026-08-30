@@ -1644,7 +1644,7 @@
                                 <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Find a modpack" />
                                 <TextBlock
                                     Style="{StaticResource BodySecondaryTextStyle}"
-                                    Text="Search a provider catalogue and review the exact Minecraft, loader, Java, and server-package requirements before creating a profile." />
+                                    Text="Search Modrinth, Technic, and Feed The Beast together, then review the exact Minecraft, loader, Java, and server-package requirements before creating a profile." />
                             </StackPanel>
 
                             <Border Style="{StaticResource AppCardStyle}">
@@ -1656,9 +1656,9 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBox
                                             x:Name="ModpackSearchTextBox"
-                                            AutomationProperties.Name="Search Modrinth modpacks"
+                                            AutomationProperties.Name="Search all modpack providers"
                                             KeyDown="ModpackSearchTextBox_KeyDown"
-                                            PlaceholderText="Search Modrinth, for example: Tekkit, Create, SkyFactory"
+                                            PlaceholderText="Search all providers, for example: Tekkit, Create, FTB Academy"
                                             Text="{Binding Modpacks.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <Button
                                             Grid.Column="1"
@@ -1686,7 +1686,7 @@
                                             Grid.Column="2"
                                             VerticalAlignment="Center"
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Provider: Modrinth" />
+                                            Text="Modrinth • Technic • FTB" />
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -1821,13 +1821,13 @@
                                             Background="{ThemeResource ControlFillColorSecondaryBrush}"
                                             CornerRadius="6">
                                             <StackPanel Spacing="4">
-                                                <TextBlock FontWeight="SemiBold" Text="Verified server-pack install" />
+                                                <TextBlock FontWeight="SemiBold" Text="Server-pack install" />
                                                 <TextBlock
                                                     Style="{StaticResource BodySecondaryTextStyle}"
                                                     Text="{Binding Modpacks.SelectedVersion.ImportReadinessText, Mode=OneWay}" />
                                                 <TextBlock
                                                     Style="{StaticResource BodySecondaryTextStyle}"
-                                                    Text="The app verifies every published SHA-512 checksum, skips client-only files, applies server overrides last, and never overwrites an existing server folder." />
+                                                    Text="The app uses each provider's official server route, verifies every published checksum, leaves EULA acceptance to you, and never overwrites an existing server folder." />
                                                 <Border
                                                     Margin="0,6,0,0"
                                                     Padding="10"
@@ -1903,6 +1903,131 @@
                             </StackPanel>
 
                             <Border Style="{StaticResource AppCardStyle}">
+                                <StackPanel Spacing="14">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Sources &amp; accounts" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Catalogue providers stay independent. One unavailable source never prevents another from being searched."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Border
+                                        Padding="14"
+                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Width="36"
+                                                Height="36"
+                                                VerticalAlignment="Top"
+                                                Background="{StaticResource AppAccentBrush}"
+                                                CornerRadius="8">
+                                                <FontIcon
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="17"
+                                                    Foreground="White"
+                                                    Glyph="&#xE8D7;" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Spacing="7">
+                                                <TextBlock FontWeight="SemiBold" Text="Modrinth" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="Public catalogue search is ready without an account."
+                                                    TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border
+                                        Padding="14"
+                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Width="36"
+                                                Height="36"
+                                                VerticalAlignment="Top"
+                                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                CornerRadius="8">
+                                                <FontIcon
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="17"
+                                                    Glyph="&#xE192;" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Spacing="8">
+                                                <StackPanel Spacing="3">
+                                                    <TextBlock FontWeight="SemiBold" Text="CurseForge developer access" />
+                                                    <TextBlock
+                                                        Style="{StaticResource BodySecondaryTextStyle}"
+                                                        Text="This connects an API key issued for your own approved developer application. It is not a CurseForge account login and does not expose a personal CurseForge library."
+                                                        TextWrapping="Wrap" />
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Style="{StaticResource BodySecondaryTextStyle}"
+                                                        Text="Prepare a personal application before opening Overwolf's official form. The app does not collect your contact details, accept the terms, or submit anything on your behalf."
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <ProgressRing
+                                                        Width="16"
+                                                        Height="16"
+                                                        IsActive="{Binding Builder.IsCurseForgeConnectionBusy, Mode=OneWay}"
+                                                        Visibility="{Binding Builder.IsCurseForgeConnectionBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <TextBlock
+                                                        Grid.Column="1"
+                                                        FontSize="12"
+                                                        Style="{StaticResource BodySecondaryTextStyle}"
+                                                        Text="{Binding Builder.CurseForgeConnectionStatusText, Mode=OneWay}"
+                                                        TextWrapping="Wrap" />
+                                                </Grid>
+                                                <StackPanel Spacing="6">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <HyperlinkButton
+                                                            Content="Review terms"
+                                                            NavigateUri="https://support.curseforge.com/support/solutions/articles/9000207405-curse-forge-3rd-party-api-terms-and-conditions" />
+                                                        <Button
+                                                            Click="PrepareCurseForgeApplication_Click"
+                                                            Content="Prepare application" />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Button
+                                                            Click="AddCurseForgeApiKey_Click"
+                                                            Content="Add approved key"
+                                                            IsEnabled="{Binding Builder.IsCurseForgeConnectionNotBusy, Mode=OneWay}"
+                                                            Style="{StaticResource AppAccentButtonStyle}" />
+                                                        <Button
+                                                            Click="RemoveCurseForgeApiKey_Click"
+                                                            Content="Disconnect"
+                                                            IsEnabled="{Binding Builder.IsCurseForgeConnectionNotBusy, Mode=OneWay}"
+                                                            Visibility="{Binding Builder.IsCurseForgeApiKeyStored, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource AppCardStyle}">
                                 <StackPanel Spacing="16">
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="1. Choose the foundation" />
                                     <Grid ColumnSpacing="14">
@@ -1961,6 +2086,18 @@
                                                     DisplayMemberPath="DisplayName"
                                                     ItemsSource="{Binding Builder.ClientPlatforms, Mode=OneWay}"
                                                     SelectedItem="{Binding Builder.SelectedClientPlatform, Mode=TwoWay}" />
+                                                <StackPanel
+                                                    Spacing="5"
+                                                    Visibility="{Binding Builder.ShowClientRuntimeVersion, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="Exact client loader" />
+                                                    <ComboBox
+                                                        HorizontalAlignment="Stretch"
+                                                        DisplayMemberPath="DisplayName"
+                                                        IsEnabled="{Binding Builder.IsNotResolvingPlatformVersions, Mode=OneWay}"
+                                                        ItemsSource="{Binding Builder.ClientRuntimeVersions, Mode=OneWay}"
+                                                        PlaceholderText="Resolving official versions…"
+                                                        SelectedItem="{Binding Builder.SelectedClientRuntimeVersion, Mode=TwoWay}" />
+                                                </StackPanel>
                                                 <TextBlock
                                                     Style="{StaticResource BodySecondaryTextStyle}"
                                                     Text="{Binding Builder.ClientPlatformGuidance, Mode=OneWay}"
@@ -1982,12 +2119,40 @@
                                                     DisplayMemberPath="DisplayName"
                                                     ItemsSource="{Binding Builder.ServerPlatforms, Mode=OneWay}"
                                                     SelectedItem="{Binding Builder.SelectedServerPlatform, Mode=TwoWay}" />
+                                                <StackPanel
+                                                    Spacing="5"
+                                                    Visibility="{Binding Builder.ShowServerRuntimeVersion, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="Exact server loader" />
+                                                    <ComboBox
+                                                        HorizontalAlignment="Stretch"
+                                                        DisplayMemberPath="DisplayName"
+                                                        IsEnabled="{Binding Builder.IsNotResolvingPlatformVersions, Mode=OneWay}"
+                                                        ItemsSource="{Binding Builder.ServerRuntimeVersions, Mode=OneWay}"
+                                                        PlaceholderText="Resolving official versions…"
+                                                        SelectedItem="{Binding Builder.SelectedServerRuntimeVersion, Mode=TwoWay}" />
+                                                </StackPanel>
                                                 <TextBlock
                                                     Style="{StaticResource BodySecondaryTextStyle}"
                                                     Text="{Binding Builder.ServerPlatformGuidance, Mode=OneWay}"
                                                     TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
+                                    </Grid>
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ProgressRing
+                                            Width="18"
+                                            Height="18"
+                                            IsActive="{Binding Builder.IsResolvingPlatformVersions, Mode=OneWay}"
+                                            Visibility="{Binding Builder.IsResolvingPlatformVersions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Builder.PlatformVersionStatusText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -2133,10 +2298,15 @@
                                         </Border>
                                         <Button
                                             Click="ReviewBuilderItem_Click"
-                                            Content="Review and add to draft"
+                                            Content="Add to draft"
                                             HorizontalAlignment="Stretch"
                                             IsEnabled="{Binding Builder.CanReviewAdd, Mode=OneWay}"
                                             Style="{StaticResource AppAccentButtonStyle}" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Compatible required dependencies are added automatically. Optional dependencies remain notices."
+                                            TextWrapping="Wrap" />
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -2201,11 +2371,50 @@
                                         IsOpen="True"
                                         Message="{Binding Builder.DraftStatusText, Mode=OneWay}"
                                         Severity="Informational"
-                                        Title="Foundation preview" />
-                                    <TextBlock
-                                        Style="{StaticResource BodySecondaryTextStyle}"
-                                        Text="Installation, downloads, export, and isolated launch-testing arrive only after this resolver workflow is proven."
-                                        TextWrapping="Wrap" />
+                                        Title="Planning draft" />
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="4. Build the reviewed output" />
+                                        <TextBox
+                                            Header="Pack name"
+                                            MaxLength="80"
+                                            PlaceholderText="My Minecraft Pack"
+                                            Text="{Binding Builder.PackName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Builder.ManagedOutputDirectoryText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button
+                                                Click="DownloadBuilderDraftToManaged_Click"
+                                                Content="Build in managed Instances"
+                                                IsEnabled="{Binding Builder.CanCreateOutput, Mode=OneWay}"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                            <Button
+                                                Click="DownloadBuilderDraftToFolder_Click"
+                                                Content="Build in another folder"
+                                                IsEnabled="{Binding Builder.CanCreateOutput, Mode=OneWay}" />
+                                            <Button
+                                                Click="OpenBuilderOutputFolder_Click"
+                                                Content="Open output folder"
+                                                Visibility="{Binding Builder.HasLastOutput, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </StackPanel>
+                                        <ProgressBar
+                                            IsIndeterminate="{Binding Builder.IsOutputProgressIndeterminate, Mode=OneWay}"
+                                            Maximum="100"
+                                            Value="{Binding Builder.OutputProgressPercent, Mode=OneWay}"
+                                            Visibility="{Binding Builder.IsOutputBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Builder.OutputStatusText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <InfoBar
+                                            IsClosable="False"
+                                            IsOpen="True"
+                                            Message="{Binding Builder.OutputCapabilityMessage, Mode=OneWay}"
+                                            Severity="Warning"
+                                            Title="{Binding Builder.OutputCapabilityTitle, Mode=OneWay}" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -2245,12 +2454,22 @@
                                             Text="{Binding ProfileImportStatus, Mode=OneWay}"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <Button
+                                    <StackPanel
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
-                                        Click="ChooseServerFolder_Click"
-                                        Content="Choose server folder"
-                                        Style="{StaticResource AppAccentButtonStyle}" />
+                                        Spacing="8">
+                                        <Button
+                                            Click="ChooseServerFolder_Click"
+                                            Content="Choose server folder"
+                                            HorizontalAlignment="Stretch"
+                                            Style="{StaticResource AppAccentButtonStyle}" />
+                                        <Button
+                                            Click="DuplicateServerProfile_Click"
+                                            Content="Duplicate selected"
+                                            HorizontalAlignment="Stretch"
+                                            IsEnabled="{Binding CanDuplicateSelectedProfile, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Create an independent editable copy of the selected stopped server" />
+                                    </StackPanel>
                                 </Grid>
                             </Border>
 
