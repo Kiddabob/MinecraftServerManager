@@ -118,7 +118,9 @@
                 <Grid>
                     <ScrollViewer
                         x:Name="OverviewPage"
+                        HorizontalContentAlignment="Stretch"
                         HorizontalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
                         VerticalScrollBarVisibility="Auto">
                         <StackPanel
                             MaxWidth="1080"

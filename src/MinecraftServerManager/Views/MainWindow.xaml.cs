@@ -74,6 +74,7 @@ public sealed partial class MainWindow : Window
         }
 
         AppWindow.Resize(new SizeInt32(DefaultWindowWidth, DefaultWindowHeight));
+        RestoreWindowPlacement();
 
         _windowPlacementSaveTimer = DispatcherQueue.CreateTimer();
         _windowPlacementSaveTimer.Interval = TimeSpan.FromMilliseconds(700);
@@ -94,7 +95,6 @@ public sealed partial class MainWindow : Window
 
     private async void RootGrid_Loaded(object sender, RoutedEventArgs args)
     {
-        RestoreWindowPlacement();
         if (_restoreMaximizedOnLoaded && AppWindow.Presenter is OverlappedPresenter presenter)
         {
             _restoreMaximizedOnLoaded = false;
