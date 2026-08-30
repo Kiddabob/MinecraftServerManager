@@ -174,6 +174,7 @@ public sealed partial class MainWindow : Window
         ConsolePage.Visibility = destination == "console" ? Visibility.Visible : Visibility.Collapsed;
         PlayersPage.Visibility = destination == "players" ? Visibility.Visible : Visibility.Collapsed;
         FilesPage.Visibility = destination == "files" ? Visibility.Visible : Visibility.Collapsed;
+        ContentPage.Visibility = destination == "content" ? Visibility.Visible : Visibility.Collapsed;
         ProfilesPage.Visibility = destination == "profiles" ? Visibility.Visible : Visibility.Collapsed;
         ModpacksPage.Visibility = destination == "modpacks" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = destination == "settings" ? Visibility.Visible : Visibility.Collapsed;
@@ -186,6 +187,11 @@ public sealed partial class MainWindow : Window
         if (destination == "dashboard")
         {
             ViewModel.Dashboard.RefreshCommand.Execute(null);
+        }
+
+        if (destination == "content")
+        {
+            ViewModel.Content.EnsureLoaded();
         }
 
         if (destination == "console")
@@ -208,6 +214,84 @@ public sealed partial class MainWindow : Window
 
         args.Handled = true;
         ViewModel.Modpacks.SearchCommand.Execute(null);
+    }
+
+    private void ServerContentSearchTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Enter || !ViewModel.Content.SearchCommand.CanExecute(null))
+        {
+            return;
+        }
+
+        args.Handled = true;
+        ViewModel.Content.SearchCommand.Execute(null);
+    }
+
+    private async void InstallServerContent_Click(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Content.CanInstall)
+        {
+            return;
+        }
+
+        var plan = await ViewModel.Content.PrepareInstallAsync();
+        if (plan is null || ViewModel.Content.IsServerActive)
+        {
+            return;
+        }
+
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 560,
+            Text = $"{plan.SummaryText}. Every JAR is downloaded from Modrinth and verified with its published SHA-512 hash before it is moved into the server.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        foreach (var item in plan.Items)
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 560,
+                FontFamily = new FontFamily("Cascadia Mono"),
+                FontSize = 12,
+                Text = $"• {item.DisplayName}\n  {item.DetailsText}",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        foreach (var warning in plan.Warnings)
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 560,
+                Foreground = new SolidColorBrush(Colors.Goldenrod),
+                Text = $"Warning: {warning}",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Install server content?",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 520,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            },
+            PrimaryButtonText = "Install verified files",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary
+            || ViewModel.Content.IsServerActive)
+        {
+            return;
+        }
+
+        await ViewModel.Content.InstallAsync(plan);
     }
 
     private async void ImportModpackToManagedInstances_Click(object sender, RoutedEventArgs args)

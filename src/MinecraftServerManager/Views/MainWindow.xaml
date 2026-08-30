@@ -71,6 +71,11 @@
                         <FontIcon Glyph="&#xE8B7;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Mods &amp; plugins" Tag="content">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7FC;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Modpacks" Tag="modpacks">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8F1;" />
@@ -1319,6 +1324,304 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{Binding FilesStatus, Mode=OneWay}" />
                     </Grid>
+
+                    <ScrollViewer
+                        x:Name="ContentPage"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        Visibility="Collapsed">
+                        <StackPanel
+                            MaxWidth="1120"
+                            Margin="32,28,32,40"
+                            HorizontalAlignment="Stretch"
+                            Spacing="20">
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Mods &amp; plugins" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="Review content installed for this profile and add server-compatible projects without editing the server folder by hand." />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="5">
+                                        <TextBlock
+                                            FontSize="18"
+                                            FontWeight="SemiBold"
+                                            Text="{Binding Content.EnvironmentText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Content.TargetSummary, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Foreground="#FF2CCB70"
+                                            Text="{Binding Content.SafetyText, Mode=OneWay}"
+                                            Visibility="{Binding Content.IsServerActive, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
+                                        <TextBlock
+                                            Foreground="#FFE84856"
+                                            Text="{Binding Content.SafetyText, Mode=OneWay}"
+                                            Visibility="{Binding Content.IsServerActive, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                                        <ProgressRing
+                                            Width="20"
+                                            Height="20"
+                                            IsActive="{Binding Content.IsBusy, Mode=OneWay}"
+                                            Visibility="{Binding Content.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Button Command="{Binding Content.RefreshCommand}" Content="Rescan content" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*" MinWidth="360" />
+                                    <ColumnDefinition Width="2*" MinWidth="340" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Style="{StaticResource AppCardStyle}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Installed content" />
+                                        <ListView
+                                            Grid.Row="1"
+                                            Height="620"
+                                            Margin="0,12,0,0"
+                                            ItemsSource="{Binding Content.InstalledItems, Mode=OneWay}"
+                                            SelectionMode="None">
+                                            <ListView.ItemContainerStyle>
+                                                <Style TargetType="ListViewItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                </Style>
+                                            </ListView.ItemContainerStyle>
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid MinHeight="86" Padding="8" ColumnSpacing="12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="44" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border
+                                                            Width="40"
+                                                            Height="40"
+                                                            VerticalAlignment="Top"
+                                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                            CornerRadius="8">
+                                                            <FontIcon
+                                                                Foreground="{StaticResource AppAccentBrush}"
+                                                                Glyph="&#xE7FC;" />
+                                                        </Border>
+                                                        <StackPanel Grid.Column="1" Spacing="2">
+                                                            <TextBlock
+                                                                FontWeight="SemiBold"
+                                                                Text="{Binding Name}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding VersionText}" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding IdentityText}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock
+                                                                FontFamily="Cascadia Mono"
+                                                                FontSize="11"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding FileDetailsText}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="3">
+                                                            <TextBlock
+                                                                Foreground="{StaticResource AppAccentBrush}"
+                                                                Text="{Binding KindText}" />
+                                                            <TextBlock
+                                                                HorizontalAlignment="Right"
+                                                                FontSize="12"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding StateText}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                        <TextBlock
+                                            Grid.Row="2"
+                                            Margin="4,10,0,0"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Content.InventoryStatusText, Mode=OneWay}" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Spacing="16">
+                                    <Border Style="{StaticResource AppCardStyle}">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Find compatible content" />
+                                            <StackPanel Spacing="5">
+                                                <TextBlock FontWeight="SemiBold" Text="Install into" />
+                                                <ComboBox
+                                                    HorizontalAlignment="Stretch"
+                                                    DisplayMemberPath="KindText"
+                                                    ItemsSource="{Binding Content.Targets, Mode=OneWay}"
+                                                    PlaceholderText="No compatible content folder"
+                                                    SelectedItem="{Binding Content.SelectedTarget, Mode=TwoWay}" />
+                                            </StackPanel>
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox
+                                                    x:Name="ServerContentSearchTextBox"
+                                                    AutomationProperties.Name="Search compatible mods and plugins"
+                                                    KeyDown="ServerContentSearchTextBox_KeyDown"
+                                                    PlaceholderText="Search Modrinth"
+                                                    Text="{Binding Content.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Command="{Binding Content.SearchCommand}"
+                                                    Content="Search"
+                                                    Style="{StaticResource AppAccentButtonStyle}" />
+                                            </Grid>
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Content.SearchStatusText, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                            <ListView
+                                                Height="250"
+                                                ItemsSource="{Binding Content.SearchResults, Mode=OneWay}"
+                                                SelectedItem="{Binding Content.SelectedProject, Mode=TwoWay}"
+                                                SelectionMode="Single">
+                                                <ListView.ItemContainerStyle>
+                                                    <Style TargetType="ListViewItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                    </Style>
+                                                </ListView.ItemContainerStyle>
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid MinHeight="76" Padding="6" ColumnSpacing="10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="44" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Border
+                                                                Width="40"
+                                                                Height="40"
+                                                                VerticalAlignment="Top"
+                                                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                                CornerRadius="7">
+                                                                <Image Source="{Binding IconUrl}" Stretch="UniformToFill" />
+                                                            </Border>
+                                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                                <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                                    Text="{Binding MetadataText}"
+                                                                    TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="{StaticResource AppAccentBrush}"
+                                                                    Text="{Binding CompatibilityText}"
+                                                                    TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border
+                                        Style="{StaticResource AppCardStyle}"
+                                        Visibility="{Binding Content.HasSelectedProject, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel Spacing="12">
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="48" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border
+                                                    Width="44"
+                                                    Height="44"
+                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                    CornerRadius="8">
+                                                    <Image Source="{Binding Content.SelectedProject.IconUrl, Mode=OneWay}" Stretch="UniformToFill" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="2">
+                                                    <TextBlock
+                                                        FontSize="18"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding Content.SelectedProject.Title, Mode=OneWay, TargetNullValue=Choose a project}" />
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Style="{StaticResource BodySecondaryTextStyle}"
+                                                        Text="{Binding Content.SelectedProject.MetadataText, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock
+                                                MaxLines="3"
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Content.SelectedProject.Description, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap" />
+                                            <ComboBox
+                                                HorizontalAlignment="Stretch"
+                                                DisplayMemberPath="DisplayName"
+                                                ItemsSource="{Binding Content.Versions, Mode=OneWay}"
+                                                PlaceholderText="Choose a compatible version"
+                                                SelectedItem="{Binding Content.SelectedVersion, Mode=TwoWay}" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Content.SelectedVersion.CompatibilityText, Mode=OneWay}" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Content.SelectedVersion.DependencyText, Mode=OneWay}" />
+                                            <ItemsControl ItemsSource="{Binding Content.PlannedItems, Mode=OneWay}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock
+                                                            Margin="0,2"
+                                                            FontFamily="Cascadia Mono"
+                                                            FontSize="11"
+                                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                                            Text="{Binding DetailsText}"
+                                                            TextWrapping="Wrap" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <Button
+                                                Click="InstallServerContent_Click"
+                                                Content="Review and install"
+                                                HorizontalAlignment="Stretch"
+                                                IsEnabled="{Binding Content.CanInstall, Mode=OneWay}"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                            <ProgressBar
+                                                IsIndeterminate="{Binding Content.IsInstallProgressIndeterminate, Mode=OneWay}"
+                                                Maximum="100"
+                                                Minimum="0"
+                                                Value="{Binding Content.InstallProgressValue, Mode=OneWay}"
+                                                Visibility="{Binding Content.IsInstalling, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Content.InstallStatusText, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
 
                     <ScrollViewer
                         x:Name="ModpacksPage"

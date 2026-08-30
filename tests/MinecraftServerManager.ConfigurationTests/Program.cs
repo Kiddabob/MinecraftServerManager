@@ -26,6 +26,130 @@ if (args is ["--java", .. var executables])
     return;
 }
 
+if (args is ["--content", .. var contentFolders])
+{
+    foreach (var folder in contentFolders)
+    {
+        var detection = ServerFolderDetector.Detect(folder);
+        var contentProfile = new ServerProfile
+        {
+            Id = $"content-scan-{Guid.NewGuid():N}",
+            DisplayName = new DirectoryInfo(folder).Name,
+            ServerDirectory = folder,
+            ServerType = detection?.ServerType ?? "Minecraft",
+            MinecraftVersion = detection?.MinecraftVersion ?? "Unknown"
+        };
+        var inventory = ServerContentInventoryService.Discover(contentProfile);
+        Console.WriteLine($"{folder}: {inventory.EnvironmentText} • {inventory.ItemCountText} • {inventory.TargetSummary}");
+        foreach (var item in inventory.Items)
+        {
+            Console.WriteLine($"  {item.KindText}: {item.Name} • {item.VersionText} • {item.FileName}");
+        }
+    }
+
+    return;
+}
+
+if (args is ["--content-search", var searchMinecraftVersion, var searchKind, var searchLoaders, .. var searchTerms])
+{
+    var kind = searchKind.Equals("plugin", StringComparison.OrdinalIgnoreCase)
+        ? ServerContentKind.Plugin
+        : ServerContentKind.Mod;
+    var loaders = searchLoaders.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var catalog = new ModrinthServerContentCatalogService();
+    var page = await catalog.SearchAsync(
+        string.Join(' ', searchTerms),
+        searchMinecraftVersion,
+        kind,
+        loaders);
+    Console.WriteLine($"{page.TotalHits:N0} compatible projects found; showing {page.Items.Count:N0}.");
+    foreach (var project in page.Items)
+    {
+        Console.WriteLine($"  {project.Title} • {project.MetadataText}");
+    }
+
+    if (page.Items.FirstOrDefault() is { } firstProject)
+    {
+        var versions = await catalog.GetVersionsAsync(
+            firstProject.ProjectId,
+            searchMinecraftVersion,
+            loaders);
+        Console.WriteLine($"{firstProject.Title}: {versions.Count:N0} verified compatible versions.");
+    }
+
+    return;
+}
+
+if (args is ["--content-install-smoke", var smokeMinecraftVersion, var smokeKind, var smokeLoaders, .. var smokeTerms])
+{
+    var kind = smokeKind.Equals("plugin", StringComparison.OrdinalIgnoreCase)
+        ? ServerContentKind.Plugin
+        : ServerContentKind.Mod;
+    var loaders = smokeLoaders.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var query = string.Join(' ', smokeTerms).Trim();
+    var catalog = new ModrinthServerContentCatalogService();
+    var page = await catalog.SearchAsync(query, smokeMinecraftVersion, kind, loaders);
+    var project = page.Items.FirstOrDefault(item => item.Slug.Equals(query, StringComparison.OrdinalIgnoreCase))
+        ?? page.Items.FirstOrDefault()
+        ?? throw new InvalidOperationException("No compatible Modrinth project was found for the smoke test.");
+    var versions = await catalog.GetVersionsAsync(project.ProjectId, smokeMinecraftVersion, loaders);
+    var version = versions.FirstOrDefault()
+        ?? throw new InvalidOperationException("No compatible verified version was found for the smoke test.");
+
+    var smokeBase = Path.GetFullPath(Path.Combine(
+        Path.GetTempPath(),
+        "MinecraftServerManager-ContentInstallSmoke"));
+    var smokeRoot = Path.Combine(smokeBase, Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(smokeRoot);
+    try
+    {
+        var profile = new ServerProfile
+        {
+            Id = $"content-install-smoke-{Guid.NewGuid():N}",
+            DisplayName = "Content install smoke test",
+            ServerDirectory = smokeRoot,
+            ServerType = kind == ServerContentKind.Mod ? "Forge" : "Paper",
+            MinecraftVersion = smokeMinecraftVersion
+        };
+        var target = new ServerContentTarget(
+            kind,
+            kind == ServerContentKind.Mod ? "mods" : "plugins",
+            loaders);
+        var installer = new ServerContentInstallService(catalog);
+        var plan = await installer.CreatePlanAsync(profile, target, project, version);
+        Console.WriteLine($"Installing {plan.Items.Count:N0} file(s), {plan.TotalBytes / 1024d / 1024d:0.0} MB, into a disposable folder.");
+        var result = await installer.InstallAsync(
+            plan,
+            new Progress<ServerContentInstallProgress>(progress => Console.WriteLine(progress.Message)));
+        if (result.InstalledFileCount != plan.Items.Count
+            || result.InstalledFiles.Any(file => !File.Exists(Path.Combine(result.DestinationDirectory, file))))
+        {
+            throw new InvalidDataException("The content install smoke test did not commit every verified file.");
+        }
+
+        Console.WriteLine($"Installed and verified {result.InstalledFileCount:N0} file(s) for {project.Title} {version.VersionNumber}.");
+    }
+    finally
+    {
+        var normalizedRoot = Path.GetFullPath(smokeRoot);
+        if (normalizedRoot.StartsWith(
+                smokeBase.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase)
+            && Directory.Exists(normalizedRoot))
+        {
+            Directory.Delete(normalizedRoot, recursive: true);
+        }
+
+        if (Directory.Exists(smokeBase)
+            && !Directory.EnumerateFileSystemEntries(smokeBase).Any())
+        {
+            Directory.Delete(smokeBase);
+        }
+    }
+
+    return;
+}
+
 var testRoot = Path.Combine(
     Path.GetTempPath(),
     "MinecraftServerManager-ConfigurationTests",
@@ -34,6 +158,7 @@ var testRoot = Path.Combine(
 try
 {
     Directory.CreateDirectory(Path.Combine(testRoot, "config", "ExampleMod"));
+    Directory.CreateDirectory(Path.Combine(testRoot, "mods"));
     Directory.CreateDirectory(Path.Combine(testRoot, "plugins", "ExamplePlugin"));
     await File.WriteAllTextAsync(
         Path.Combine(testRoot, "server.properties"),
@@ -52,10 +177,48 @@ try
         "{\"message\":\"BOM preserved\"}\n",
         new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
+    var fabricModPath = Path.Combine(testRoot, "mods", "example-fabric.jar");
+    CreateJarWithTextEntries(
+        fabricModPath,
+        new Dictionary<string, string>
+        {
+            ["fabric.mod.json"] = """
+                {
+                  "id": "example_fabric",
+                  "name": "Example Fabric Mod",
+                  "version": "2.4.0"
+                }
+                """
+        });
+    File.Copy(fabricModPath, Path.Combine(testRoot, "mods", "example-fabric.jar.disabled"));
+    CreateJarWithTextEntries(
+        Path.Combine(testRoot, "mods", "example-forge.jar"),
+        new Dictionary<string, string>
+        {
+            ["META-INF/mods.toml"] = """
+                [[mods]]
+                modId="example_forge"
+                version="1.3.0"
+                displayName="Example Forge Mod"
+                """
+        });
+    CreateJarWithTextEntries(
+        Path.Combine(testRoot, "plugins", "ExamplePlugin", "example-plugin.jar"),
+        new Dictionary<string, string>
+        {
+            ["plugin.yml"] = """
+                name: Example Plugin
+                version: 5.1.0
+                main: example.plugin.Main
+                """
+        });
+
     var profile = new ServerProfile
     {
         Id = $"configuration-test-{Guid.NewGuid():N}",
         DisplayName = "Hybrid test",
+        ServerType = "Hybrid",
+        MinecraftVersion = "1.20.1",
         ServerDirectory = testRoot,
         ConfigurationSources =
         [
@@ -126,6 +289,43 @@ try
             }
         ]
     };
+
+    var contentInventory = ServerContentInventoryService.Discover(profile);
+    AssertTrue(contentInventory.SupportsMods, "hybrid content inventory supports mods");
+    AssertTrue(contentInventory.SupportsPlugins, "hybrid content inventory supports plugins");
+    AssertEqual(4, contentInventory.Items.Count, "installed content discovery count");
+    var fabricContent = contentInventory.Items.Single(item =>
+        item.FileName.Equals("example-fabric.jar", StringComparison.OrdinalIgnoreCase));
+    AssertEqual("Example Fabric Mod", fabricContent.Name, "Fabric metadata display name");
+    AssertEqual("example_fabric", fabricContent.Id, "Fabric metadata ID");
+    AssertEqual("2.4.0", fabricContent.Version, "Fabric metadata version");
+    AssertEqual("fabric", fabricContent.Loader, "Fabric metadata loader");
+    AssertTrue(fabricContent.IsEnabled, "enabled content state");
+    AssertTrue(
+        !contentInventory.Items.Single(item => item.FileName.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase)).IsEnabled,
+        "disabled content state");
+    var forgeContent = contentInventory.Items.Single(item =>
+        item.FileName.Equals("example-forge.jar", StringComparison.OrdinalIgnoreCase));
+    AssertEqual("Example Forge Mod", forgeContent.Name, "Forge metadata display name");
+    AssertEqual("example_forge", forgeContent.Id, "Forge metadata ID");
+    var pluginContent = contentInventory.Items.Single(item =>
+        item.FileName.Equals("example-plugin.jar", StringComparison.OrdinalIgnoreCase));
+    AssertEqual(ServerContentKind.Plugin, pluginContent.Kind, "plugin content kind");
+    AssertEqual("Example Plugin", pluginContent.Name, "Bukkit plugin metadata display name");
+    AssertEqual("5.1.0", pluginContent.Version, "Bukkit plugin metadata version");
+    var forgeOnlyInventory = ServerContentInventoryService.Discover(new ServerProfile
+    {
+        Id = $"forge-content-test-{Guid.NewGuid():N}",
+        DisplayName = "Forge content test",
+        ServerType = "Forge",
+        MinecraftVersion = "1.20.1",
+        ServerDirectory = testRoot
+    });
+    AssertTrue(forgeOnlyInventory.SupportsMods, "Forge content inventory supports mods");
+    AssertTrue(!forgeOnlyInventory.SupportsPlugins, "stray plugins folder does not make Forge hybrid");
+    AssertTrue(
+        forgeOnlyInventory.Items.All(item => item.Kind == ServerContentKind.Mod),
+        "Forge inventory excludes unrelated plugin-folder files");
 
     var service = new ServerConfigurationService(Path.Combine(testRoot, "backups"));
     var discovery = await service.DiscoverAsync(profile);
@@ -499,6 +699,177 @@ try
     AssertTrue(
         modpackSearch.Items.Single().IconUrl.StartsWith("https://cdn.modrinth.com/", StringComparison.Ordinal),
         "Modrinth icon host validation");
+
+    using var contentSearchDocument = JsonDocument.Parse("""
+        {
+          "hits": [{
+            "project_id": "CONTENT1",
+            "slug": "example-content",
+            "project_type": "mod",
+            "all_project_types": ["mod"],
+            "title": "Example Content",
+            "description": "A server-side example mod.",
+            "author": "ContentAuthor",
+            "downloads": 6789,
+            "icon_url": "https://cdn.modrinth.com/data/CONTENT1/icon.png",
+            "versions": ["1.20.1"],
+            "display_categories": ["forge"],
+            "environment": ["server_only"]
+          }],
+          "offset": 0,
+          "limit": 20,
+          "total_hits": 1
+        }
+        """);
+    var contentSearch = ModrinthServerContentCatalogService.ParseSearchResponse(
+        contentSearchDocument.RootElement,
+        ServerContentKind.Mod);
+    AssertEqual(1, contentSearch.TotalHits, "Modrinth content search total");
+    AssertEqual(ServerContentKind.Mod, contentSearch.Items.Single().Kind, "Modrinth content kind");
+    var contentFacets = ModrinthServerContentCatalogService.BuildSearchFacets(
+        "1.20.1",
+        ServerContentKind.Mod,
+        ["forge"]);
+    AssertTrue(
+        contentFacets.Any(group => group.Contains("project_type:mod")),
+        "content search project type facet");
+    AssertTrue(
+        contentFacets.Any(group => group.Contains("versions:1.20.1")),
+        "content search Minecraft version facet");
+    AssertTrue(
+        contentFacets.Any(group => group.Contains("categories:forge")),
+        "content search loader facet");
+    var pluginFacets = ModrinthServerContentCatalogService.BuildSearchFacets(
+        "1.20.1",
+        ServerContentKind.Plugin,
+        ["paper"]);
+    AssertTrue(
+        pluginFacets.Any(group => group.Contains("all_project_types:plugin")),
+        "content search multi-type plugin facet");
+
+    var contentVersionsJson = """
+        [{
+          "id": "CONTENT_VERSION",
+          "project_id": "CONTENT1",
+          "name": "Example Content 3.0",
+          "version_number": "3.0.0",
+          "version_type": "release",
+          "date_published": "2026-08-01T12:00:00Z",
+          "game_versions": ["1.20.1"],
+          "loaders": ["forge"],
+          "environment": "server_only",
+          "dependencies": [{
+            "project_id": "DEPENDENCY1",
+            "dependency_type": "required"
+          }, {
+            "project_id": "OPTIONAL1",
+            "dependency_type": "optional"
+          }],
+          "files": [{
+            "hashes": { "sha512": "__CONTENT_SHA512__" },
+            "url": "https://cdn.modrinth.com/data/CONTENT1/versions/CONTENT_VERSION/example-content.jar",
+            "filename": "example-content.jar",
+            "primary": true,
+            "size": 120000
+          }]
+        }]
+        """.Replace("__CONTENT_SHA512__", new string('d', 128), StringComparison.Ordinal);
+    using var contentVersionsDocument = JsonDocument.Parse(contentVersionsJson);
+    var contentVersion = ModrinthServerContentCatalogService.ParseVersionsResponse(
+        contentVersionsDocument.RootElement).Single();
+    AssertEqual("example-content.jar", contentVersion.PrimaryFile!.FileName, "content primary JAR selection");
+    AssertEqual(2, contentVersion.Dependencies.Count, "content dependency parsing");
+
+    var dependencyVersion = new ServerContentVersion(
+        "modrinth",
+        "DEPENDENCY1",
+        "DEPENDENCY_VERSION",
+        "Required Library",
+        "1.0.0",
+        "release",
+        DateTimeOffset.UtcNow,
+        ["1.20.1"],
+        ["forge"],
+        "client_and_server",
+        [new ServerContentFile(
+            "required-library.jar",
+            new Uri("https://cdn.modrinth.com/data/DEPENDENCY1/versions/DEPENDENCY_VERSION/required-library.jar"),
+            64000,
+            new string('e', 128),
+            true)],
+        []);
+    var contentCatalogStub = new StubServerContentCatalogService(
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["DEPENDENCY1"] = [dependencyVersion]
+        },
+        new Dictionary<string, ServerContentVersion>(StringComparer.OrdinalIgnoreCase)
+        {
+            [dependencyVersion.VersionId] = dependencyVersion
+        });
+    var contentInstaller = new ServerContentInstallService(contentCatalogStub);
+    var modTarget = contentInventory.Targets.Single(target => target.Kind == ServerContentKind.Mod);
+    var contentPlan = await contentInstaller.CreatePlanAsync(
+        profile,
+        modTarget,
+        contentSearch.Items.Single(),
+        contentVersion);
+    AssertEqual(2, contentPlan.Items.Count, "required content dependency planning");
+    AssertEqual(1, contentPlan.Warnings.Count, "optional content dependency warning");
+    AssertTrue(contentPlan.Items[1].IsDependency, "dependency plan item marker");
+    AssertThrows<InvalidDataException>(
+        () => ServerContentInstallService.ResolveContainedDirectory(testRoot, ".."),
+        "content directory traversal rejection");
+    await AssertThrowsAsync<InvalidDataException>(
+        () => contentInstaller.InstallAsync(new ServerContentInstallPlan(
+            testRoot,
+            Path.Combine(testRoot, "mods"),
+            ServerContentKind.Mod,
+            [contentPlan.Items[0] with { Kind = ServerContentKind.Plugin }],
+            [])),
+        "mixed mod and plugin install plan rejection");
+
+    var conflictingDependencyVersion = dependencyVersion with
+    {
+        VersionId = "DEPENDENCY_VERSION_2",
+        VersionNumber = "2.0.0",
+        Files = [new ServerContentFile(
+            "required-library-v2.jar",
+            new Uri("https://cdn.modrinth.com/data/DEPENDENCY1/versions/DEPENDENCY_VERSION_2/required-library-v2.jar"),
+            65000,
+            new string('f', 128),
+            true)]
+    };
+    var conflictingRootVersion = contentVersion with
+    {
+        Dependencies =
+        [
+            new ServerContentDependency(
+                dependencyVersion.VersionId,
+                dependencyVersion.ProjectId,
+                string.Empty,
+                "required"),
+            new ServerContentDependency(
+                conflictingDependencyVersion.VersionId,
+                conflictingDependencyVersion.ProjectId,
+                string.Empty,
+                "required")
+        ]
+    };
+    var conflictingCatalogStub = new StubServerContentCatalogService(
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(StringComparer.OrdinalIgnoreCase),
+        new Dictionary<string, ServerContentVersion>(StringComparer.OrdinalIgnoreCase)
+        {
+            [dependencyVersion.VersionId] = dependencyVersion,
+            [conflictingDependencyVersion.VersionId] = conflictingDependencyVersion
+        });
+    await AssertThrowsAsync<InvalidDataException>(
+        () => new ServerContentInstallService(conflictingCatalogStub).CreatePlanAsync(
+            profile,
+            modTarget,
+            contentSearch.Items.Single(),
+            conflictingRootVersion),
+        "conflicting dependency version rejection");
 
     var modpackVersionsJson = """
         [{
@@ -890,7 +1261,7 @@ try
     AssertEqual(ServerConsoleSignal.Failed, failureResult.Signal, "startup failure signal");
     AssertEqual(ServerLogLevel.Error, failureResult.Entry.Level, "startup failure log severity");
 
-    Console.WriteLine("Configuration dashboard, launcher detection, and Java compatibility tests passed.");
+    Console.WriteLine("Configuration dashboard, content management, launcher detection, and Java compatibility tests passed.");
 }
 catch (Exception exception)
 {
@@ -932,6 +1303,21 @@ static void CreateJar(
                 (byte)classFileMajor
             ]);
         }
+    }
+}
+
+static void CreateJarWithTextEntries(
+    string path,
+    IReadOnlyDictionary<string, string> entries)
+{
+    using var archive = System.IO.Compression.ZipFile.Open(
+        path,
+        System.IO.Compression.ZipArchiveMode.Create);
+    foreach (var entry in entries)
+    {
+        var archiveEntry = archive.CreateEntry(entry.Key);
+        using var writer = new StreamWriter(archiveEntry.Open());
+        writer.Write(entry.Value);
     }
 }
 
@@ -994,4 +1380,44 @@ sealed class StubProfileValidator : IProfileValidator
     }
 
     public ProfileValidationResult Validate(ServerProfile profile) => _result;
+}
+
+sealed class StubServerContentCatalogService : IServerContentCatalogService
+{
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ServerContentVersion>> _versionsByProject;
+    private readonly IReadOnlyDictionary<string, ServerContentVersion> _versionsById;
+
+    public StubServerContentCatalogService(
+        IReadOnlyDictionary<string, IReadOnlyList<ServerContentVersion>> versionsByProject,
+        IReadOnlyDictionary<string, ServerContentVersion> versionsById)
+    {
+        _versionsByProject = versionsByProject;
+        _versionsById = versionsById;
+    }
+
+    public string ProviderId => "stub";
+
+    public Task<ServerContentSearchPage> SearchAsync(
+        string query,
+        string minecraftVersion,
+        ServerContentKind kind,
+        IReadOnlyList<string> loaderIds,
+        int offset = 0,
+        int limit = 20,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ServerContentSearchPage([], offset, limit, 0));
+
+    public Task<IReadOnlyList<ServerContentVersion>> GetVersionsAsync(
+        string projectId,
+        string minecraftVersion,
+        IReadOnlyList<string> loaderIds,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(_versionsByProject.TryGetValue(projectId, out var versions) ? versions : []);
+
+    public Task<ServerContentVersion> GetVersionAsync(
+        string versionId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(_versionsById.TryGetValue(versionId, out var version)
+            ? version
+            : throw new InvalidDataException($"Unknown test version: {versionId}"));
 }

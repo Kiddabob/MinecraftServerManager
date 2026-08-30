@@ -18,6 +18,7 @@ public sealed class ServerSessionViewModel : BindableBase
     private readonly IPlayerPlaytimeService _playerPlaytimeService;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly ConcurrentQueue<PendingConsoleLine> _pendingConsoleLines = new();
+    private readonly object _lifecycleGate = new();
 
     private IServerConsoleParser _consoleParser;
     private ServerReadinessReport _readiness;
@@ -25,6 +26,7 @@ public sealed class ServerSessionViewModel : BindableBase
     private ServerState _state;
     private int _consoleDrainScheduled;
     private bool _isSelectedForBulk;
+    private bool _isContentInstallationInProgress;
     private string _statusMessage;
     private string _validationText;
     private string _processInfo = "No server process";
@@ -74,7 +76,7 @@ public sealed class ServerSessionViewModel : BindableBase
                 RefreshProfile();
                 return Task.CompletedTask;
             },
-            () => !IsServerActive);
+            () => !IsServerActive && !IsContentInstallationInProgress);
 
         _processService.OutputReceived += OnOutputReceived;
         _processService.Exited += OnProcessExited;
@@ -196,9 +198,21 @@ public sealed class ServerSessionViewModel : BindableBase
         or ServerState.Ready
         or ServerState.Stopping;
 
+    public bool IsContentInstallationInProgress
+    {
+        get
+        {
+            lock (_lifecycleGate)
+            {
+                return _isContentInstallationInProgress;
+            }
+        }
+    }
+
     public bool CanStart => _readiness.CanStart
         && (_state is ServerState.Stopped or ServerState.Failed)
-        && !_processService.IsRunning;
+        && !_processService.IsRunning
+        && !IsContentInstallationInProgress;
 
     public bool CanStop => _processService.IsRunning && _state != ServerState.Stopping;
 
@@ -253,21 +267,29 @@ public sealed class ServerSessionViewModel : BindableBase
             return;
         }
 
-        StopResourceMonitoring();
-        _playerPlaytimeService.CloseSessions(Profile.Id);
-        ConsoleEntries.Clear();
-        CpuHistory.Clear();
-        MemoryHistory.Clear();
-        AppendManagerMessage(
-            $"Starting {DisplayName} with profile '{Id}'.",
-            ServerLogLevel.Manager);
-        ResetResourceUsage("Starting Java…");
+        lock (_lifecycleGate)
+        {
+            if (!CanStart)
+            {
+                return;
+            }
 
-        _consoleParser = _consoleParserFactory.Create(Profile);
-        SetState(ServerState.Starting, "Starting the Java process…");
+            SetState(ServerState.Starting, "Starting the Java process…");
+        }
 
         try
         {
+            StopResourceMonitoring();
+            _playerPlaytimeService.CloseSessions(Profile.Id);
+            ConsoleEntries.Clear();
+            CpuHistory.Clear();
+            MemoryHistory.Clear();
+            AppendManagerMessage(
+                $"Starting {DisplayName} with profile '{Id}'.",
+                ServerLogLevel.Manager);
+            ResetResourceUsage("Starting Java…");
+
+            _consoleParser = _consoleParserFactory.Create(Profile);
             await _processService.StartAsync(_launchRequestFactory.Create(Profile));
 
             var processId = _processService.ProcessId;
@@ -290,6 +312,45 @@ public sealed class ServerSessionViewModel : BindableBase
             ResetResourceUsage("Process failed to start");
             SetState(ServerState.Failed, exception.Message);
         }
+    }
+
+    public bool TryBeginContentInstallation()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_isContentInstallationInProgress || IsServerActive)
+            {
+                return false;
+            }
+
+            _isContentInstallationInProgress = true;
+        }
+
+        NotifyContentInstallationStateChanged();
+        return true;
+    }
+
+    public void EndContentInstallation()
+    {
+        lock (_lifecycleGate)
+        {
+            if (!_isContentInstallationInProgress)
+            {
+                return;
+            }
+
+            _isContentInstallationInProgress = false;
+        }
+
+        NotifyContentInstallationStateChanged();
+    }
+
+    private void NotifyContentInstallationStateChanged()
+    {
+        OnPropertyChanged(nameof(IsContentInstallationInProgress));
+        OnPropertyChanged(nameof(CanStart));
+        StartCommand.NotifyCanExecuteChanged();
+        RefreshReadinessCommand.NotifyCanExecuteChanged();
     }
 
     public async Task<bool> AcceptEulaAsync()

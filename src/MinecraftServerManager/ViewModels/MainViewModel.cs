@@ -74,6 +74,7 @@ public sealed class MainViewModel : BindableBase
         IServerFileService serverFileService,
         ModpackCatalogViewModel modpacks,
         ServerDashboardViewModel dashboard,
+        ServerContentViewModel content,
         IUiDispatcher uiDispatcher)
     {
         _profileService = profileService;
@@ -91,6 +92,7 @@ public sealed class MainViewModel : BindableBase
         _uiDispatcher = uiDispatcher;
         Modpacks = modpacks;
         Dashboard = dashboard;
+        Content = content;
 
         ThemeOptions =
         [
@@ -151,6 +153,8 @@ public sealed class MainViewModel : BindableBase
 
     public ServerDashboardViewModel Dashboard { get; }
 
+    public ServerContentViewModel Content { get; }
+
     public ModpackCatalogViewModel Modpacks { get; }
 
     public IReadOnlyList<AppThemeOption> ThemeOptions { get; }
@@ -195,6 +199,7 @@ public sealed class MainViewModel : BindableBase
             RefreshFilesCommand.NotifyCanExecuteChanged();
             _ = RefreshServerFilesAsync();
             _ = Dashboard.SelectProfileAsync(value);
+            _ = Content.SelectProfileAsync(value);
             _ = LoadProfileEditorAsync(value);
             _ = PersistPreferencesAsync("Profile selection saved.");
         }
@@ -468,6 +473,7 @@ public sealed class MainViewModel : BindableBase
             SetSelectedProfileWithoutCallback(selected);
             CurrentFilesPath = selected.ServerDirectory;
             await Dashboard.SelectProfileAsync(selected);
+            await Content.SelectProfileAsync(selected);
             await LoadProfileEditorAsync(selected);
             await RefreshServerFilesAsync();
         }
@@ -560,6 +566,7 @@ public sealed class MainViewModel : BindableBase
         SetSelectedProfileWithoutCallback(profile);
         CurrentFilesPath = profile.ServerDirectory;
         await Dashboard.SelectProfileAsync(profile);
+        await Content.SelectProfileAsync(profile);
         await LoadProfileEditorAsync(profile);
         await RefreshServerFilesAsync();
         await PersistPreferencesAsync("Profile selection saved.");
@@ -905,6 +912,7 @@ public sealed class MainViewModel : BindableBase
             await _profileService.SaveAsync(profile);
             session.RefreshProfile();
             await Dashboard.SelectProfileAsync(session);
+            await Content.SelectProfileAsync(session);
             ProfileEditorStatus = "Profile launch settings saved.";
             OnPropertyChanged(nameof(ProfileCountText));
             OnPropertyChanged(nameof(SelectedProfile));

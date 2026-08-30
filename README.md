@@ -55,13 +55,21 @@ Supported scalar settings can be switched between **User Friendly** controls and
 
 Configuration files are read-only while that profile's Java process is active. Saving validates JSON and XML where applicable, refuses to overwrite a file that changed after it was opened, writes through a same-folder temporary file, and first stores the previous bytes under `%LocalAppData%\Kidda.MinecraftServerManager\ConfigurationBackups\<profile>`. Files over 2 MB, binary files, reparse points, and configuration paths outside the server root are not editable.
 
+## Mods and plugins
+
+The **Mods & plugins** page builds a separate content inventory for every server profile. It detects the profile's actual Minecraft version and loader family, scans only its contained `mods` and `plugins` folders, and reads common Fabric, Quilt, Forge, NeoForge, Bukkit, Spigot, Paper, and legacy `mcmod.info` metadata directly from JAR or ZIP archives. Disabled files remain visible, and a Forge-only Tekkit server is not labelled Hybrid merely because unrelated plugin-like files exist elsewhere.
+
+Compatible additions can be searched through Modrinth without hardcoding provider behaviour into the process service. Searches are constrained to the selected Minecraft version, detected loader, server environment, and Mods or Plugins target. Before installation, the app resolves required dependencies into one reviewable plan and reports optional or incompatible dependencies as warnings.
+
+Installation is available only while the selected server is stopped. Every file must be a bounded HTTPS JAR from Modrinth's CDN with a published SHA-512 hash; downloads are staged inside the server folder, size and checksum verified, and moved into place only when the complete plan succeeds. Existing files are never overwritten automatically, paths and reparse points are checked, and newly moved files are rolled back if a later move fails.
+
 ## Build
 
 ```powershell
 dotnet build MinecraftServerManager.sln -c Debug -p:Platform=x64
 ```
 
-The dependency-free configuration, launcher-detection, and Java-compatibility checks can be run with:
+The dependency-free configuration, content-management, launcher-detection, and Java-compatibility checks can be run with:
 
 ```powershell
 dotnet run --project tests\MinecraftServerManager.ConfigurationTests -c Release
