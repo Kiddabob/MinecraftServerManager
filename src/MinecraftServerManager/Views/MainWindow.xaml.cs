@@ -177,6 +177,7 @@ public sealed partial class MainWindow : Window
         ContentPage.Visibility = destination == "content" ? Visibility.Visible : Visibility.Collapsed;
         ProfilesPage.Visibility = destination == "profiles" ? Visibility.Visible : Visibility.Collapsed;
         ModpacksPage.Visibility = destination == "modpacks" ? Visibility.Visible : Visibility.Collapsed;
+        BuilderPage.Visibility = destination == "builder" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = destination == "settings" ? Visibility.Visible : Visibility.Collapsed;
 
         if (destination == "files")
@@ -203,6 +204,22 @@ public sealed partial class MainWindow : Window
         {
             ViewModel.Modpacks.EnsureLoaded();
         }
+
+        if (destination == "builder")
+        {
+            ViewModel.Builder.EnsureLoaded();
+        }
+    }
+
+    private void BuilderSearchTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Enter || !ViewModel.Builder.SearchCommand.CanExecute(null))
+        {
+            return;
+        }
+
+        args.Handled = true;
+        ViewModel.Builder.SearchCommand.Execute(null);
     }
 
     private void ModpackSearchTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
@@ -292,6 +309,82 @@ public sealed partial class MainWindow : Window
         }
 
         await ViewModel.Content.InstallAsync(plan);
+    }
+
+    private async void ReviewBuilderItem_Click(object sender, RoutedEventArgs args)
+    {
+        var plan = await ViewModel.Builder.PrepareAddAsync();
+        if (plan is null)
+        {
+            return;
+        }
+
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 580,
+            Text = plan.SummaryText,
+            TextWrapping = TextWrapping.Wrap
+        });
+        foreach (var item in plan.Items)
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 580,
+                FontFamily = new FontFamily("Cascadia Mono"),
+                FontSize = 12,
+                Text = $"• {item.DisplayName} {item.VersionNumber}\n  {item.PlacementText} — {item.Reason}",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        foreach (var warning in plan.Warnings)
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 580,
+                Foreground = new SolidColorBrush(Colors.Goldenrod),
+                Text = $"Review: {warning}",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        foreach (var conflict in plan.Conflicts)
+        {
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 580,
+                Foreground = new SolidColorBrush(Colors.IndianRed),
+                Text = $"Conflict: {conflict}",
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 580,
+            Text = "This adds entries to an in-memory draft only. No files will be downloaded, installed, or launched.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = plan.IsReady ? "Add to pack draft?" : "Compatibility needs attention",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 520,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            },
+            PrimaryButtonText = plan.IsReady ? "Add to draft" : string.Empty,
+            CloseButtonText = plan.IsReady ? "Cancel" : "Close",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && plan.IsReady)
+        {
+            ViewModel.Builder.CommitPlan(plan);
+        }
     }
 
     private async void ImportModpackToManagedInstances_Click(object sender, RoutedEventArgs args)

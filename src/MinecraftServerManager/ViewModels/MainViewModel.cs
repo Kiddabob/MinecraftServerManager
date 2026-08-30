@@ -73,6 +73,7 @@ public sealed class MainViewModel : BindableBase
         IAppSettingsService appSettingsService,
         IServerFileService serverFileService,
         ModpackCatalogViewModel modpacks,
+        PackBuilderViewModel builder,
         ServerDashboardViewModel dashboard,
         ServerContentViewModel content,
         IUiDispatcher uiDispatcher)
@@ -91,6 +92,7 @@ public sealed class MainViewModel : BindableBase
         _serverFileService = serverFileService;
         _uiDispatcher = uiDispatcher;
         Modpacks = modpacks;
+        Builder = builder;
         Dashboard = dashboard;
         Content = content;
 
@@ -156,6 +158,8 @@ public sealed class MainViewModel : BindableBase
     public ServerContentViewModel Content { get; }
 
     public ModpackCatalogViewModel Modpacks { get; }
+
+    public PackBuilderViewModel Builder { get; }
 
     public IReadOnlyList<AppThemeOption> ThemeOptions { get; }
 

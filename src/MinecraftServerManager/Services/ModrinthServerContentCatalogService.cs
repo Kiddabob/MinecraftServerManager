@@ -4,7 +4,9 @@ using MinecraftServerManager.Models;
 
 namespace MinecraftServerManager.Services;
 
-public sealed class ModrinthServerContentCatalogService : IServerContentCatalogService
+public sealed class ModrinthServerContentCatalogService :
+    IServerContentCatalogService,
+    IPackContentCatalogProvider
 {
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private static readonly string[] ServerEnvironments =
@@ -19,6 +21,66 @@ public sealed class ModrinthServerContentCatalogService : IServerContentCatalogS
     ];
 
     public string ProviderId => "modrinth";
+
+    public string DisplayName => "Modrinth";
+
+    public async Task<ServerContentSearchPage> SearchPackContentAsync(
+        PackCatalogSearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Offset < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request));
+        }
+
+        if (request.Limit is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request));
+        }
+
+        var facets = BuildPackSearchFacets(request);
+        var index = string.IsNullOrWhiteSpace(request.Query) ? "downloads" : "relevance";
+        var requestUri = $"search?query={Uri.EscapeDataString(request.Query.Trim())}"
+            + $"&facets={Uri.EscapeDataString(JsonSerializer.Serialize(facets))}"
+            + $"&index={index}&offset={request.Offset}&limit={request.Limit}";
+        using var response = await HttpClient.GetAsync(requestUri, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        return ParseSearchResponse(document.RootElement, request.Kind);
+    }
+
+    public async Task<IReadOnlyList<ServerContentVersion>> GetPackVersionsAsync(
+        string projectId,
+        string minecraftVersion,
+        IReadOnlyList<string> loaderIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
+        var parameters = BuildVersionParameters(minecraftVersion, loaderIds);
+        var requestUri = $"project/{Uri.EscapeDataString(projectId.Trim())}/version?{string.Join('&', parameters)}";
+        using var response = await HttpClient.GetAsync(requestUri, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        return ParsePackVersionsResponse(document.RootElement);
+    }
+
+    public Task<ServerContentVersion> GetPackVersionAsync(
+        string versionId,
+        CancellationToken cancellationToken = default) =>
+        GetVersionAsync(versionId, cancellationToken);
+
+    public async Task<IReadOnlyList<string>> GetMinecraftVersionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await HttpClient.GetAsync("tag/game_version", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        return ParseMinecraftVersions(document.RootElement);
+    }
 
     public async Task<ServerContentSearchPage> SearchAsync(
         string query,
@@ -58,17 +120,7 @@ public sealed class ModrinthServerContentCatalogService : IServerContentCatalogS
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
-        var parameters = new List<string> { "include_changelog=false" };
-        if (!string.IsNullOrWhiteSpace(minecraftVersion)
-            && !minecraftVersion.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-        {
-            parameters.Add($"game_versions={Uri.EscapeDataString(JsonSerializer.Serialize(new[] { minecraftVersion }))}");
-        }
-
-        if (loaderIds.Count > 0)
-        {
-            parameters.Add($"loaders={Uri.EscapeDataString(JsonSerializer.Serialize(loaderIds.Distinct(StringComparer.OrdinalIgnoreCase)))}");
-        }
+        var parameters = BuildVersionParameters(minecraftVersion, loaderIds);
 
         var requestUri = $"project/{Uri.EscapeDataString(projectId.Trim())}/version?{string.Join('&', parameters)}";
         using var response = await HttpClient.GetAsync(requestUri, cancellationToken);
@@ -123,6 +175,79 @@ public sealed class ModrinthServerContentCatalogService : IServerContentCatalogS
         if (loaders.Length > 0)
         {
             facets.Add(loaders);
+        }
+
+        return facets;
+    }
+
+    internal static IReadOnlyList<IReadOnlyList<string>> BuildPackSearchFacets(
+        PackCatalogSearchRequest request)
+    {
+        var environments = request.Target switch
+        {
+            PackBuildTarget.Client => new[]
+            {
+                "singleplayer_only",
+                "client_only",
+                "client_only_server_optional",
+                "client_and_server",
+                "client_or_server",
+                "client_or_server_prefers_both"
+            },
+            PackBuildTarget.Server => new[]
+            {
+                "dedicated_server_only",
+                "server_only",
+                "server_only_client_optional",
+                "client_and_server",
+                "client_or_server",
+                "client_or_server_prefers_both"
+            },
+            _ => new[]
+            {
+                "singleplayer_only",
+                "client_only",
+                "client_only_server_optional",
+                "dedicated_server_only",
+                "server_only",
+                "server_only_client_optional",
+                "client_and_server",
+                "client_or_server",
+                "client_or_server_prefers_both"
+            }
+        };
+        var facets = new List<IReadOnlyList<string>>
+        {
+            new[]
+            {
+                request.Kind == ServerContentKind.Mod
+                    ? "project_type:mod"
+                    : "all_project_types:plugin"
+            },
+            environments.Select(environment => $"environment:{environment}").ToArray()
+        };
+
+        if (!string.IsNullOrWhiteSpace(request.MinecraftVersion)
+            && !request.MinecraftVersion.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            facets.Add(new[] { $"versions:{request.MinecraftVersion}" });
+        }
+
+        var loaders = request.LoaderIds
+            .Where(loader => !string.IsNullOrWhiteSpace(loader))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(loader => $"categories:{loader.ToLowerInvariant()}")
+            .ToArray();
+        if (loaders.Length > 0)
+        {
+            facets.Add(loaders);
+        }
+
+        foreach (var category in request.Categories
+            .Where(category => !string.IsNullOrWhiteSpace(category))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            facets.Add(new[] { $"categories:{category.ToLowerInvariant()}" });
         }
 
         return facets;
@@ -191,6 +316,39 @@ public sealed class ModrinthServerContentCatalogService : IServerContentCatalogS
             .OrderBy(version => ReleaseChannelOrder(version.ReleaseChannel))
             .ThenByDescending(version => version.PublishedAt)
             .Take(100)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<ServerContentVersion> ParsePackVersionsResponse(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException("Modrinth returned invalid content versions.");
+        }
+
+        return root.EnumerateArray()
+            .Select(ParseVersion)
+            .Where(version => version is not null)
+            .Cast<ServerContentVersion>()
+            .Where(version => version.PrimaryFile is not null)
+            .OrderBy(version => ReleaseChannelOrder(version.ReleaseChannel))
+            .ThenByDescending(version => version.PublishedAt)
+            .Take(200)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<string> ParseMinecraftVersions(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException("Modrinth returned invalid Minecraft version metadata.");
+        }
+
+        return root.EnumerateArray()
+            .Where(item => GetString(item, "version_type").Equals("release", StringComparison.OrdinalIgnoreCase))
+            .Select(item => GetString(item, "version"))
+            .Where(version => version.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -287,6 +445,25 @@ public sealed class ModrinthServerContentCatalogService : IServerContentCatalogS
         "alpha" => 2,
         _ => 3
     };
+
+    private static List<string> BuildVersionParameters(
+        string minecraftVersion,
+        IReadOnlyList<string> loaderIds)
+    {
+        var parameters = new List<string> { "include_changelog=false" };
+        if (!string.IsNullOrWhiteSpace(minecraftVersion)
+            && !minecraftVersion.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            parameters.Add($"game_versions={Uri.EscapeDataString(JsonSerializer.Serialize(new[] { minecraftVersion }))}");
+        }
+
+        if (loaderIds.Count > 0)
+        {
+            parameters.Add($"loaders={Uri.EscapeDataString(JsonSerializer.Serialize(loaderIds.Distinct(StringComparer.OrdinalIgnoreCase)))}");
+        }
+
+        return parameters;
+    }
 
     private static string GetTrustedCdnUrl(JsonElement element, string propertyName)
     {

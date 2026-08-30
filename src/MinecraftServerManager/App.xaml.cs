@@ -37,7 +37,14 @@ public partial class App : Application
         services.AddSingleton<IManagedJavaRuntimeService, ManagedJavaRuntimeService>();
         services.AddSingleton<IModpackCatalogService, ModrinthModpackCatalogService>();
         services.AddSingleton<IServerContentInventoryService, ServerContentInventoryService>();
-        services.AddSingleton<IServerContentCatalogService, ModrinthServerContentCatalogService>();
+        services.AddSingleton<ModrinthServerContentCatalogService>();
+        services.AddSingleton<IServerContentCatalogService>(provider =>
+            provider.GetRequiredService<ModrinthServerContentCatalogService>());
+        services.AddSingleton<IPackContentCatalogProvider>(provider =>
+            provider.GetRequiredService<ModrinthServerContentCatalogService>());
+        services.AddSingleton<IPackContentCatalogService, PackContentCatalogService>();
+        services.AddSingleton<IPackDependencyResolver, PackDependencyResolver>();
+        services.AddSingleton<IPackPlatformCatalogService, PackPlatformCatalogService>();
         services.AddSingleton<IServerContentInstallService, ServerContentInstallService>();
         services.AddSingleton<IModpackInstallLocationService, ModpackInstallLocationService>();
         services.AddSingleton<IServerBaselineInstaller, VanillaServerBaselineInstaller>();
@@ -60,6 +67,7 @@ public partial class App : Application
         services.AddSingleton<ServerDashboardViewModel>();
         services.AddSingleton<ServerContentViewModel>();
         services.AddSingleton<ModpackCatalogViewModel>();
+        services.AddSingleton<PackBuilderViewModel>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
 

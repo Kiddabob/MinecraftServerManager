@@ -746,6 +746,24 @@ try
     AssertTrue(
         pluginFacets.Any(group => group.Contains("all_project_types:plugin")),
         "content search multi-type plugin facet");
+    var builderFacets = ModrinthServerContentCatalogService.BuildPackSearchFacets(
+        new PackCatalogSearchRequest(
+            "storage",
+            "1.20.1",
+            ServerContentKind.Mod,
+            PackBuildTarget.ClientAndServer,
+            ["fabric"],
+            ["storage"]));
+    AssertTrue(
+        builderFacets.Any(group => group.Contains("categories:fabric")),
+        "builder search loader facet");
+    AssertTrue(
+        builderFacets.Any(group => group.Contains("categories:storage")),
+        "builder search category facet");
+    AssertTrue(
+        builderFacets.Any(group => group.Contains("environment:client_only"))
+        && builderFacets.Any(group => group.Contains("environment:server_only")),
+        "linked builder searches both client and server environments");
 
     var contentVersionsJson = """
         [{
@@ -779,6 +797,30 @@ try
         contentVersionsDocument.RootElement).Single();
     AssertEqual("example-content.jar", contentVersion.PrimaryFile!.FileName, "content primary JAR selection");
     AssertEqual(2, contentVersion.Dependencies.Count, "content dependency parsing");
+    using var clientOnlyVersionsDocument = JsonDocument.Parse(
+        contentVersionsJson.Replace("server_only", "client_only", StringComparison.Ordinal));
+    AssertEqual(
+        0,
+        ModrinthServerContentCatalogService.ParseVersionsResponse(
+            clientOnlyVersionsDocument.RootElement).Count,
+        "server content search rejects client-only versions");
+    AssertEqual(
+        1,
+        ModrinthServerContentCatalogService.ParsePackVersionsResponse(
+            clientOnlyVersionsDocument.RootElement).Count,
+        "pack builder retains client-only versions for side placement");
+    using var minecraftVersionsDocument = JsonDocument.Parse("""
+        [
+          { "version": "1.21.8", "version_type": "release" },
+          { "version": "26w01a", "version_type": "snapshot" },
+          { "version": "1.20.1", "version_type": "release" }
+        ]
+        """);
+    var builderMinecraftVersions = ModrinthServerContentCatalogService.ParseMinecraftVersions(
+        minecraftVersionsDocument.RootElement);
+    AssertTrue(
+        builderMinecraftVersions.SequenceEqual(["1.21.8", "1.20.1"]),
+        "builder Minecraft release metadata excludes snapshots");
 
     var dependencyVersion = new ServerContentVersion(
         "modrinth",
@@ -1261,7 +1303,190 @@ try
     AssertEqual(ServerConsoleSignal.Failed, failureResult.Signal, "startup failure signal");
     AssertEqual(ServerLogLevel.Error, failureResult.Entry.Level, "startup failure log severity");
 
-    Console.WriteLine("Configuration dashboard, content management, launcher detection, and Java compatibility tests passed.");
+    var packRootProject = new ServerContentProject(
+        "stub",
+        "root-project",
+        "root-project",
+        "Root Project",
+        "Builder resolver root",
+        "Test author",
+        string.Empty,
+        100,
+        ServerContentKind.Mod,
+        ["1.20.1"],
+        ["technology"],
+        ["client_and_server"]);
+    var packRootVersion = MakePackVersion(
+        "root-project",
+        "root-version",
+        "Root Project 1.0",
+        "1.0.0",
+        "1.20.1",
+        "fabric",
+        "client_and_server",
+        [
+            new ServerContentDependency(string.Empty, "library-project", string.Empty, "required"),
+            new ServerContentDependency(string.Empty, "optional-project", string.Empty, "optional"),
+            new ServerContentDependency(string.Empty, "incompatible-project", string.Empty, "incompatible")
+        ]);
+    var incompatibleNewestLibrary = MakePackVersion(
+        "library-project",
+        "library-newest",
+        "Library 2.0",
+        "2.0.0",
+        "1.21.1",
+        "fabric",
+        "client_only");
+    var compatibleLibrary = MakePackVersion(
+        "library-project",
+        "library-compatible",
+        "Library 1.0",
+        "1.0.0",
+        "1.20.1",
+        "fabric",
+        "client_only",
+        [new ServerContentDependency(string.Empty, "root-project", string.Empty, "required")]);
+    var packProvider = new StubPackContentCatalogProvider(
+        "stub",
+        [packRootProject],
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["root-project"] = [packRootVersion],
+            ["library-project"] = [incompatibleNewestLibrary, compatibleLibrary]
+        },
+        new Dictionary<string, ServerContentVersion>(StringComparer.OrdinalIgnoreCase)
+        {
+            [packRootVersion.VersionId] = packRootVersion,
+            [incompatibleNewestLibrary.VersionId] = incompatibleNewestLibrary,
+            [compatibleLibrary.VersionId] = compatibleLibrary
+        });
+    var packCatalog = new PackContentCatalogService(
+        [packProvider, new FailingPackContentCatalogProvider()]);
+    var aggregatedSearch = await packCatalog.SearchAsync(new PackCatalogSearchRequest(
+        "root",
+        "1.20.1",
+        ServerContentKind.Mod,
+        PackBuildTarget.ClientAndServer,
+        ["fabric"],
+        ["technology"]));
+    AssertEqual(1, aggregatedSearch.Items.Count, "pack catalogue successful provider result");
+    AssertEqual(2, aggregatedSearch.Providers.Count, "pack catalogue provider status count");
+    AssertEqual(1, aggregatedSearch.AvailableProviderCount, "pack catalogue partial provider availability");
+    AssertTrue(
+        aggregatedSearch.Providers.Any(provider => !provider.IsAvailable),
+        "pack catalogue isolates a provider failure");
+
+    var resolver = new PackDependencyResolver(packCatalog);
+    var readyPlan = await resolver.ResolveAsync(new PackResolveRequest(
+        PackBuildTarget.ClientAndServer,
+        "1.20.1",
+        ["fabric"],
+        ["fabric"],
+        packRootProject,
+        packRootVersion,
+        []));
+    AssertTrue(readyPlan.IsReady, "pack dependency plan ready");
+    AssertEqual(2, readyPlan.Items.Count, "pack required dependency count");
+    AssertTrue(
+        readyPlan.Items.Any(item =>
+            item.VersionId == "library-compatible"
+            && item.Placement == PackContentPlacement.Client
+            && item.IsDependency),
+        "pack resolver selects compatible older dependency and keeps it client-only");
+    AssertTrue(
+        readyPlan.Items.Any(item =>
+            item.VersionId == "root-version"
+            && item.Placement == PackContentPlacement.Both),
+        "pack resolver places shared content on both sides");
+    AssertTrue(
+        readyPlan.Warnings.Any(warning => warning.Contains("optional", StringComparison.OrdinalIgnoreCase)),
+        "pack resolver surfaces optional dependency without auto-adding it");
+
+    var conflictPlan = await resolver.ResolveAsync(new PackResolveRequest(
+        PackBuildTarget.ClientAndServer,
+        "1.20.1",
+        ["fabric"],
+        ["fabric"],
+        packRootProject,
+        packRootVersion,
+        [
+            new PackDraftItem(
+                "stub",
+                "incompatible-project",
+                "incompatible-version",
+                "Incompatible Project",
+                "1.0.0",
+                ServerContentKind.Mod,
+                PackContentPlacement.Both,
+                false,
+                "Test")
+        ]));
+    AssertTrue(!conflictPlan.IsReady, "pack incompatible dependency blocks draft addition");
+    AssertTrue(
+        conflictPlan.Conflicts.Any(conflict => conflict.Contains("incompatible", StringComparison.OrdinalIgnoreCase)),
+        "pack incompatible dependency explanation");
+
+    var platformCatalog = new PackPlatformCatalogService();
+    AssertTrue(
+        platformCatalog.GetClientPlatforms().Any(platform => platform.Id == "fabric-client" && platform.SupportsMods),
+        "builder client loader guidance");
+    AssertTrue(
+        platformCatalog.GetServerPlatforms().Any(platform =>
+            platform.Id == "paper-server" && platform.SupportsPlugins && !platform.SupportsMods),
+        "builder plugin platform guidance");
+    AssertTrue(
+        platformCatalog.GetServerPlatforms().Any(platform =>
+            platform.Kind == PackPlatformKind.HybridPlatform
+            && platform.SupportsMods
+            && platform.SupportsPlugins
+            && platform.IsExperimental),
+        "builder hybrid platform is clearly experimental");
+
+    var clientOnlyPlacement = PackDependencyResolver.DeterminePlacement(
+        compatibleLibrary,
+        ServerContentKind.Mod,
+        PackBuildTarget.ClientAndServer,
+        ["fabric"],
+        ["fabric"],
+        out _);
+    AssertEqual(
+        PackContentPlacement.Client,
+        clientOnlyPlacement,
+        "client-only content cannot enter the server draft");
+    var pluginWithoutLoaderMetadata = packRootVersion with
+    {
+        ProjectId = "plugin-project",
+        VersionId = "plugin-version",
+        Loaders = [],
+        Environment = "client_and_server"
+    };
+    var pluginPlacement = PackDependencyResolver.DeterminePlacement(
+        pluginWithoutLoaderMetadata,
+        ServerContentKind.Plugin,
+        PackBuildTarget.ClientAndServer,
+        ["fabric"],
+        ["paper"],
+        out _);
+    AssertEqual(
+        PackContentPlacement.Server,
+        pluginPlacement,
+        "plugin content cannot enter the client draft without loader metadata");
+    var undeclaredPlacement = PackDependencyResolver.DeterminePlacement(
+        packRootVersion with { Environment = string.Empty },
+        ServerContentKind.Mod,
+        PackBuildTarget.ClientAndServer,
+        ["fabric"],
+        ["fabric"],
+        out var undeclaredWarning);
+    AssertEqual(
+        PackContentPlacement.Review,
+        undeclaredPlacement,
+        "undeclared side metadata requires manual placement review");
+    AssertTrue(
+        undeclaredWarning.Contains("placement", StringComparison.OrdinalIgnoreCase),
+        "undeclared side metadata explains review requirement");
+
+    Console.WriteLine("Configuration dashboard, pack builder, content management, launcher detection, and Java compatibility tests passed.");
 }
 catch (Exception exception)
 {
@@ -1354,6 +1579,29 @@ static void AssertThrows<TException>(Action action, string description)
         $"Assertion failed: {description}. Expected {typeof(TException).Name}.");
 }
 
+static ServerContentVersion MakePackVersion(
+    string projectId,
+    string versionId,
+    string name,
+    string versionNumber,
+    string minecraftVersion,
+    string loader,
+    string environment,
+    IReadOnlyList<ServerContentDependency>? dependencies = null) =>
+    new(
+        "stub",
+        projectId,
+        versionId,
+        name,
+        versionNumber,
+        "release",
+        DateTimeOffset.Parse("2026-01-01T00:00:00Z"),
+        [minecraftVersion],
+        [loader],
+        environment,
+        [],
+        dependencies ?? []);
+
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string description)
     where TException : Exception
 {
@@ -1420,4 +1668,82 @@ sealed class StubServerContentCatalogService : IServerContentCatalogService
         Task.FromResult(_versionsById.TryGetValue(versionId, out var version)
             ? version
             : throw new InvalidDataException($"Unknown test version: {versionId}"));
+}
+
+sealed class StubPackContentCatalogProvider : IPackContentCatalogProvider
+{
+    private readonly IReadOnlyList<ServerContentProject> _projects;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ServerContentVersion>> _versionsByProject;
+    private readonly IReadOnlyDictionary<string, ServerContentVersion> _versionsById;
+
+    public StubPackContentCatalogProvider(
+        string providerId,
+        IReadOnlyList<ServerContentProject> projects,
+        IReadOnlyDictionary<string, IReadOnlyList<ServerContentVersion>> versionsByProject,
+        IReadOnlyDictionary<string, ServerContentVersion> versionsById)
+    {
+        ProviderId = providerId;
+        _projects = projects;
+        _versionsByProject = versionsByProject;
+        _versionsById = versionsById;
+    }
+
+    public string ProviderId { get; }
+
+    public string DisplayName => "Test provider";
+
+    public Task<ServerContentSearchPage> SearchPackContentAsync(
+        PackCatalogSearchRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ServerContentSearchPage(
+            _projects,
+            request.Offset,
+            request.Limit,
+            _projects.Count));
+
+    public Task<IReadOnlyList<ServerContentVersion>> GetPackVersionsAsync(
+        string projectId,
+        string minecraftVersion,
+        IReadOnlyList<string> loaderIds,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(_versionsByProject.TryGetValue(projectId, out var versions) ? versions : []);
+
+    public Task<ServerContentVersion> GetPackVersionAsync(
+        string versionId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(_versionsById.TryGetValue(versionId, out var version)
+            ? version
+            : throw new InvalidDataException($"Unknown test version: {versionId}"));
+
+    public Task<IReadOnlyList<string>> GetMinecraftVersionsAsync(
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>(["1.20.1"]);
+}
+
+sealed class FailingPackContentCatalogProvider : IPackContentCatalogProvider
+{
+    public string ProviderId => "failing";
+
+    public string DisplayName => "Unavailable test provider";
+
+    public Task<ServerContentSearchPage> SearchPackContentAsync(
+        PackCatalogSearchRequest request,
+        CancellationToken cancellationToken = default) =>
+        throw new HttpRequestException("Simulated provider outage.");
+
+    public Task<IReadOnlyList<ServerContentVersion>> GetPackVersionsAsync(
+        string projectId,
+        string minecraftVersion,
+        IReadOnlyList<string> loaderIds,
+        CancellationToken cancellationToken = default) =>
+        throw new HttpRequestException("Simulated provider outage.");
+
+    public Task<ServerContentVersion> GetPackVersionAsync(
+        string versionId,
+        CancellationToken cancellationToken = default) =>
+        throw new HttpRequestException("Simulated provider outage.");
+
+    public Task<IReadOnlyList<string>> GetMinecraftVersionsAsync(
+        CancellationToken cancellationToken = default) =>
+        throw new HttpRequestException("Simulated provider outage.");
 }

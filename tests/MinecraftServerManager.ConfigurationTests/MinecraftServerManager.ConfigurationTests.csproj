@@ -21,6 +21,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Models\ProfileValidationResult.cs" Link="Models\ProfileValidationResult.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerReadinessModels.cs" Link="Models\ServerReadinessModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerContentModels.cs" Link="Models\ServerContentModels.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\PackBuilderModels.cs" Link="Models\PackBuilderModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRecommendation.cs" Link="Models\ServerLaunchRecommendation.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerBaselineModels.cs" Link="Models\ServerBaselineModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLaunchRequest.cs" Link="Models\ServerLaunchRequest.cs" />
@@ -52,6 +53,13 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerContentInventoryService.cs" Link="Services\IServerContentInventoryService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerContentInventoryService.cs" Link="Services\ServerContentInventoryService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerContentCatalogService.cs" Link="Services\IServerContentCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackContentCatalogProvider.cs" Link="Services\IPackContentCatalogProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackContentCatalogService.cs" Link="Services\IPackContentCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackDependencyResolver.cs" Link="Services\IPackDependencyResolver.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPackPlatformCatalogService.cs" Link="Services\IPackPlatformCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PackContentCatalogService.cs" Link="Services\PackContentCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PackDependencyResolver.cs" Link="Services\PackDependencyResolver.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PackPlatformCatalogService.cs" Link="Services\PackPlatformCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthServerContentCatalogService.cs" Link="Services\ModrinthServerContentCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerContentInstallService.cs" Link="Services\IServerContentInstallService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerContentInstallService.cs" Link="Services\ServerContentInstallService.cs" />
