@@ -99,7 +99,7 @@ public sealed class TechnicModpackCatalogService : IModpackCatalogProvider
                 "Technic Platform modpack",
                 "Technic Platform",
                 GetTrustedResourceUrl(modpack, "iconUrl"),
-                0,
+                -1,
                 [],
                 ["technic"],
                 []));

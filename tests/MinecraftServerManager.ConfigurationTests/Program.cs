@@ -758,6 +758,10 @@ try
     var technicPack = technicSearch.Items.Single();
     AssertEqual("technic", technicPack.ProviderId, "Technic provider identity");
     AssertEqual("Tekkit Classic", technicPack.Title, "Technic Tekkit search result");
+    AssertEqual(
+        "Download count not supplied",
+        technicPack.DownloadsText,
+        "Technic unavailable download count");
     AssertTrue(
         technicPack.IconUrl.StartsWith("https://cdn.technicpack.net/", StringComparison.Ordinal),
         "Technic icon host validation");

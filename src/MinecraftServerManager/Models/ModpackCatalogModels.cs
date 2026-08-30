@@ -37,7 +37,9 @@ public sealed record ModpackCatalogItem(
         _ => ProviderId
     };
 
-    public string DownloadsText => $"{Downloads:N0} downloads";
+    public string DownloadsText => Downloads < 0
+        ? "Download count not supplied"
+        : $"{Downloads:N0} downloads";
 
     public string MetadataText => $"{ProviderName} • By {Author} • {DownloadsText}";
 

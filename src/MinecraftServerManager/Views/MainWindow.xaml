@@ -1898,7 +1898,7 @@
                                 <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Build a pack" />
                                 <TextBlock
                                     Style="{StaticResource BodySecondaryTextStyle}"
-                                    Text="Plan a client, a server, or a linked pair. The builder keeps side-only content out of the wrong instance and reviews dependencies before any future installation step."
+                                    Text="Plan a client, a server, or a linked pair. The builder keeps side-only content out of the wrong instance and reviews dependencies before building the output."
                                     TextWrapping="Wrap" />
                             </StackPanel>
 
