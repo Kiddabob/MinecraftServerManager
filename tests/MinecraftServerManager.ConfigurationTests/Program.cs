@@ -1,5 +1,6 @@
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
+using MinecraftServerManager.ViewModels;
 using System.Text.Json;
 
 if (args is ["--detect", .. var folders])
@@ -1441,6 +1442,56 @@ try
             && platform.SupportsPlugins
             && platform.IsExperimental),
         "builder hybrid platform is clearly experimental");
+    AssertTrue(
+        platformCatalog.GetClientPlatforms("1.6.4").Select(platform => platform.Id)
+            .SequenceEqual(["vanilla-client", "forge-client"]),
+        "legacy Minecraft client loaders are version filtered");
+    AssertTrue(
+        platformCatalog.GetServerPlatforms("1.6.4").Select(platform => platform.Id)
+            .SequenceEqual(["vanilla-server", "forge-server"]),
+        "legacy Minecraft server platforms are version filtered");
+    AssertTrue(
+        platformCatalog.GetClientPlatforms("1.14").Select(platform => platform.Id)
+            .SequenceEqual(["vanilla-client", "fabric-client"]),
+        "Fabric starts at its first supported release without exposing Quilt");
+    AssertTrue(
+        platformCatalog.GetClientPlatforms("1.14.4").Select(platform => platform.Id)
+            .SequenceEqual(["vanilla-client", "fabric-client", "quilt-client", "forge-client"]),
+        "Quilt and Forge appear only on a compatible 1.14 release");
+    AssertTrue(
+        !platformCatalog.GetClientPlatforms("1.20.1").Any(platform => platform.Id == "neoforge-client"),
+        "NeoForge is hidden before Minecraft 1.20.2");
+    AssertTrue(
+        platformCatalog.GetClientPlatforms("1.20.2").Any(platform => platform.Id == "neoforge-client"),
+        "NeoForge appears from Minecraft 1.20.2");
+    AssertTrue(
+        !platformCatalog.GetClientPlatforms("1.20.5").Any(platform => platform.Id == "forge-client"),
+        "Forge is hidden for an unsupported release gap");
+    AssertEqual(
+        5,
+        platformCatalog.GetClientPlatforms("26.2").Count,
+        "current Minecraft release exposes every compatible client option");
+
+    var emptyPackCatalog = new PackContentCatalogService([]);
+    var builderViewModel = new PackBuilderViewModel(
+        emptyPackCatalog,
+        new PackDependencyResolver(emptyPackCatalog),
+        platformCatalog);
+    builderViewModel.SelectedMinecraftVersion = "1.6.4";
+    AssertEqual("forge-client", builderViewModel.SelectedClientPlatform!.Id, "legacy client fallback");
+    AssertEqual("forge-server", builderViewModel.SelectedServerPlatform!.Id, "legacy server fallback");
+    builderViewModel.SelectedMinecraftVersion = "1.20.2";
+    AssertEqual("forge-client", builderViewModel.SelectedClientPlatform!.Id, "valid client choice is preserved");
+    builderViewModel.SelectedClientPlatform = builderViewModel.ClientPlatforms.Single(platform =>
+        platform.Id == "neoforge-client");
+    builderViewModel.SelectedServerPlatform = builderViewModel.ServerPlatforms.Single(platform =>
+        platform.Id == "neoforge-server");
+    builderViewModel.SelectedMinecraftVersion = "1.20.1";
+    AssertEqual("fabric-client", builderViewModel.SelectedClientPlatform!.Id, "invalid client choice gets a compatible fallback");
+    AssertEqual("fabric-server", builderViewModel.SelectedServerPlatform!.Id, "invalid server choice follows the compatible client fallback");
+    AssertTrue(
+        builderViewModel.ClientPlatformGuidance.Contains("Available for Minecraft 1.20.1", StringComparison.Ordinal),
+        "loader guidance names the selected Minecraft release");
 
     var clientOnlyPlacement = PackDependencyResolver.DeterminePlacement(
         compatibleLibrary,

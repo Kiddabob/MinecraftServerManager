@@ -26,6 +26,7 @@ public sealed class PackBuilderViewModel : BindableBase
     private string _draftStatusText = "Planning only — no files are downloaded or changed.";
     private bool _isBusy;
     private bool _isLoaded;
+    private bool _isRefreshingPlatformOptions;
     private int _busyOperationCount;
     private int _versionRequestId;
 
@@ -43,23 +44,12 @@ public sealed class PackBuilderViewModel : BindableBase
             BuildTargets.Add(option);
         }
 
-        foreach (var option in platformCatalog.GetClientPlatforms())
-        {
-            ClientPlatforms.Add(option);
-        }
-
-        foreach (var option in platformCatalog.GetServerPlatforms())
-        {
-            ServerPlatforms.Add(option);
-        }
-
-        _selectedTarget = BuildTargets.First(option => option.Target == PackBuildTarget.ClientAndServer);
-        _selectedClientPlatform = ClientPlatforms.First(option => option.Id == "fabric-client");
-        _selectedServerPlatform = ServerPlatforms.First(option => option.Id == "fabric-server");
-        RefreshContentKinds();
-
         SearchCommand = new AsyncRelayCommand(SearchAsync, CanSearch);
         ClearDraftCommand = new AsyncRelayCommand(ClearDraftAsync, () => DraftItems.Count > 0 && !IsBusy);
+
+        _selectedTarget = BuildTargets.First(option => option.Target == PackBuildTarget.ClientAndServer);
+        RefreshPlatformOptions();
+        RefreshContentKinds();
     }
 
     public ObservableCollection<PackBuildTargetOption> BuildTargets { get; } = [];
@@ -112,6 +102,7 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             if (SetProperty(ref _selectedMinecraftVersion, value))
             {
+                RefreshPlatformOptions();
                 ResetForSetupChange("Minecraft version changed. Search again to create a compatible draft.");
             }
         }
@@ -125,6 +116,11 @@ public sealed class PackBuilderViewModel : BindableBase
             if (SetProperty(ref _selectedClientPlatform, value))
             {
                 OnPropertyChanged(nameof(ClientPlatformGuidance));
+                if (_isRefreshingPlatformOptions)
+                {
+                    return;
+                }
+
                 EnsureContentKindSupported();
                 ResetForSetupChange("Client platform changed. Search again to check every selected item.");
             }
@@ -139,6 +135,11 @@ public sealed class PackBuilderViewModel : BindableBase
             if (SetProperty(ref _selectedServerPlatform, value))
             {
                 OnPropertyChanged(nameof(ServerPlatformGuidance));
+                if (_isRefreshingPlatformOptions)
+                {
+                    return;
+                }
+
                 EnsureContentKindSupported();
                 ResetForSetupChange("Server platform changed. Search again to check every selected item.");
             }
@@ -259,11 +260,11 @@ public sealed class PackBuilderViewModel : BindableBase
 
     public string ClientPlatformGuidance => SelectedClientPlatform is null
         ? "Choose a client loader."
-        : $"{SelectedClientPlatform.KindText}  •  {SelectedClientPlatform.CapabilityText}\n{SelectedClientPlatform.GuidanceText}";
+        : $"{SelectedClientPlatform.KindText}  •  {SelectedClientPlatform.CapabilityText}\n{SelectedClientPlatform.GuidanceText}{MinecraftCompatibilitySuffix}";
 
     public string ServerPlatformGuidance => SelectedServerPlatform is null
         ? "Choose a server platform."
-        : $"{SelectedServerPlatform.KindText}  •  {SelectedServerPlatform.CapabilityText}\n{SelectedServerPlatform.GuidanceText}";
+        : $"{SelectedServerPlatform.KindText}  •  {SelectedServerPlatform.CapabilityText}\n{SelectedServerPlatform.GuidanceText}{MinecraftCompatibilitySuffix}";
 
     public string SelectedVersionDetails => SelectedVersion is null
         ? "Choose a published version."
@@ -363,6 +364,7 @@ public sealed class PackBuilderViewModel : BindableBase
 
             _selectedMinecraftVersion = MinecraftVersions.FirstOrDefault();
             OnPropertyChanged(nameof(SelectedMinecraftVersion));
+            RefreshPlatformOptions();
             _isLoaded = versions.Count > 0;
             StatusText = versions.Count == 0
                 ? "No provider returned Minecraft release metadata. Try again when online."
@@ -520,6 +522,82 @@ public sealed class PackBuilderViewModel : BindableBase
 
         _selectedCategory = Categories.FirstOrDefault();
         OnPropertyChanged(nameof(SelectedCategory));
+    }
+
+    private string MinecraftCompatibilitySuffix => string.IsNullOrWhiteSpace(SelectedMinecraftVersion)
+        ? string.Empty
+        : $"\nAvailable for Minecraft {SelectedMinecraftVersion}.";
+
+    private void RefreshPlatformOptions()
+    {
+        var preferredClientId = _selectedClientPlatform?.Id;
+        var preferredServerId = _selectedServerPlatform?.Id;
+        _isRefreshingPlatformOptions = true;
+        try
+        {
+            ClientPlatforms.Clear();
+            foreach (var option in _platformCatalog.GetClientPlatforms(SelectedMinecraftVersion))
+            {
+                ClientPlatforms.Add(option);
+            }
+
+            ServerPlatforms.Clear();
+            foreach (var option in _platformCatalog.GetServerPlatforms(SelectedMinecraftVersion))
+            {
+                ServerPlatforms.Add(option);
+            }
+
+            _selectedClientPlatform = ClientPlatforms.FirstOrDefault(option =>
+                    option.Id.Equals(preferredClientId, StringComparison.OrdinalIgnoreCase))
+                ?? SelectPreferredClientPlatform();
+            _selectedServerPlatform = ServerPlatforms.FirstOrDefault(option =>
+                    option.Id.Equals(preferredServerId, StringComparison.OrdinalIgnoreCase))
+                ?? SelectPreferredServerPlatform(_selectedClientPlatform);
+
+            OnPropertyChanged(nameof(SelectedClientPlatform));
+            OnPropertyChanged(nameof(SelectedServerPlatform));
+        }
+        finally
+        {
+            _isRefreshingPlatformOptions = false;
+        }
+
+        OnPropertyChanged(nameof(ClientPlatformGuidance));
+        OnPropertyChanged(nameof(ServerPlatformGuidance));
+        EnsureContentKindSupported();
+        NotifyCommandStates();
+    }
+
+    private PackPlatformOption? SelectPreferredClientPlatform()
+    {
+        string[] preferredIds =
+        [
+            "fabric-client",
+            "neoforge-client",
+            "forge-client",
+            "quilt-client",
+            "vanilla-client"
+        ];
+        return preferredIds
+            .Select(id => ClientPlatforms.FirstOrDefault(option => option.Id == id))
+            .FirstOrDefault(option => option is not null)
+            ?? ClientPlatforms.FirstOrDefault();
+    }
+
+    private PackPlatformOption? SelectPreferredServerPlatform(PackPlatformOption? clientPlatform)
+    {
+        var matchingServerId = clientPlatform?.Id switch
+        {
+            "vanilla-client" => "vanilla-server",
+            "fabric-client" => "fabric-server",
+            "quilt-client" => "quilt-server",
+            "forge-client" => "forge-server",
+            "neoforge-client" => "neoforge-server",
+            _ => string.Empty
+        };
+        return ServerPlatforms.FirstOrDefault(option => option.Id == matchingServerId)
+            ?? ServerPlatforms.FirstOrDefault(option => option.SupportsMods)
+            ?? ServerPlatforms.FirstOrDefault();
     }
 
     private void RefreshContentKinds()

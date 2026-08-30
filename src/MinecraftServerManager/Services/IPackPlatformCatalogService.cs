@@ -6,9 +6,9 @@ public interface IPackPlatformCatalogService
 {
     IReadOnlyList<PackBuildTargetOption> GetBuildTargets();
 
-    IReadOnlyList<PackPlatformOption> GetClientPlatforms();
+    IReadOnlyList<PackPlatformOption> GetClientPlatforms(string? minecraftVersion = null);
 
-    IReadOnlyList<PackPlatformOption> GetServerPlatforms();
+    IReadOnlyList<PackPlatformOption> GetServerPlatforms(string? minecraftVersion = null);
 
     IReadOnlyList<PackCategoryOption> GetCategories(ServerContentKind kind);
 }
