@@ -3,7 +3,9 @@ param(
     [string]$OutputPng = (Join-Path $PSScriptRoot '..\src\MinecraftServerManager\Assets\AppIcon.png'),
     [string]$OutputIco = (Join-Path $PSScriptRoot '..\src\MinecraftServerManager\Assets\AppIcon.ico'),
     [ValidateRange(0.75, 0.96)]
-    [double]$CanvasFill = 0.92
+    [double]$CanvasFill = 0.92,
+    [ValidateRange(0.90, 1.25)]
+    [double]$HorizontalScale = 1.12
 )
 
 Set-StrictMode -Version Latest
@@ -189,8 +191,12 @@ try {
     $canvasSize = [Math]::Max($sourceBitmap.Width, $sourceBitmap.Height)
     $longestSourceEdge = [Math]::Max($sourceRectangle.Width, $sourceRectangle.Height)
     $scale = ($canvasSize * $CanvasFill) / $longestSourceEdge
-    $targetWidth = [int][Math]::Round($sourceRectangle.Width * $scale)
+    $targetWidth = [int][Math]::Round($sourceRectangle.Width * $scale * $HorizontalScale)
     $targetHeight = [int][Math]::Round($sourceRectangle.Height * $scale)
+    if ($targetWidth -gt $canvasSize) {
+        throw "The requested horizontal scale would clip the icon. Reduce HorizontalScale."
+    }
+
     $targetX = [int][Math]::Round(($canvasSize - $targetWidth) / 2.0)
     $targetY = [int][Math]::Round(($canvasSize - $targetHeight) / 2.0)
     $targetRectangle = [System.Drawing.Rectangle]::new($targetX, $targetY, $targetWidth, $targetHeight)
@@ -216,11 +222,12 @@ try {
     Move-Item -LiteralPath $temporaryPng -Destination $OutputPng -Force
     Move-Item -LiteralPath $temporaryIco -Destination $OutputIco -Force
 
-    Write-Output ('Updated app icon: visible source {0}x{1}; output canvas {2}x{2}; target fill {3:P0}.' -f `
+    Write-Output ('Updated app icon: visible source {0}x{1}; output canvas {2}x{2}; target fill {3:P0}; horizontal scale {4:P0}.' -f `
         $visibleBounds.Width,
         $visibleBounds.Height,
         $canvasSize,
-        $CanvasFill)
+        $CanvasFill,
+        $HorizontalScale)
 }
 finally {
     if ($null -ne $renderedBitmap) {
