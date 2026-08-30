@@ -254,6 +254,13 @@ public sealed partial class MainWindow : Window
             if (result is not null)
             {
                 await ViewModel.AcceptProfileImportAsync(result.ProfileImport);
+                var importedProfile = ViewModel.SelectedProfile;
+                if (importedProfile is not null
+                    && importedProfile.Id == result.ProfileImport.Profile?.Id
+                    && importedProfile.Readiness.NeedsEulaAcceptance)
+                {
+                    await ShowEulaAcceptanceDialogAsync(importedProfile, afterImport: true);
+                }
             }
         }
         catch (Exception exception) when (
@@ -285,6 +292,82 @@ public sealed partial class MainWindow : Window
         {
             await ViewModel.ImportServerFolderAsync(result.Path);
         }
+    }
+
+    private async void AcceptEula_Click(object sender, RoutedEventArgs args)
+    {
+        var profile = ViewModel.SelectedProfile;
+        if (profile?.Readiness.NeedsEulaAcceptance != true)
+        {
+            return;
+        }
+
+        await ShowEulaAcceptanceDialogAsync(profile, afterImport: false);
+    }
+
+    private async Task<bool> ShowEulaAcceptanceDialogAsync(
+        ServerSessionViewModel profile,
+        bool afterImport)
+    {
+        var agreementCheckBox = new CheckBox
+        {
+            Content = new TextBlock
+            {
+                MaxWidth = 520,
+                Text = "I have read and agree to the Minecraft End User License Agreement.",
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            MaxWidth = 540,
+            Text = afterImport
+                ? $"{profile.DisplayName} is installed. Before its first full start, review the official Minecraft EULA. The manager changes eula.txt only after you confirm below."
+                : $"Review the official Minecraft EULA before enabling {profile.DisplayName}. The manager changes eula.txt only after you confirm below.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(new HyperlinkButton
+        {
+            Content = "Read the official Minecraft EULA",
+            NavigateUri = new Uri("https://www.minecraft.net/en-us/eula")
+        });
+        content.Children.Add(agreementCheckBox);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = afterImport ? "Finish server setup" : "Accept the Minecraft EULA?",
+            Content = content,
+            PrimaryButtonText = "Accept and enable server",
+            CloseButtonText = "Not now",
+            DefaultButton = ContentDialogButton.Close,
+            IsPrimaryButtonEnabled = false
+        };
+        agreementCheckBox.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
+        agreementCheckBox.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return false;
+        }
+
+        var accepted = await profile.AcceptEulaAsync();
+        if (accepted)
+        {
+            return true;
+        }
+
+        var failureDialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "The EULA setting could not be saved",
+            Content = profile.StatusMessage,
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close
+        };
+        await failureDialog.ShowAsync();
+        return false;
     }
 
     private async void ChooseJavaExecutable_Click(object sender, RoutedEventArgs args)

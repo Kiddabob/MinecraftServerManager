@@ -45,6 +45,7 @@ public partial class App : Application
         services.AddSingleton<IProfileService, JsonProfileService>();
         services.AddSingleton<IModpackImportService, ModrinthModpackImportService>();
         services.AddSingleton<IProfileValidator, ProfileValidator>();
+        services.AddSingleton<IServerReadinessService, ServerReadinessService>();
         services.AddSingleton<IServerFileService, ServerFileService>();
         services.AddSingleton<IServerConfigurationService, ServerConfigurationService>();
         services.AddSingleton<IServerConfigurationEditorService, ServerConfigurationEditorService>();

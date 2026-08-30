@@ -11,7 +11,7 @@ public sealed class ServerSessionViewModel : BindableBase
     private const int MaximumConsoleEntries = 5_000;
     private const int MaximumResourceHistorySamples = 60;
 
-    private readonly IProfileValidator _profileValidator;
+    private readonly IServerReadinessService _serverReadinessService;
     private readonly IServerLaunchRequestFactory _launchRequestFactory;
     private readonly IServerConsoleParserFactory _consoleParserFactory;
     private readonly IServerProcessService _processService;
@@ -20,6 +20,7 @@ public sealed class ServerSessionViewModel : BindableBase
     private readonly ConcurrentQueue<PendingConsoleLine> _pendingConsoleLines = new();
 
     private IServerConsoleParser _consoleParser;
+    private ServerReadinessReport _readiness;
     private CancellationTokenSource? _resourceMonitorCancellation;
     private ServerState _state;
     private int _consoleDrainScheduled;
@@ -37,7 +38,7 @@ public sealed class ServerSessionViewModel : BindableBase
 
     public ServerSessionViewModel(
         ServerProfile profile,
-        IProfileValidator profileValidator,
+        IServerReadinessService serverReadinessService,
         IServerLaunchRequestFactory launchRequestFactory,
         IServerConsoleParserFactory consoleParserFactory,
         IServerProcessService processService,
@@ -45,7 +46,7 @@ public sealed class ServerSessionViewModel : BindableBase
         IUiDispatcher uiDispatcher)
     {
         Profile = profile;
-        _profileValidator = profileValidator;
+        _serverReadinessService = serverReadinessService;
         _launchRequestFactory = launchRequestFactory;
         _consoleParserFactory = consoleParserFactory;
         _processService = processService;
@@ -53,12 +54,10 @@ public sealed class ServerSessionViewModel : BindableBase
         _uiDispatcher = uiDispatcher;
         _consoleParser = _consoleParserFactory.Create(profile);
 
-        var validation = _profileValidator.Validate(profile);
-        _validationText = validation.ToDisplayText();
-        _state = validation.IsValid ? ServerState.Stopped : ServerState.InvalidProfile;
-        _statusMessage = validation.IsValid
-            ? $"{profile.DisplayName} is configured and ready to start."
-            : "Select the correct server folder or update the profile paths.";
+        _readiness = _serverReadinessService.Evaluate(profile);
+        _validationText = _readiness.ValidationText;
+        _state = _readiness.CanStart ? ServerState.Stopped : ServerState.InvalidProfile;
+        _statusMessage = GetIdleStatusMessage();
 
         StartCommand = new AsyncRelayCommand(StartAsync, () => CanStart);
         StopCommand = new AsyncRelayCommand(async () => { await StopAsync(); }, () => CanStop);
@@ -69,12 +68,21 @@ public sealed class ServerSessionViewModel : BindableBase
         SaveNowCommand = new AsyncRelayCommand(
             () => SendProfileCommandAsync(Profile.SaveCommand),
             () => CanSendProfileCommand(Profile.SaveCommand));
+        RefreshReadinessCommand = new AsyncRelayCommand(
+            () =>
+            {
+                RefreshProfile();
+                return Task.CompletedTask;
+            },
+            () => !IsServerActive);
 
         _processService.OutputReceived += OnOutputReceived;
         _processService.Exited += OnProcessExited;
     }
 
     public ServerProfile Profile { get; }
+
+    public ServerReadinessReport Readiness => _readiness;
 
     public ObservableCollection<ServerLogEntry> ConsoleEntries { get; } = [];
 
@@ -188,7 +196,8 @@ public sealed class ServerSessionViewModel : BindableBase
         or ServerState.Ready
         or ServerState.Stopping;
 
-    public bool CanStart => (_state is ServerState.Stopped or ServerState.Failed)
+    public bool CanStart => _readiness.CanStart
+        && (_state is ServerState.Stopped or ServerState.Failed)
         && !_processService.IsRunning;
 
     public bool CanStop => _processService.IsRunning && _state != ServerState.Stopping;
@@ -209,11 +218,12 @@ public sealed class ServerSessionViewModel : BindableBase
 
     public AsyncRelayCommand SaveNowCommand { get; }
 
+    public AsyncRelayCommand RefreshReadinessCommand { get; }
+
     public void RefreshProfile()
     {
         _consoleParser = _consoleParserFactory.Create(Profile);
-        var validation = _profileValidator.Validate(Profile);
-        ValidationText = validation.ToDisplayText();
+        RefreshReadiness();
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(ServerDirectory));
         OnPropertyChanged(nameof(ProfileIconPath));
@@ -224,10 +234,8 @@ public sealed class ServerSessionViewModel : BindableBase
         if (!_processService.IsRunning)
         {
             SetState(
-                validation.IsValid ? ServerState.Stopped : ServerState.InvalidProfile,
-                validation.IsValid
-                    ? $"{Profile.DisplayName} is configured and ready to start."
-                    : "Update this profile's launcher or Java settings before starting.");
+                _readiness.CanStart ? ServerState.Stopped : ServerState.InvalidProfile,
+                GetIdleStatusMessage());
         }
     }
 
@@ -238,11 +246,10 @@ public sealed class ServerSessionViewModel : BindableBase
             return;
         }
 
-        var validation = _profileValidator.Validate(Profile);
-        ValidationText = validation.ToDisplayText();
-        if (!validation.IsValid)
+        RefreshReadiness();
+        if (!_readiness.CanStart)
         {
-            SetState(ServerState.InvalidProfile, "The profile failed validation. Select the correct server folder.");
+            SetState(ServerState.InvalidProfile, _readiness.Summary);
             return;
         }
 
@@ -282,6 +289,31 @@ public sealed class ServerSessionViewModel : BindableBase
             ProcessInfo = "No server process";
             ResetResourceUsage("Process failed to start");
             SetState(ServerState.Failed, exception.Message);
+        }
+    }
+
+    public async Task<bool> AcceptEulaAsync()
+    {
+        if (IsServerActive)
+        {
+            StatusMessage = "Stop this server before changing its EULA setting.";
+            return false;
+        }
+
+        try
+        {
+            ApplyReadiness(await _serverReadinessService.AcceptEulaAsync(Profile));
+            SetState(
+                _readiness.CanStart ? ServerState.Stopped : ServerState.InvalidProfile,
+                GetIdleStatusMessage());
+            return _readiness.EulaState == ServerEulaState.Accepted;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException
+                or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            SetState(_state, $"eula.txt could not be updated: {exception.Message}");
+            return false;
         }
     }
 
@@ -432,7 +464,13 @@ public sealed class ServerSessionViewModel : BindableBase
                 ? "Server was force-stopped"
                 : "Server process stopped");
 
-            if (args.ForceKillWasRequested)
+            RefreshReadiness();
+
+            if (!_readiness.CanStart)
+            {
+                SetState(ServerState.InvalidProfile, _readiness.Summary);
+            }
+            else if (args.ForceKillWasRequested)
             {
                 SetState(
                     ServerState.Stopped,
@@ -640,7 +678,26 @@ public sealed class ServerSessionViewModel : BindableBase
         SendCommand.NotifyCanExecuteChanged();
         ListPlayersCommand.NotifyCanExecuteChanged();
         SaveNowCommand.NotifyCanExecuteChanged();
+        RefreshReadinessCommand.NotifyCanExecuteChanged();
     }
+
+    private void RefreshReadiness()
+    {
+        ApplyReadiness(_serverReadinessService.Evaluate(Profile));
+    }
+
+    private void ApplyReadiness(ServerReadinessReport readiness)
+    {
+        _readiness = readiness;
+        ValidationText = _readiness.ValidationText;
+        OnPropertyChanged(nameof(Readiness));
+        OnPropertyChanged(nameof(CanStart));
+        StartCommand.NotifyCanExecuteChanged();
+    }
+
+    private string GetIdleStatusMessage() => _readiness.CanStart
+        ? $"{Profile.DisplayName} is configured and ready to start."
+        : _readiness.Summary;
 
     private readonly record struct PendingConsoleLine(
         ServerLogEntry Entry,

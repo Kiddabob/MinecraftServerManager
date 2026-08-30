@@ -10,7 +10,7 @@ namespace MinecraftServerManager.ViewModels;
 public sealed class MainViewModel : BindableBase
 {
     private readonly IProfileService _profileService;
-    private readonly IProfileValidator _profileValidator;
+    private readonly IServerReadinessService _serverReadinessService;
     private readonly IServerLaunchRequestFactory _launchRequestFactory;
     private readonly IServerConsoleParserFactory _consoleParserFactory;
     private readonly IServerProcessServiceFactory _processServiceFactory;
@@ -61,7 +61,7 @@ public sealed class MainViewModel : BindableBase
 
     public MainViewModel(
         IProfileService profileService,
-        IProfileValidator profileValidator,
+        IServerReadinessService serverReadinessService,
         IServerLaunchRequestFactory launchRequestFactory,
         IServerConsoleParserFactory consoleParserFactory,
         IServerProcessServiceFactory processServiceFactory,
@@ -77,7 +77,7 @@ public sealed class MainViewModel : BindableBase
         IUiDispatcher uiDispatcher)
     {
         _profileService = profileService;
-        _profileValidator = profileValidator;
+        _serverReadinessService = serverReadinessService;
         _launchRequestFactory = launchRequestFactory;
         _consoleParserFactory = consoleParserFactory;
         _processServiceFactory = processServiceFactory;
@@ -1024,7 +1024,7 @@ public sealed class MainViewModel : BindableBase
     {
         var session = new ServerSessionViewModel(
             profile,
-            _profileValidator,
+            _serverReadinessService,
             _launchRequestFactory,
             _consoleParserFactory,
             _processServiceFactory.Create(),

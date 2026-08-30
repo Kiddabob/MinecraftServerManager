@@ -173,6 +173,86 @@
                                 </Grid>
                             </Border>
 
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <StackPanel Spacing="14">
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                Style="{StaticResource SectionTitleTextStyle}"
+                                                Text="{Binding SelectedProfile.Readiness.Heading, Mode=OneWay}" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding SelectedProfile.Readiness.Summary, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            VerticalAlignment="Top"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                            <Button
+                                                AutomationProperties.Name="Review and accept the Minecraft EULA"
+                                                Click="AcceptEula_Click"
+                                                Content="Review and accept EULA"
+                                                Visibility="{Binding SelectedProfile.Readiness.NeedsEulaAcceptance, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <Button
+                                                Command="{Binding SelectedProfile.RefreshReadinessCommand}"
+                                                Content="Refresh checks" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Grid ColumnSpacing="16" RowSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Launcher" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Text="{Binding SelectedProfile.Readiness.LauncherText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock
+                                            Grid.Row="1"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Java" />
+                                        <TextBlock
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            Text="{Binding SelectedProfile.Readiness.JavaText, Mode=OneWay}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Grid.Row="2"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Memory" />
+                                        <TextBlock
+                                            Grid.Row="2"
+                                            Grid.Column="1"
+                                            Text="{Binding SelectedProfile.Readiness.MemoryText, Mode=OneWay}" />
+                                        <TextBlock
+                                            Grid.Row="3"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Minecraft EULA" />
+                                        <TextBlock
+                                            Grid.Row="3"
+                                            Grid.Column="1"
+                                            Text="{Binding SelectedProfile.Readiness.EulaText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="3*" />

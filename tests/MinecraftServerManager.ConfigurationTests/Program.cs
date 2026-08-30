@@ -332,6 +332,64 @@ try
         ["-Dexample=true"]);
     AssertTrue(replacedMemory.SequenceEqual(["-Xms2G", "-Xmx6G", "-server", "-Dexample=true"]), "memory argument replacement");
 
+    var readinessFolder = Path.Combine(testRoot, "readiness");
+    Directory.CreateDirectory(readinessFolder);
+    var readinessProfile = new ServerProfile
+    {
+        Id = "readiness-test",
+        DisplayName = "Readiness test",
+        ServerDirectory = readinessFolder,
+        ServerJar = "server.jar",
+        JavaExecutable = "java",
+        JavaVersion = "Java 17",
+        JavaArguments = ["-Xms1G", "-Xmx4G"]
+    };
+    var readinessService = new ServerReadinessService(
+        new StubProfileValidator(new ProfileValidationResult([])));
+
+    var missingEulaReadiness = readinessService.Evaluate(readinessProfile);
+    AssertEqual(ServerReadinessState.ActionRequired, missingEulaReadiness.State, "missing EULA readiness state");
+    AssertEqual(ServerEulaState.Missing, missingEulaReadiness.EulaState, "missing EULA detection");
+    AssertTrue(!missingEulaReadiness.CanStart, "missing EULA waits for explicit acceptance");
+    AssertTrue(
+        missingEulaReadiness.MemoryText.Contains("MB initial", StringComparison.Ordinal)
+            && missingEulaReadiness.MemoryText.Contains("MB maximum", StringComparison.Ordinal),
+        "readiness memory summary");
+
+    var eulaPath = Path.Combine(readinessFolder, "eula.txt");
+    var acceptedMissingEula = await readinessService.AcceptEulaAsync(readinessProfile);
+    AssertEqual(ServerEulaState.Accepted, acceptedMissingEula.EulaState, "missing EULA acceptance");
+    AssertTrue(
+        (await File.ReadAllTextAsync(eulaPath)).Contains("eula=true", StringComparison.Ordinal),
+        "accepted EULA file creation");
+
+    await File.WriteAllTextAsync(
+        eulaPath,
+        "# Keep this comment\neula=false\nexample=value\neula=false\n");
+    var pendingEulaReadiness = readinessService.Evaluate(readinessProfile);
+    AssertEqual(ServerReadinessState.ActionRequired, pendingEulaReadiness.State, "pending EULA readiness state");
+    AssertEqual(ServerEulaState.NotAccepted, pendingEulaReadiness.EulaState, "pending EULA detection");
+    AssertTrue(!pendingEulaReadiness.CanStart, "pending EULA blocks launch");
+    AssertEqual(eulaPath, pendingEulaReadiness.EulaPath, "readiness EULA path");
+
+    var acceptedEulaReadiness = await readinessService.AcceptEulaAsync(readinessProfile);
+    AssertEqual(ServerReadinessState.Ready, acceptedEulaReadiness.State, "accepted EULA readiness state");
+    AssertEqual(ServerEulaState.Accepted, acceptedEulaReadiness.EulaState, "accepted EULA detection");
+    AssertTrue(acceptedEulaReadiness.CanStart, "accepted EULA permits launch");
+    var acceptedEulaText = await File.ReadAllTextAsync(eulaPath);
+    AssertTrue(
+        acceptedEulaText.Contains("# Keep this comment", StringComparison.Ordinal)
+            && acceptedEulaText
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Count(line => line == "eula=true") == 2,
+        "EULA acceptance preserves comments and normalizes duplicate settings");
+
+    var invalidReadinessService = new ServerReadinessService(
+        new StubProfileValidator(new ProfileValidationResult(["Server JAR is missing."])));
+    var invalidProfileReadiness = invalidReadinessService.Evaluate(readinessProfile);
+    AssertEqual(ServerReadinessState.ActionRequired, invalidProfileReadiness.State, "invalid profile readiness state");
+    AssertTrue(!invalidProfileReadiness.CanStart, "invalid profile blocks launch");
+
     var runtimeService = new JavaRuntimeService();
     var installLocationService = new ModpackInstallLocationService(
         Path.Combine(testRoot, "local-app-data"));
@@ -924,4 +982,16 @@ static async Task AssertThrowsAsync<TException>(Func<Task> action, string descri
 
     throw new InvalidOperationException(
         $"Assertion failed: {description}. Expected {typeof(TException).Name}.");
+}
+
+sealed class StubProfileValidator : IProfileValidator
+{
+    private readonly ProfileValidationResult _result;
+
+    public StubProfileValidator(ProfileValidationResult result)
+    {
+        _result = result;
+    }
+
+    public ProfileValidationResult Validate(ServerProfile profile) => _result;
 }
