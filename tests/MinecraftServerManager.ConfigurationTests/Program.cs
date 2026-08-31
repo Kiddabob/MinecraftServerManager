@@ -2418,23 +2418,104 @@ try
     AssertEqual(8.5, playerPositions[0].Z, "map reads player Z position");
     AssertEqual(90f, playerPositions[0].Yaw, "map reads player yaw");
     AssertEqual(0, playerPositions[0].DimensionId, "map reads the player's saved dimension");
+    AssertEqual("overworld", playerPositions[0].DimensionKey, "map normalizes the legacy player dimension");
     AssertTrue(playerPositions[0].PlayerId is not null, "map reads the player's legacy UUID fields");
     AssertEqual(
         0,
         (await mapService.ReadPlayerPositionsAsync(mapProfile, discoveredWorld, ["SomeoneElse"])).Count,
         "map does not scan unrelated player names when showing online players");
 
+    var modernServerRoot = Path.Combine(testRoot, "modern-map-server");
+    var modernWorldRoot = Path.Combine(modernServerRoot, "world");
+    var modernRegionRoot = Path.Combine(modernWorldRoot, "region");
+    var modernNetherRegionRoot = Path.Combine(modernWorldRoot, "DIM-1", "region");
+    var modernCustomRegionRoot = Path.Combine(
+        modernWorldRoot,
+        "dimensions",
+        "example",
+        "moon",
+        "region");
+    var modernPlayersRoot = Path.Combine(modernWorldRoot, "playerdata");
+    Directory.CreateDirectory(modernRegionRoot);
+    Directory.CreateDirectory(modernNetherRegionRoot);
+    Directory.CreateDirectory(modernCustomRegionRoot);
+    Directory.CreateDirectory(modernPlayersRoot);
+    await File.WriteAllTextAsync(
+        Path.Combine(modernServerRoot, "server.properties"),
+        "level-name=world\n");
+    CreateLegacyLevelFile(Path.Combine(modernWorldRoot, "level.dat"), 8, 70, 8);
+    var compactPaletteNbt = CreatePaletteRegionFile(
+        Path.Combine(modernRegionRoot, "r.0.0.mca"),
+        dataVersion: 1_631,
+        padded: false,
+        lowerCaseRootLayout: false,
+        sectionY: 0);
+    var paddedPaletteNbt = CreatePaletteRegionFile(
+        Path.Combine(modernNetherRegionRoot, "r.0.0.mca"),
+        dataVersion: 2_586,
+        padded: true,
+        lowerCaseRootLayout: false,
+        sectionY: 7);
+    var cavesPaletteNbt = CreatePaletteRegionFile(
+        Path.Combine(modernCustomRegionRoot, "r.0.0.mca"),
+        dataVersion: 2_865,
+        padded: true,
+        lowerCaseRootLayout: true,
+        sectionY: -4);
+
+    var compactSurface = PaletteAnvilChunkDecoder.TryDecode(compactPaletteNbt, 319)!;
+    AssertEqual((short)4, compactSurface.Heights[13], "1.13 compact palette finds the selected surface block");
+    AssertEqual(short.MinValue, compactSurface.Heights[12], "1.13 compact palette does not leak across bit boundaries");
+    var paddedSurface = PaletteAnvilChunkDecoder.TryDecode(paddedPaletteNbt, 120)!;
+    AssertEqual((short)116, paddedSurface.Heights[13], "1.16 padded palette finds the selected surface block");
+    AssertEqual(short.MinValue, paddedSurface.Heights[12], "1.16 padded palette respects long padding");
+    var cavesSurface = PaletteAnvilChunkDecoder.TryDecode(cavesPaletteNbt, 319)!;
+    AssertEqual((short)-60, cavesSurface.Heights[13], "1.18 lower-case palette supports negative section heights");
+
+    var modernPlayerId = Guid.Parse("a1b2c3d4-1111-2222-3333-1234567890ab");
+    CreateModernPlayerFile(
+        Path.Combine(modernPlayersRoot, $"{modernPlayerId}.dat"),
+        13.5,
+        72,
+        0.5,
+        45,
+        "minecraft:overworld",
+        modernPlayerId);
+    await File.WriteAllTextAsync(
+        Path.Combine(modernServerRoot, "usercache.json"),
+        $$"""
+        [{"name":"ModernPlayer","uuid":"{{modernPlayerId}}","expiresOn":"2099-01-01 00:00:00 +0000"}]
+        """);
+
     var modernMapProfile = new ServerProfile
     {
         Id = "modern-map-test",
         DisplayName = "Modern map test",
-        ServerType = "Fabric",
-        MinecraftVersion = "1.20.1",
-        ServerDirectory = mapServerRoot
+        ServerType = "Vanilla",
+        MinecraftVersion = "1.18.1",
+        ServerDirectory = modernServerRoot
     };
-    await AssertThrowsAsync<NotSupportedException>(
-        () => mapService.DiscoverAsync(modernMapProfile),
-        "map reports known modern palette worlds as unsupported instead of rendering them incorrectly");
+    var modernWorld = await mapService.DiscoverAsync(modernMapProfile);
+    AssertEqual(3, modernWorld.Dimensions.Count, "modern map discovers vanilla and namespaced dimensions");
+    AssertTrue(
+        modernWorld.Dimensions.Any(dimension => dimension.Id == "dimensions/example/moon"),
+        "modern map discovers a namespaced custom dimension");
+    var modernRender = await mapService.RenderAsync(new WorldMapRenderRequest(
+        modernMapProfile,
+        modernWorld.Dimensions.Single(dimension => dimension.Id == "overworld"),
+        8,
+        8,
+        64));
+    AssertTrue(modernRender.HasTerrain, "modern palette map renders generated terrain");
+    AssertEqual(1, modernRender.LoadedChunkCount, "modern palette map counts its generated chunk");
+    var modernPlayers = await mapService.ReadPlayerPositionsAsync(
+        modernMapProfile,
+        modernWorld,
+        ["ModernPlayer"]);
+    AssertEqual(1, modernPlayers.Count, "modern map reads UUID-named playerdata through usercache.json");
+    AssertEqual("ModernPlayer", modernPlayers[0].PlayerName, "modern map resolves the player's cached name");
+    AssertEqual(modernPlayerId, modernPlayers[0].PlayerId!.Value, "modern map reads the player's UUID int array");
+    AssertEqual("overworld", modernPlayers[0].DimensionKey, "modern map normalizes namespaced dimensions");
 
     var escapedWorldProfile = new ServerProfile
     {
@@ -2459,6 +2540,34 @@ try
     AssertTrue(
         MojangPlayerAvatarService.NormalizeTrustedSkinUri("file:///C:/skin.png") is null,
         "player skins reject non-HTTP texture schemes");
+
+    var worldMapSmokeRoots = (Environment.GetEnvironmentVariable("MSM_WORLD_MAP_SMOKE_ROOTS") ?? string.Empty)
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    for (var smokeIndex = 0; smokeIndex < worldMapSmokeRoots.Length; smokeIndex++)
+    {
+        var smokeRoot = Path.GetFullPath(worldMapSmokeRoots[smokeIndex]);
+        var smokeProfile = new ServerProfile
+        {
+            Id = $"world-map-smoke-{smokeIndex}",
+            DisplayName = new DirectoryInfo(smokeRoot).Name,
+            ServerType = "Detected",
+            MinecraftVersion = "Unknown",
+            ServerDirectory = smokeRoot
+        };
+        var smokeService = new LegacyAnvilWorldMapService(
+            Path.Combine(testRoot, "world-map-smoke-cache", smokeIndex.ToString()));
+        var smokeWorld = await smokeService.DiscoverAsync(smokeProfile);
+        var smokeOverworld = smokeWorld.Dimensions.First(dimension => dimension.NumericId == 0);
+        var smokeRender = await smokeService.RenderAsync(new WorldMapRenderRequest(
+            smokeProfile,
+            smokeOverworld,
+            smokeWorld.SpawnX,
+            smokeWorld.SpawnZ,
+            256));
+        AssertTrue(smokeRender.HasTerrain, $"real-world map smoke renders {smokeProfile.DisplayName}");
+        Console.WriteLine(
+            $"World-map smoke: {smokeProfile.DisplayName} rendered {smokeRender.LoadedChunkCount:N0} chunks ({smokeRender.ChangedChunkCount:N0} parsed).");
+    }
 
     Console.WriteLine("Configuration dashboard, pack builder, content management, map parsing, launcher detection, and Java compatibility tests passed.");
 }
@@ -2521,6 +2630,193 @@ static void CreateLegacyPlayerFile(
     WriteNamedNbtLong(payload, "UUIDLeast", unchecked((long)Convert.ToUInt64(compactId[16..], 16)));
     payload.WriteByte(0);
     WriteGzipFile(path, payload.ToArray());
+}
+
+static void CreateModernPlayerFile(
+    string path,
+    double x,
+    double y,
+    double z,
+    float yaw,
+    string dimension,
+    Guid playerId)
+{
+    using var payload = new MemoryStream();
+    payload.WriteByte(10);
+    WriteNbtString(payload, string.Empty);
+
+    WriteNamedNbtTag(payload, 9, "Pos");
+    payload.WriteByte(6);
+    WriteNbtInt(payload, 3);
+    WriteNbtLong(payload, BitConverter.DoubleToInt64Bits(x));
+    WriteNbtLong(payload, BitConverter.DoubleToInt64Bits(y));
+    WriteNbtLong(payload, BitConverter.DoubleToInt64Bits(z));
+
+    WriteNamedNbtTag(payload, 9, "Rotation");
+    payload.WriteByte(5);
+    WriteNbtInt(payload, 2);
+    WriteNbtInt(payload, BitConverter.SingleToInt32Bits(yaw));
+    WriteNbtInt(payload, BitConverter.SingleToInt32Bits(0));
+    WriteNamedNbtString(payload, "Dimension", dimension);
+
+    var compactId = playerId.ToString("N");
+    WriteNamedNbtIntArray(
+        payload,
+        "UUID",
+        Enumerable.Range(0, 4)
+            .Select(index => unchecked((int)Convert.ToUInt32(compactId.Substring(index * 8, 8), 16)))
+            .ToArray());
+    payload.WriteByte(0);
+    WriteGzipFile(path, payload.ToArray());
+}
+
+static byte[] CreatePaletteRegionFile(
+    string path,
+    int dataVersion,
+    bool padded,
+    bool lowerCaseRootLayout,
+    int sectionY)
+{
+    var blockIndices = new int[4096];
+    blockIndices[4 * 256 + 13] = 16;
+    var packedStates = PackBlockStates(blockIndices, bitsPerBlock: 5, padded);
+
+    using var nbt = new MemoryStream();
+    nbt.WriteByte(10);
+    WriteNbtString(nbt, string.Empty);
+    WriteNamedNbtInt(nbt, "DataVersion", dataVersion);
+    if (lowerCaseRootLayout)
+    {
+        WriteNamedNbtInt(nbt, "xPos", 0);
+        WriteNamedNbtInt(nbt, "zPos", 0);
+        WriteNamedNbtTag(nbt, 9, "sections");
+        nbt.WriteByte(10);
+        WriteNbtInt(nbt, 1);
+        WritePaletteSection(nbt, sectionY, packedStates, lowerCaseRootLayout: true);
+    }
+    else
+    {
+        WriteNamedNbtTag(nbt, 10, "Level");
+        WriteNamedNbtInt(nbt, "xPos", 0);
+        WriteNamedNbtInt(nbt, "zPos", 0);
+        WriteNamedNbtTag(nbt, 9, "Sections");
+        nbt.WriteByte(10);
+        WriteNbtInt(nbt, 1);
+        WritePaletteSection(nbt, sectionY, packedStates, lowerCaseRootLayout: false);
+        nbt.WriteByte(0);
+    }
+
+    nbt.WriteByte(0);
+    var nbtBytes = nbt.ToArray();
+    WriteZlibRegionFile(path, nbtBytes);
+    return nbtBytes;
+}
+
+static void WritePaletteSection(
+    Stream stream,
+    int sectionY,
+    long[] packedStates,
+    bool lowerCaseRootLayout)
+{
+    WriteNamedNbtTag(stream, 1, "Y");
+    stream.WriteByte(unchecked((byte)checked((sbyte)sectionY)));
+    if (lowerCaseRootLayout)
+    {
+        WriteNamedNbtTag(stream, 10, "block_states");
+        WritePalette(stream, "palette");
+        WriteNamedNbtLongArray(stream, "data", packedStates);
+        stream.WriteByte(0);
+    }
+    else
+    {
+        WritePalette(stream, "Palette");
+        WriteNamedNbtLongArray(stream, "BlockStates", packedStates);
+    }
+
+    stream.WriteByte(0);
+}
+
+static void WritePalette(Stream stream, string name)
+{
+    WriteNamedNbtTag(stream, 9, name);
+    stream.WriteByte(10);
+    WriteNbtInt(stream, 17);
+    for (var index = 0; index < 17; index++)
+    {
+        var blockName = index switch
+        {
+            0 => "minecraft:air",
+            16 => "minecraft:grass_block",
+            _ => $"example:filler_{index}"
+        };
+        WriteNamedNbtString(stream, "Name", blockName);
+        stream.WriteByte(0);
+    }
+}
+
+static long[] PackBlockStates(IReadOnlyList<int> values, int bitsPerBlock, bool padded)
+{
+    var mask = (1UL << bitsPerBlock) - 1UL;
+    if (padded)
+    {
+        var valuesPerLong = 64 / bitsPerBlock;
+        var packed = new ulong[(values.Count + valuesPerLong - 1) / valuesPerLong];
+        for (var index = 0; index < values.Count; index++)
+        {
+            var longIndex = index / valuesPerLong;
+            var bitOffset = index % valuesPerLong * bitsPerBlock;
+            packed[longIndex] |= (unchecked((ulong)(uint)values[index]) & mask) << bitOffset;
+        }
+
+        return packed.Select(value => unchecked((long)value)).ToArray();
+    }
+
+    var compact = new ulong[(values.Count * bitsPerBlock + 63) / 64];
+    for (var index = 0; index < values.Count; index++)
+    {
+        var value = unchecked((ulong)(uint)values[index]) & mask;
+        var absoluteBit = index * bitsPerBlock;
+        var longIndex = absoluteBit / 64;
+        var bitOffset = absoluteBit & 63;
+        compact[longIndex] |= value << bitOffset;
+        var bitsInFirstLong = 64 - bitOffset;
+        if (bitsInFirstLong < bitsPerBlock)
+        {
+            compact[longIndex + 1] |= value >> bitsInFirstLong;
+        }
+    }
+
+    return compact.Select(value => unchecked((long)value)).ToArray();
+}
+
+static void WriteZlibRegionFile(string path, byte[] nbt)
+{
+    byte[] compressed;
+    using (var compressedStream = new MemoryStream())
+    {
+        using (var zlib = new ZLibStream(compressedStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(nbt);
+        }
+
+        compressed = compressedStream.ToArray();
+    }
+
+    var chunkLength = compressed.Length + 1;
+    var sectorCount = (4 + chunkLength + 4095) / 4096;
+    var header = new byte[8192];
+    var location = (2 << 8) | sectorCount;
+    BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(0, 4), location);
+    BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4096, 4), 1);
+
+    using var region = File.Create(path);
+    region.Write(header);
+    Span<byte> lengthBytes = stackalloc byte[4];
+    BinaryPrimitives.WriteInt32BigEndian(lengthBytes, chunkLength);
+    region.Write(lengthBytes);
+    region.WriteByte(2);
+    region.Write(compressed);
+    region.SetLength(8192 + sectorCount * 4096);
 }
 
 static void CreateLegacyRegionFile(string path)
@@ -2605,6 +2901,32 @@ static void WriteNamedNbtLong(Stream stream, string name, long value)
 {
     WriteNamedNbtTag(stream, 4, name);
     WriteNbtLong(stream, value);
+}
+
+static void WriteNamedNbtString(Stream stream, string name, string value)
+{
+    WriteNamedNbtTag(stream, 8, name);
+    WriteNbtString(stream, value);
+}
+
+static void WriteNamedNbtIntArray(Stream stream, string name, IReadOnlyList<int> values)
+{
+    WriteNamedNbtTag(stream, 11, name);
+    WriteNbtInt(stream, values.Count);
+    foreach (var value in values)
+    {
+        WriteNbtInt(stream, value);
+    }
+}
+
+static void WriteNamedNbtLongArray(Stream stream, string name, IReadOnlyList<long> values)
+{
+    WriteNamedNbtTag(stream, 12, name);
+    WriteNbtInt(stream, values.Count);
+    foreach (var value in values)
+    {
+        WriteNbtLong(stream, value);
+    }
 }
 
 static void WriteNbtString(Stream stream, string value)

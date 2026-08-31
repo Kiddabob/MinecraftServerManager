@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using MinecraftServerManager.Models;
 
 namespace MinecraftServerManager.Services;
@@ -16,7 +17,7 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
     private const int MaximumPlayerNbtBytes = 4 * 1024 * 1024;
     private const int MaximumMapPixelsPerSide = 1_536;
     private const int MaximumCachedChunks = 50_000;
-    private const string RendererVersion = "legacy-anvil-v1";
+    private const string RendererVersion = "anvil-v2";
 
     private static string DefaultCacheRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -104,14 +105,8 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             serverRoot,
             worldRoot,
             "The configured world path contains a symbolic link and cannot be inspected safely.");
-        if (IsKnownModernPaletteVersion(profile.MinecraftVersion))
-        {
-            throw new NotSupportedException(
-                "This profile uses Minecraft 1.13 or newer. The first map renderer supports legacy Anvil worlds through Minecraft 1.12.2; modern palette worlds are planned for the next renderer.");
-        }
-
         var dimensions = new List<WorldMapDimension>();
-        TryAddDimension(dimensions, worldRoot, "overworld", "Overworld", 0, 255);
+        TryAddDimension(dimensions, worldRoot, "overworld", "Overworld", 0, 319);
         foreach (var directory in Directory.EnumerateDirectories(worldRoot, "DIM*", SearchOption.TopDirectoryOnly))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -133,12 +128,14 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
                 name,
                 displayName,
                 numericId,
-                numericId == -1 ? 120 : 255);
+                numericId == -1 ? 120 : 319);
         }
+
+        DiscoverCustomDimensions(dimensions, serverRoot, worldRoot, cancellationToken);
 
         if (dimensions.Count == 0)
         {
-            throw new InvalidDataException("No legacy Anvil region folders were found in the selected world.");
+            throw new InvalidDataException("No compatible Anvil region folders were found in the selected world.");
         }
 
         var (spawnX, spawnY, spawnZ) = ReadSpawn(Path.Combine(worldRoot, "level.dat"));
@@ -173,14 +170,93 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             displayName,
             Path.GetFullPath(directory),
             numericId,
-            WorldMapFormat.LegacyAnvil,
+            WorldMapFormat.Anvil,
             surfaceMaximumY));
+    }
+
+    private static void DiscoverCustomDimensions(
+        ICollection<WorldMapDimension> dimensions,
+        string serverRoot,
+        string worldRoot,
+        CancellationToken cancellationToken)
+    {
+        var dimensionsRoot = Path.Combine(worldRoot, "dimensions");
+        if (!Directory.Exists(dimensionsRoot))
+        {
+            return;
+        }
+
+        EnsureContainedTreeHasNoLinks(
+            serverRoot,
+            dimensionsRoot,
+            "The custom-dimension path contains a symbolic link and cannot be inspected safely.");
+        var pending = new Queue<(string Directory, string RelativePath, int Depth)>();
+        foreach (var namespaceDirectory in Directory.EnumerateDirectories(dimensionsRoot).Take(256))
+        {
+            var info = new DirectoryInfo(namespaceDirectory);
+            if (info.LinkTarget is not null)
+            {
+                throw new InvalidDataException(
+                    "The custom-dimension path contains a symbolic link and cannot be inspected safely.");
+            }
+
+            pending.Enqueue((namespaceDirectory, info.Name, 0));
+        }
+
+        var visited = 0;
+        var nextNumericId = 1_000;
+        while (pending.TryDequeue(out var item) && visited++ < 2_000 && dimensions.Count < 128)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var regionDirectory = Path.Combine(item.Directory, "region");
+            if (Directory.Exists(regionDirectory))
+            {
+                var separator = item.RelativePath.IndexOf(Path.DirectorySeparatorChar);
+                var displayName = separator > 0
+                    ? $"{item.RelativePath[..separator]}:{item.RelativePath[(separator + 1)..].Replace(Path.DirectorySeparatorChar, '/')}"
+                    : item.RelativePath;
+                TryAddDimension(
+                    dimensions,
+                    item.Directory,
+                    $"dimensions/{item.RelativePath.Replace(Path.DirectorySeparatorChar, '/')}",
+                    displayName,
+                    nextNumericId++,
+                    319);
+            }
+
+            if (item.Depth >= 4)
+            {
+                continue;
+            }
+
+            foreach (var childDirectory in Directory.EnumerateDirectories(item.Directory).Take(256))
+            {
+                var info = new DirectoryInfo(childDirectory);
+                if (info.Name.Equals("region", StringComparison.OrdinalIgnoreCase)
+                    || info.Name.Equals("entities", StringComparison.OrdinalIgnoreCase)
+                    || info.Name.Equals("poi", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (info.LinkTarget is not null)
+                {
+                    throw new InvalidDataException(
+                        "The custom-dimension path contains a symbolic link and cannot be inspected safely.");
+                }
+
+                pending.Enqueue((
+                    childDirectory,
+                    Path.Combine(item.RelativePath, info.Name),
+                    item.Depth + 1));
+            }
+        }
     }
 
     private WorldMapRenderResult Render(WorldMapRenderRequest request, CancellationToken cancellationToken)
     {
         var dimension = request.Dimension;
-        if (dimension.Format != WorldMapFormat.LegacyAnvil)
+        if (dimension.Format != WorldMapFormat.Anvil)
         {
             throw new NotSupportedException("This world format is not supported by the current map renderer.");
         }
@@ -439,6 +515,16 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
         var compressed = new byte[chunkLength - 1];
         ReadExactly(stream, compressed);
         var nbt = Decompress(compressed, (byte)compression, MaximumChunkNbtBytes);
+        var paletteSurface = PaletteAnvilChunkDecoder.TryDecode(nbt, surfaceMaximumY);
+        if (paletteSurface is not null)
+        {
+            return new LegacyChunkSurface(
+                chunkX,
+                chunkZ,
+                paletteSurface.Colors,
+                paletteSurface.Heights);
+        }
+
         return ParseLegacySurface(nbt, chunkX, chunkZ, surfaceMaximumY);
     }
 
@@ -587,7 +673,11 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
         var serverRoot = NormalizeDirectory(profile.ServerDirectory);
         var worldRoot = Path.GetFullPath(world.WorldRoot);
         EnsureWithinRoot(serverRoot, worldRoot);
-        var playerDirectory = Path.Combine(worldRoot, "players");
+        var modernPlayerDirectory = Path.Combine(worldRoot, "playerdata");
+        var legacyPlayerDirectory = Path.Combine(worldRoot, "players");
+        var playerDirectory = Directory.Exists(modernPlayerDirectory)
+            ? modernPlayerDirectory
+            : legacyPlayerDirectory;
         if (!Directory.Exists(playerDirectory))
         {
             return [];
@@ -606,6 +696,7 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             return [];
         }
 
+        var playerNamesById = ReadPlayerNameCache(serverRoot);
         var positions = new List<WorldMapPlayerPosition>();
         foreach (var path in Directory.EnumerateFiles(playerDirectory, "*.dat", SearchOption.TopDirectoryOnly).Take(2_000))
         {
@@ -616,10 +707,16 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
                 continue;
             }
 
-            var playerName = Path.GetFileNameWithoutExtension(path);
-            var displayName = playerName;
+            var fileName = Path.GetFileNameWithoutExtension(path);
+            var filePlayerId = Guid.TryParse(fileName, out var parsedFileId)
+                ? parsedFileId
+                : (Guid?)null;
+            var displayName = filePlayerId is not null
+                && playerNamesById.TryGetValue(filePlayerId.Value, out var cachedName)
+                    ? cachedName
+                    : fileName;
             if (requestedNames is not null
-                && !requestedNames.TryGetValue(playerName, out displayName))
+                && !requestedNames.TryGetValue(displayName, out displayName))
             {
                 continue;
             }
@@ -629,7 +726,7 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
                 var beforeLength = info.Length;
                 var beforeWrite = info.LastWriteTimeUtc;
                 var bytes = ReadCompressedFile(path, MaximumPlayerNbtBytes);
-                var position = ParsePlayer(bytes, displayName, beforeWrite);
+                var position = ParsePlayer(bytes, displayName, beforeWrite, filePlayerId);
                 info.Refresh();
                 if (position is not null
                     && info.Exists
@@ -653,13 +750,19 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
         return positions;
     }
 
-    private static WorldMapPlayerPosition? ParsePlayer(byte[] nbt, string playerName, DateTime savedUtc)
+    private static WorldMapPlayerPosition? ParsePlayer(
+        byte[] nbt,
+        string playerName,
+        DateTime savedUtc,
+        Guid? fallbackPlayerId = null)
     {
         double[]? position = null;
         float[]? rotation = null;
         var dimension = 0;
+        var dimensionKey = "overworld";
         long? uuidMost = null;
         long? uuidLeast = null;
+        int[]? uuidParts = null;
         var reader = new MinecraftNbtReader(nbt);
         reader.ReadRootCompound((name, type, current, depth) =>
         {
@@ -710,6 +813,13 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             if (name.Equals("Dimension", StringComparison.Ordinal) && type == 3)
             {
                 dimension = current.ReadInt32();
+                dimensionKey = DimensionKeyFromNumericId(dimension);
+                return true;
+            }
+
+            if (name.Equals("Dimension", StringComparison.Ordinal) && type == 8)
+            {
+                dimensionKey = NormalizeDimensionKey(current.ReadString(), out dimension);
                 return true;
             }
 
@@ -725,6 +835,12 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
                 return true;
             }
 
+            if (name.Equals("UUID", StringComparison.Ordinal) && type == 11)
+            {
+                uuidParts = current.ReadIntArray(4);
+                return true;
+            }
+
             return false;
         });
 
@@ -734,10 +850,18 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             return null;
         }
 
-        Guid? playerId = null;
+        var playerId = fallbackPlayerId;
         if (uuidMost is not null && uuidLeast is not null)
         {
             var text = $"{unchecked((ulong)uuidMost.Value):x16}{unchecked((ulong)uuidLeast.Value):x16}";
+            if (Guid.TryParseExact(text, "N", out var parsedId))
+            {
+                playerId = parsedId;
+            }
+        }
+        else if (uuidParts is { Length: 4 })
+        {
+            var text = string.Concat(uuidParts.Select(part => unchecked((uint)part).ToString("x8")));
             if (Guid.TryParseExact(text, "N", out var parsedId))
             {
                 playerId = parsedId;
@@ -752,8 +876,100 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             position[2],
             rotation is { Length: >= 1 } ? rotation[0] : 0,
             dimension,
+            dimensionKey,
             new DateTimeOffset(DateTime.SpecifyKind(savedUtc, DateTimeKind.Utc)));
     }
+
+    private static IReadOnlyDictionary<Guid, string> ReadPlayerNameCache(string serverRoot)
+    {
+        var cachePath = Path.Combine(serverRoot, "usercache.json");
+        if (!File.Exists(cachePath))
+        {
+            return new Dictionary<Guid, string>();
+        }
+
+        try
+        {
+            var info = new FileInfo(cachePath);
+            if (info.LinkTarget is not null || info.Length is <= 0 or > 4 * 1024 * 1024)
+            {
+                return new Dictionary<Guid, string>();
+            }
+
+            using var stream = new FileStream(
+                cachePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return new Dictionary<Guid, string>();
+            }
+
+            var names = new Dictionary<Guid, string>();
+            foreach (var entry in document.RootElement.EnumerateArray().Take(2_000))
+            {
+                if (!entry.TryGetProperty("uuid", out var idElement)
+                    || !Guid.TryParse(idElement.GetString(), out var playerId)
+                    || !entry.TryGetProperty("name", out var nameElement))
+                {
+                    continue;
+                }
+
+                var name = nameElement.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(name) && name.Length <= 64)
+                {
+                    names[playerId] = name;
+                }
+            }
+
+            return names;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or JsonException
+                or ArgumentException)
+        {
+            return new Dictionary<Guid, string>();
+        }
+    }
+
+    private static string NormalizeDimensionKey(string value, out int numericId)
+    {
+        var normalized = value.Trim().ToLowerInvariant();
+        switch (normalized)
+        {
+            case "minecraft:overworld":
+            case "overworld":
+                numericId = 0;
+                return "overworld";
+            case "minecraft:the_nether":
+            case "the_nether":
+            case "dim-1":
+                numericId = -1;
+                return "DIM-1";
+            case "minecraft:the_end":
+            case "the_end":
+            case "dim1":
+                numericId = 1;
+                return "DIM1";
+            default:
+                numericId = int.MinValue;
+                var separator = normalized.IndexOf(':');
+                return separator > 0
+                    ? $"dimensions/{normalized[..separator]}/{normalized[(separator + 1)..]}"
+                    : normalized;
+        }
+    }
+
+    private static string DimensionKeyFromNumericId(int numericId) => numericId switch
+    {
+        -1 => "DIM-1",
+        1 => "DIM1",
+        _ => "overworld"
+    };
 
     private static IReadOnlyList<RegionSnapshot> ReadRegionSnapshots(
         string regionDirectory,
@@ -1338,31 +1554,6 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
 
             current = Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent));
         }
-    }
-
-    private static bool IsKnownModernPaletteVersion(string minecraftVersion)
-    {
-        var version = minecraftVersion.Trim();
-        if (version.Length == 0 || version.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var core = version.Split('-', '+')[0];
-        var parts = core.Split('.');
-        if (!int.TryParse(parts.ElementAtOrDefault(0), out var major))
-        {
-            return false;
-        }
-
-        if (major > 1)
-        {
-            return true;
-        }
-
-        return major == 1
-            && int.TryParse(parts.ElementAtOrDefault(1), out var minor)
-            && minor >= 13;
     }
 
     private static string SanitizeFileName(string value)

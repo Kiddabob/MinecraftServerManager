@@ -32,7 +32,7 @@ public sealed class MojangPlayerAvatarService : IPlayerAvatarService
         CancellationToken cancellationToken = default)
     {
         var normalizedName = NormalizePlayerName(playerName);
-        if (normalizedName.Length == 0)
+        if (normalizedName.Length == 0 && playerId is null)
         {
             return Task.FromResult<string?>(null);
         }
@@ -81,7 +81,9 @@ public sealed class MojangPlayerAvatarService : IPlayerAvatarService
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_cacheRoot);
-        var nameCachePath = Path.Combine(_cacheRoot, $"name-{playerName.ToLowerInvariant()}.png");
+        var nameCachePath = playerName.Length == 0
+            ? null
+            : Path.Combine(_cacheRoot, $"name-{playerName.ToLowerInvariant()}.png");
         var knownIdCachePath = knownPlayerId is null
             ? null
             : Path.Combine(_cacheRoot, $"uuid-{knownPlayerId.Value:N}.png");
@@ -94,7 +96,10 @@ public sealed class MojangPlayerAvatarService : IPlayerAvatarService
         var staleCache = FindExistingCache(knownIdCachePath, nameCachePath);
         try
         {
-            var playerId = knownPlayerId ?? await ResolvePlayerIdAsync(playerName, cancellationToken);
+            var playerId = knownPlayerId
+                ?? (playerName.Length == 0
+                    ? null
+                    : await ResolvePlayerIdAsync(playerName, cancellationToken));
             if (playerId is null)
             {
                 return staleCache;
@@ -108,7 +113,7 @@ public sealed class MojangPlayerAvatarService : IPlayerAvatarService
             }
 
             var textureUri = await ResolveSkinUriAsync(playerId.Value, cancellationToken);
-            if (textureUri is null && knownPlayerId is not null)
+            if (textureUri is null && knownPlayerId is not null && playerName.Length > 0)
             {
                 var resolvedPlayerId = await ResolvePlayerIdAsync(playerName, cancellationToken);
                 if (resolvedPlayerId is not null && resolvedPlayerId != knownPlayerId)
@@ -131,12 +136,13 @@ public sealed class MojangPlayerAvatarService : IPlayerAvatarService
             }
 
             await WriteAtomicallyAsync(idCachePath, skin, cancellationToken);
-            if (!idCachePath.Equals(nameCachePath, StringComparison.OrdinalIgnoreCase))
+            if (nameCachePath is not null
+                && !idCachePath.Equals(nameCachePath, StringComparison.OrdinalIgnoreCase))
             {
                 await WriteAtomicallyAsync(nameCachePath, skin, cancellationToken);
             }
 
-            return nameCachePath;
+            return nameCachePath ?? idCachePath;
         }
         catch (Exception exception) when (
             exception is HttpRequestException

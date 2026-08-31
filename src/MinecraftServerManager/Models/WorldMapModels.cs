@@ -4,7 +4,7 @@ namespace MinecraftServerManager.Models;
 
 public enum WorldMapFormat
 {
-    LegacyAnvil,
+    Anvil,
     Unsupported
 }
 
@@ -55,6 +55,7 @@ public sealed record WorldMapPlayerPosition(
     double Z,
     float Yaw,
     int DimensionId,
+    string DimensionKey,
     DateTimeOffset SavedUtc);
 
 public sealed record WorldMapRadiusOption(int RadiusBlocks, string DisplayName);

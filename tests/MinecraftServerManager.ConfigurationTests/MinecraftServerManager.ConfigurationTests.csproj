@@ -63,6 +63,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IWorldMapService.cs" Link="Services\IWorldMapService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\BgraBitmapWriter.cs" Link="Services\BgraBitmapWriter.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\MinecraftNbtReader.cs" Link="Services\MinecraftNbtReader.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\PaletteAnvilChunkDecoder.cs" Link="Services\PaletteAnvilChunkDecoder.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\LegacyAnvilWorldMapService.cs" Link="Services\LegacyAnvilWorldMapService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPlayerAvatarService.cs" Link="Services\IPlayerAvatarService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\MojangPlayerAvatarService.cs" Link="Services\MojangPlayerAvatarService.cs" />

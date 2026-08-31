@@ -283,7 +283,7 @@ public sealed class ServerMapViewModel : BindableBase
             OnPropertyChanged(nameof(SpawnToolTip));
             WorldSummary = $"{world.LevelName} • {world.Dimensions.Count} compatible dimension{(world.Dimensions.Count == 1 ? string.Empty : "s")}";
             StatusText = world.Dimensions.Count == 0
-                ? "No legacy Anvil region folders were found in this world. Modern palette worlds are planned for a later renderer."
+                ? "No compatible Anvil region folders were found in this world."
                 : "World discovered. Open Map to render the selected area.";
             _selectedDimension = world.Dimensions.FirstOrDefault(dimension => dimension.NumericId == 0)
                 ?? world.Dimensions.FirstOrDefault();
@@ -432,7 +432,7 @@ public sealed class ServerMapViewModel : BindableBase
 
         var now = DateTimeOffset.UtcNow;
         var markers = positions
-            .Where(position => position.DimensionId == dimension.NumericId)
+            .Where(position => position.DimensionKey.Equals(dimension.Id, StringComparison.OrdinalIgnoreCase))
             .Where(position => position.X >= renderResult.MinimumX && position.X <= renderResult.MaximumX)
             .Where(position => position.Z >= renderResult.MinimumZ && position.Z <= renderResult.MaximumZ)
             .Select(position =>

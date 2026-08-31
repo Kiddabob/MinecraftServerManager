@@ -71,9 +71,11 @@ Player rows and map markers use the player's Minecraft skin face when Mojang's p
 
 ## Server map
 
-The **Map** page renders a read-only overhead view directly from saved Anvil region files, so it does not install a server plugin, alter a world, or expose a web port. The first renderer targets legacy block-ID worlds through Minecraft 1.12.2, including Tekkit's Minecraft 1.6.4 baseline. It discovers the configured `level-name`, Overworld, Nether, End, and custom `DIM*` folders, keeps the Nether view below the roof, and reads world spawn from `level.dat`. Profiles known to use Minecraft 1.13 or newer are clearly reported as awaiting the modern palette renderer rather than displaying a misleading blank map.
+The **Map** page renders a read-only overhead view directly from saved Anvil region files, so it does not install a server plugin, alter a world, or expose a web port. The renderer supports legacy block-ID worlds through Minecraft 1.12.2, including Tekkit's Minecraft 1.6.4 baseline, and modern palette worlds from Minecraft 1.13 onward. Both the older `Level.Sections[].Palette` layout and the current lower-case `sections[].block_states` layout are decoded, including the negative section heights introduced in Minecraft 1.18.
 
-Maps can be panned and zoomed, centred on spawn or a selected player, and refreshed manually or every 5, 15, 30, or 60 seconds. Region headers and parsed chunks are cached incrementally under `%LocalAppData%\Kidda.MinecraftServerManager\MapCache`, outside every server folder. Online player markers are taken from the manager's per-profile session tracker and the canonical legacy `players` directory; optional offline markers are also available. Because those coordinates are saved by the server rather than streamed telemetry, every marker states how recently its player file was written.
+The map discovers the configured `level-name`, Overworld, Nether, End, legacy custom `DIM*` folders, and namespaced modern dimensions under `dimensions`. It keeps the Nether view below the roof and reads world spawn from `level.dat`.
+
+Maps can be panned and zoomed, centred on spawn or a selected player, and refreshed manually or every 5, 15, 30, or 60 seconds. Region headers and parsed chunks are cached incrementally under `%LocalAppData%\Kidda.MinecraftServerManager\MapCache`, outside every server folder. Online player markers are taken from the manager's per-profile session tracker. Saved positions are read from modern `playerdata` files or the legacy `players` directory, with `usercache.json` used locally to recover modern player names; optional offline markers are also available. Because those coordinates are saved by the server rather than streamed telemetry, every marker states how recently its player file was written.
 
 ## Server dashboard
 
@@ -97,7 +99,7 @@ Installation is available only while the selected server is stopped. Every file 
 dotnet build MinecraftServerManager.sln -c Debug -p:Platform=x64
 ```
 
-The dependency-free configuration, pack-builder, content-management, launcher-detection, and Java-compatibility checks can be run with:
+The dependency-free configuration, pack-builder, content-management, map-parsing, launcher-detection, and Java-compatibility checks can be run with:
 
 ```powershell
 dotnet run --project tests\MinecraftServerManager.ConfigurationTests -c Release
