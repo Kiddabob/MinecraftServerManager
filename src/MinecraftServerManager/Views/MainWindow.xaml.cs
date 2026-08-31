@@ -94,14 +94,19 @@ public sealed partial class MainWindow : Window
 
     public MainViewModel ViewModel { get; }
 
+    public void ShowWithRestoredPlacement()
+    {
+        var restoreMaximized = _restoreMaximizedOnLoaded;
+        _restoreMaximizedOnLoaded = false;
+        Activate();
+        if (restoreMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.Maximize();
+        }
+    }
+
     private async void RootGrid_Loaded(object sender, RoutedEventArgs args)
     {
-        if (_restoreMaximizedOnLoaded && AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            _restoreMaximizedOnLoaded = false;
-            DispatcherQueue.TryEnqueue(() => presenter.Maximize());
-        }
-
         if (_initialized)
         {
             return;
@@ -174,12 +179,14 @@ public sealed partial class MainWindow : Window
         DashboardPage.Visibility = destination == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConsolePage.Visibility = destination == "console" ? Visibility.Visible : Visibility.Collapsed;
         PlayersPage.Visibility = destination == "players" ? Visibility.Visible : Visibility.Collapsed;
+        MapPage.Visibility = destination == "map" ? Visibility.Visible : Visibility.Collapsed;
         FilesPage.Visibility = destination == "files" ? Visibility.Visible : Visibility.Collapsed;
         ContentPage.Visibility = destination == "content" ? Visibility.Visible : Visibility.Collapsed;
         ProfilesPage.Visibility = destination == "profiles" ? Visibility.Visible : Visibility.Collapsed;
         ModpacksPage.Visibility = destination == "modpacks" ? Visibility.Visible : Visibility.Collapsed;
         BuilderPage.Visibility = destination == "builder" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = destination == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        ViewModel.Map.SetActive(destination == "map");
 
         if (destination == "files")
         {
@@ -1438,10 +1445,11 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private async Task PersistWindowPlacementAsync()
+    private async Task PersistWindowPlacementAsync(bool? isMaximizedOverride = null)
     {
-        var isMaximized = AppWindow.Presenter is OverlappedPresenter presenter
-            && presenter.State == OverlappedPresenterState.Maximized;
+        var isMaximized = isMaximizedOverride
+            ?? (AppWindow.Presenter is OverlappedPresenter presenter
+                && presenter.State == OverlappedPresenterState.Maximized);
         var placement = _lastRestoredPlacement ?? CaptureRestoredPlacement(isMaximized: false);
         placement = placement with { IsMaximized = isMaximized };
 
@@ -1463,6 +1471,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        var wasMaximizedBeforeCancellingClose = sender.Presenter is OverlappedPresenter presenter
+            && presenter.State == OverlappedPresenterState.Maximized;
         args.Cancel = true;
         if (_stopBeforeCloseInProgress)
         {
@@ -1471,7 +1481,7 @@ public sealed partial class MainWindow : Window
 
         _stopBeforeCloseInProgress = true;
         _windowPlacementSaveTimer.Stop();
-        await PersistWindowPlacementAsync();
+        await PersistWindowPlacementAsync(wasMaximizedBeforeCancellingClose);
         var stopped = await ViewModel.StopForAppExitAsync();
         _stopBeforeCloseInProgress = false;
 

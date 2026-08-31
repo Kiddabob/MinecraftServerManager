@@ -1,0 +1,43 @@
+<UserControl
+    x:Class="MinecraftServerManager.Controls.PlayerAvatar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsHitTestVisible="False">
+    <Grid>
+        <Border
+            x:Name="FallbackBorder"
+            Background="{ThemeResource AccentFillColorDefaultBrush}"
+            CornerRadius="6">
+            <TextBlock
+                x:Name="FallbackInitial"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                Text="?" />
+        </Border>
+        <Border
+            x:Name="SkinBorder"
+            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+            CornerRadius="6"
+            Visibility="Collapsed">
+            <Viewbox Stretch="UniformToFill">
+                <Canvas Width="8" Height="8">
+                    <Canvas.Clip>
+                        <RectangleGeometry Rect="0,0,8,8" />
+                    </Canvas.Clip>
+                    <Image
+                        x:Name="FaceImage"
+                        Width="64"
+                        Canvas.Left="-8"
+                        Canvas.Top="-8" />
+                    <Image
+                        x:Name="HatImage"
+                        Width="64"
+                        Canvas.Left="-40"
+                        Canvas.Top="-8" />
+                </Canvas>
+            </Viewbox>
+        </Border>
+    </Grid>
+</UserControl>

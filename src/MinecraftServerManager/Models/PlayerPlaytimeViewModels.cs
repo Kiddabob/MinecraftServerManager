@@ -6,6 +6,7 @@ public sealed record PlayerScopeOption(string Id, string DisplayName);
 
 public sealed class PlayerPlaytimeRow : BindableBase
 {
+    private string? _avatarPath;
     private bool _isOnline;
     private string _statusText;
     private string _profileSummary;
@@ -32,6 +33,12 @@ public sealed class PlayerPlaytimeRow : BindableBase
     }
 
     public string PlayerName { get; }
+
+    public string? AvatarPath
+    {
+        get => _avatarPath;
+        private set => SetProperty(ref _avatarPath, value);
+    }
 
     public bool IsOnline
     {
@@ -77,5 +84,13 @@ public sealed class PlayerPlaytimeRow : BindableBase
         SortablePlaytime = source.SortablePlaytime;
         PlaytimeText = source.PlaytimeText;
         LastSeenText = source.LastSeenText;
+    }
+
+    public void SetAvatarPath(string? avatarPath)
+    {
+        if (!string.IsNullOrWhiteSpace(avatarPath))
+        {
+            AvatarPath = avatarPath;
+        }
     }
 }

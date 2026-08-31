@@ -66,6 +66,11 @@
                         <FontIcon Glyph="&#xE716;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Map" Tag="map">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE81E;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Server files" Tag="files">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8B7;" />
@@ -613,7 +618,7 @@
                                         Visibility="{Binding Dashboard.IsFriendlyMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <ListView
                                             Padding="12"
-                                            IsEnabled="{Binding Dashboard.IsEditorReadOnly, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}"
+                                            IsEnabled="{Binding Dashboard.IsEditorEditable, Mode=OneWay}"
                                             ItemsSource="{Binding Dashboard.FriendlySettings, Mode=OneWay}"
                                             SelectionMode="None">
                                             <ListView.ItemTemplate>
@@ -646,7 +651,8 @@
                                                                 Minimum="{Binding Minimum}"
                                                                 SmallChange="{Binding Step}"
                                                                 SpinButtonPlacementMode="Compact"
-                                                                Value="{Binding NumericValue, Mode=TwoWay}"
+                                                                Text="{Binding NumericText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                ValidationMode="Disabled"
                                                                 Visibility="{Binding IsNumber, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                             <ComboBox
                                                                 Margin="0,3,0,0"
@@ -1193,10 +1199,17 @@
                                                 <ColumnDefinition Width="120" />
                                                 <ColumnDefinition Width="150" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                VerticalAlignment="Center"
-                                                FontWeight="SemiBold"
-                                                Text="{Binding PlayerName}" />
+                                            <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="10">
+                                                <controls:PlayerAvatar
+                                                    Width="32"
+                                                    Height="32"
+                                                    AvatarPath="{Binding AvatarPath}"
+                                                    PlayerName="{Binding PlayerName}" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding PlayerName}" />
+                                            </StackPanel>
                                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="7">
                                                 <Ellipse
                                                     Width="8"
@@ -1227,6 +1240,276 @@
                                 </ListView.ItemTemplate>
                             </ListView>
                         </Border>
+                    </Grid>
+
+                    <Grid
+                        x:Name="MapPage"
+                        Margin="32,28,32,32"
+                        Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="5">
+                                <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Server map" />
+                                <TextBlock
+                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                    Text="A read-only map built directly from saved world regions. No server plugin or web port is required." />
+                            </StackPanel>
+                            <ProgressRing
+                                Grid.Column="1"
+                                Width="24"
+                                Height="24"
+                                VerticalAlignment="Center"
+                                IsActive="{Binding Map.IsBusy, Mode=OneWay}"
+                                Visibility="{Binding Map.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
+
+                        <Border
+                            Grid.Row="1"
+                            Margin="0,20,0,14"
+                            Padding="16,12"
+                            Style="{StaticResource AppCardStyle}">
+                            <Grid RowSpacing="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Dimension" />
+                                    <ComboBox
+                                        Grid.Column="1"
+                                        MinWidth="130"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding Map.Dimensions, Mode=OneWay}"
+                                        SelectedItem="{Binding Map.SelectedDimension, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="Area" />
+                                    <ComboBox
+                                        Grid.Column="3"
+                                        MinWidth="130"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding Map.RadiusOptions, Mode=OneWay}"
+                                        SelectedItem="{Binding Map.SelectedRadius, Mode=TwoWay}" />
+                                    <Button
+                                        Grid.Column="4"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding Map.RefreshCommand}"
+                                        Content="Refresh now"
+                                        Style="{StaticResource AppAccentButtonStyle}" />
+                                </Grid>
+                                <Grid Grid.Row="1" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding Map.SelectedDimensionDetails, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
+                                        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Live refresh" />
+                                        <ToggleSwitch
+                                            VerticalAlignment="Center"
+                                            IsOn="{Binding Map.IsLiveRefreshEnabled, Mode=TwoWay}" />
+                                        <ComboBox
+                                            Width="160"
+                                            VerticalAlignment="Center"
+                                            DisplayMemberPath="DisplayName"
+                                            IsEnabled="{Binding Map.IsLiveRefreshEnabled, Mode=OneWay}"
+                                            ItemsSource="{Binding Map.RefreshIntervalOptions, Mode=OneWay}"
+                                            SelectedItem="{Binding Map.SelectedRefreshInterval, Mode=TwoWay}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="2" ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="420" />
+                                <ColumnDefinition Width="280" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Padding="0" Style="{StaticResource AppCardStyle}">
+                                <Grid>
+                                    <ScrollViewer
+                                        x:Name="WorldMapScrollViewer"
+                                        HorizontalScrollBarVisibility="Auto"
+                                        HorizontalScrollMode="Enabled"
+                                        MaxZoomFactor="4"
+                                        MinZoomFactor="0.35"
+                                        VerticalScrollBarVisibility="Auto"
+                                        VerticalScrollMode="Enabled"
+                                        ZoomMode="Enabled">
+                                        <Grid
+                                            Width="{Binding Map.MapWidth, Mode=OneWay}"
+                                            Height="{Binding Map.MapHeight, Mode=OneWay}">
+                                            <controls:WorldMapImage ImagePath="{Binding Map.ImagePath, Mode=OneWay}" />
+                                            <Canvas>
+                                                <Border
+                                                    Width="20"
+                                                    Height="20"
+                                                    Canvas.Left="{Binding Map.SpawnLeft, Mode=OneWay}"
+                                                    Canvas.Top="{Binding Map.SpawnTop, Mode=OneWay}"
+                                                    Background="#D90078D4"
+                                                    CornerRadius="10"
+                                                    ToolTipService.ToolTip="{Binding Map.SpawnToolTip, Mode=OneWay}"
+                                                    Visibility="{Binding Map.HasSpawnMarker, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <FontIcon FontSize="11" Foreground="White" Glyph="&#xE80F;" />
+                                                </Border>
+                                                <ItemsControl
+                                                    Width="{Binding Map.MapWidth, Mode=OneWay}"
+                                                    Height="{Binding Map.MapHeight, Mode=OneWay}"
+                                                    ItemsSource="{Binding Map.PlayerMarkers, Mode=OneWay}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <Canvas />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid
+                                                                Width="32"
+                                                                Height="32"
+                                                                Opacity="{Binding Opacity}"
+                                                                ToolTipService.ToolTip="{Binding ToolTipText}">
+                                                                <Grid.RenderTransform>
+                                                                    <TranslateTransform
+                                                                        X="{Binding CanvasLeft}"
+                                                                        Y="{Binding CanvasTop}" />
+                                                                </Grid.RenderTransform>
+                                                                <Border
+                                                                    Background="#D9202020"
+                                                                    BorderBrush="White"
+                                                                    BorderThickness="2"
+                                                                    CornerRadius="8">
+                                                                    <controls:PlayerAvatar
+                                                                        Margin="2"
+                                                                        AvatarPath="{Binding AvatarPath}"
+                                                                        PlayerName="{Binding PlayerName}" />
+                                                                </Border>
+                                                                <Ellipse
+                                                                    Width="8"
+                                                                    Height="8"
+                                                                    Margin="0,0,-2,-2"
+                                                                    HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Bottom"
+                                                                    Fill="{Binding IsOnline, Converter={StaticResource PlayerOnlineToBrushConverter}}"
+                                                                    Stroke="White"
+                                                                    StrokeThickness="1" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Canvas>
+                                        </Grid>
+                                    </ScrollViewer>
+
+                                    <Border
+                                        Margin="12"
+                                        Padding="10,7"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Bottom"
+                                        Background="#D9202020"
+                                        CornerRadius="6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Foreground="White" Text="{Binding Map.CenterText, Mode=OneWay}" />
+                                            <TextBlock Foreground="#CFFFFFFF" Text="Ctrl+wheel zoom • scroll to pan" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="1" Padding="16" Style="{StaticResource AppCardStyle}">
+                                <Grid RowSpacing="8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Players" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Positions are read from player files and can lag behind movement."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <CheckBox
+                                        Grid.Row="1"
+                                        Content="Include offline saved positions"
+                                        IsChecked="{Binding Map.ShowOfflinePlayers, Mode=TwoWay}" />
+                                    <ListView
+                                        Grid.Row="2"
+                                        ItemsSource="{Binding Map.PlayerMarkers, Mode=OneWay}"
+                                        SelectedItem="{Binding Map.SelectedPlayerMarker, Mode=TwoWay}"
+                                        SelectionMode="Single">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid MinHeight="54" Padding="4" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="36" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <controls:PlayerAvatar
+                                                        Width="36"
+                                                        Height="36"
+                                                        VerticalAlignment="Center"
+                                                        AvatarPath="{Binding AvatarPath}"
+                                                        PlayerName="{Binding PlayerName}" />
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                        <TextBlock FontWeight="SemiBold" Text="{Binding PlayerName}" />
+                                                        <TextBlock
+                                                            FontFamily="Cascadia Mono, Consolas"
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding CoordinatesText}" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding FreshnessText}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <Button
+                                        Grid.Row="3"
+                                        HorizontalAlignment="Stretch"
+                                        Command="{Binding Map.CenterOnSelectedPlayerCommand}"
+                                        Content="Centre on selected player" />
+                                    <StackPanel Grid.Row="4" Spacing="8">
+                                        <Button
+                                            HorizontalAlignment="Stretch"
+                                            Command="{Binding Map.CenterOnSpawnCommand}"
+                                            Content="Centre on world spawn" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            MaxLines="2"
+                                            Text="{Binding Map.StatusText, Mode=OneWay}"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="Wrap"
+                                            ToolTipService.ToolTip="{Binding Map.StatusText, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
                     </Grid>
 
                     <Grid

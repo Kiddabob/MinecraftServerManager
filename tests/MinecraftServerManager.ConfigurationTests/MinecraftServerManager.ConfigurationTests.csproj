@@ -36,6 +36,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLogEntry.cs" Link="Models\ServerLogEntry.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerLogLevel.cs" Link="Models\ServerLogLevel.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\PlayerConnectionChange.cs" Link="Models\PlayerConnectionChange.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Models\WorldMapModels.cs" Link="Models\WorldMapModels.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationService.cs" Link="Services\IServerConfigurationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerConfigurationEditorService.cs" Link="Services\IServerConfigurationEditorService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerConfigurationEditorService.cs" Link="Services\ServerConfigurationEditorService.cs" />
@@ -59,6 +60,12 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IProfileValidator.cs" Link="Services\IProfileValidator.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerReadinessService.cs" Link="Services\IServerReadinessService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerReadinessService.cs" Link="Services\ServerReadinessService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IWorldMapService.cs" Link="Services\IWorldMapService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\BgraBitmapWriter.cs" Link="Services\BgraBitmapWriter.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\MinecraftNbtReader.cs" Link="Services\MinecraftNbtReader.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\LegacyAnvilWorldMapService.cs" Link="Services\LegacyAnvilWorldMapService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IPlayerAvatarService.cs" Link="Services\IPlayerAvatarService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\MojangPlayerAvatarService.cs" Link="Services\MojangPlayerAvatarService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerContentInventoryService.cs" Link="Services\IServerContentInventoryService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ServerContentInventoryService.cs" Link="Services\ServerContentInventoryService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IServerContentCatalogService.cs" Link="Services\IServerContentCatalogService.cs" />

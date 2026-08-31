@@ -67,6 +67,14 @@ The **Players** page begins tracking when a player joins a server launched by th
 
 Completed time and 30-second live checkpoints are stored under `%LocalAppData%\Kidda.MinecraftServerManager\PlayerPlaytime`. Duplicate join/leave messages are ignored, and any open sessions are closed when that profile's Java process exits.
 
+Player rows and map markers use the player's Minecraft skin face when Mojang's public profile and texture services can resolve it. Downloaded skins are cached for seven days under `%LocalAppData%\Kidda.MinecraftServerManager\PlayerSkins`; initials remain available when the player is offline-mode, unknown, or the network is unavailable.
+
+## Server map
+
+The **Map** page renders a read-only overhead view directly from saved Anvil region files, so it does not install a server plugin, alter a world, or expose a web port. The first renderer targets legacy block-ID worlds through Minecraft 1.12.2, including Tekkit's Minecraft 1.6.4 baseline. It discovers the configured `level-name`, Overworld, Nether, End, and custom `DIM*` folders, keeps the Nether view below the roof, and reads world spawn from `level.dat`. Profiles known to use Minecraft 1.13 or newer are clearly reported as awaiting the modern palette renderer rather than displaying a misleading blank map.
+
+Maps can be panned and zoomed, centred on spawn or a selected player, and refreshed manually or every 5, 15, 30, or 60 seconds. Region headers and parsed chunks are cached incrementally under `%LocalAppData%\Kidda.MinecraftServerManager\MapCache`, outside every server folder. Online player markers are taken from the manager's per-profile session tracker and the canonical legacy `players` directory; optional offline markers are also available. Because those coordinates are saved by the server rather than streamed telemetry, every marker states how recently its player file was written.
+
 ## Server dashboard
 
 The **Dashboard** page discovers editable files from the selected profile's `configurationSources`. A profile can describe core settings, mod configuration folders, plugin folders, or any combination, so hybrid mod-and-plugin servers do not need special cases in the editor service. The packaged Tekkit profile scans `server.properties`, supported text files under `config`, and an optional `plugins` folder when one is present.

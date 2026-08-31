@@ -1,6 +1,8 @@
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
 using MinecraftServerManager.ViewModels;
+using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -440,6 +442,40 @@ try
     AssertTrue(updatedProperties.Contains("max-players=12\r\n", StringComparison.Ordinal), "number-box property update");
     AssertTrue(updatedProperties.Contains("gamemode=1\r\n", StringComparison.Ordinal), "choice property update");
     AssertTrue(updatedProperties.Contains("online-mode=false\r\n", StringComparison.Ordinal), "toggle property update");
+
+    var reopenedProperties = editor.Parse(profile, propertiesFile, updatedProperties);
+    AssertEqual(
+        "12",
+        reopenedProperties.Fields.Single(field => field.Key == "max-players").NumericText,
+        "number-box value survives friendly editor rebuild");
+    AssertTrue(
+        !reopenedProperties.Fields.Single(field => field.Key == "online-mode").BooleanValue,
+        "toggle value survives friendly editor rebuild");
+    AssertEqual(
+        "1",
+        reopenedProperties.Fields.Single(field => field.Key == "gamemode").SelectedOption!.Value,
+        "choice value survives friendly editor rebuild");
+
+    var unschematizedPropertiesFile = propertiesFile with
+    {
+        Name = "custom.properties",
+        RelativePath = "config\\custom.properties",
+        FullPath = Path.Combine(testRoot, "config", "custom.properties")
+    };
+    var unschematizedProperties = editor.Parse(profile, unschematizedPropertiesFile, "count=5\n");
+    var unboundedNumber = unschematizedProperties.Fields.Single();
+    AssertEqual(double.MinValue, unboundedNumber.Minimum, "unbounded number-box finite minimum");
+    AssertEqual(double.MaxValue, unboundedNumber.Maximum, "unbounded number-box finite maximum");
+    unboundedNumber.NumericText = "not-a-number";
+    AssertTrue(!unboundedNumber.IsValid, "typed invalid number validation");
+    AssertThrows<InvalidDataException>(
+        () => editor.Apply(unschematizedProperties),
+        "typed invalid number blocks apply");
+    unboundedNumber.NumericText = "42";
+    AssertTrue(unboundedNumber.IsValid, "typed number recovers from validation");
+    AssertTrue(
+        editor.Apply(unschematizedProperties).Contains("count=42", StringComparison.Ordinal),
+        "typed number updates underlying properties text");
 
     const string forgeText = "general {\n    # Packet threshold, minimum 64, maximum 1024\n    I:clumpingThreshold=64\n    B:enableGlobalConfig=false\n}\n";
     var forgeFile = propertiesFile with
@@ -2307,7 +2343,124 @@ try
         undeclaredWarning.Contains("placement", StringComparison.OrdinalIgnoreCase),
         "undeclared side metadata explains review requirement");
 
-    Console.WriteLine("Configuration dashboard, pack builder, content management, launcher detection, and Java compatibility tests passed.");
+    var mapServerRoot = Path.Combine(testRoot, "legacy-map-server");
+    var mapWorldRoot = Path.Combine(mapServerRoot, "mapworld");
+    var mapRegionRoot = Path.Combine(mapWorldRoot, "region");
+    var mapNetherRegionRoot = Path.Combine(mapWorldRoot, "DIM-1", "region");
+    var mapPlayersRoot = Path.Combine(mapWorldRoot, "players");
+    Directory.CreateDirectory(mapRegionRoot);
+    Directory.CreateDirectory(mapNetherRegionRoot);
+    Directory.CreateDirectory(mapPlayersRoot);
+    await File.WriteAllTextAsync(
+        Path.Combine(mapServerRoot, "server.properties"),
+        "level-name=mapworld\n");
+    CreateLegacyLevelFile(Path.Combine(mapWorldRoot, "level.dat"), 8, 70, 8);
+    CreateLegacyRegionFile(Path.Combine(mapRegionRoot, "r.0.0.mca"));
+    CreateLegacyPlayerFile(
+        Path.Combine(mapPlayersRoot, "TestPlayer.dat"),
+        8.5,
+        71,
+        8.5,
+        90,
+        0,
+        Guid.Parse("12345678-1234-5678-90ab-cdef12345678"));
+
+    var mapProfile = new ServerProfile
+    {
+        Id = "legacy-map-test",
+        DisplayName = "Legacy map test",
+        ServerType = "Forge",
+        MinecraftVersion = "1.6.4",
+        ServerDirectory = mapServerRoot
+    };
+    var mapService = new LegacyAnvilWorldMapService(Path.Combine(testRoot, "map-cache"));
+    var discoveredWorld = await mapService.DiscoverAsync(mapProfile);
+    AssertEqual("mapworld", discoveredWorld.LevelName, "map discovers server.properties level-name");
+    AssertEqual(8, discoveredWorld.SpawnX, "map reads SpawnX from level.dat");
+    AssertEqual(70, discoveredWorld.SpawnY, "map reads SpawnY from level.dat");
+    AssertEqual(8, discoveredWorld.SpawnZ, "map reads SpawnZ from level.dat");
+    AssertEqual(2, discoveredWorld.Dimensions.Count, "map discovers overworld and Nether dimensions");
+    AssertEqual("Overworld", discoveredWorld.Dimensions[0].DisplayName, "map orders the overworld first");
+    AssertEqual("Nether", discoveredWorld.Dimensions[1].DisplayName, "map names DIM-1 as Nether");
+    AssertEqual(120, discoveredWorld.Dimensions[1].SurfaceMaximumY, "Nether renderer stays below the bedrock roof");
+
+    var mapRequest = new WorldMapRenderRequest(
+        mapProfile,
+        discoveredWorld.Dimensions[0],
+        8,
+        8,
+        64);
+    var firstMapRender = await mapService.RenderAsync(mapRequest);
+    AssertTrue(File.Exists(firstMapRender.ImagePath), "map writes a cached image outside the world folder");
+    AssertTrue(
+        Path.GetFullPath(firstMapRender.ImagePath).StartsWith(
+            Path.GetFullPath(Path.Combine(testRoot, "map-cache")),
+            StringComparison.OrdinalIgnoreCase),
+        "map image stays inside the configured cache root");
+    AssertEqual(128, firstMapRender.PixelWidth, "map renders one block per pixel for a small area");
+    AssertEqual(1, firstMapRender.LoadedChunkCount, "map counts the synthetic region chunk");
+    AssertEqual(1, firstMapRender.ChangedChunkCount, "map parses a new legacy chunk once");
+    AssertTrue(firstMapRender.HasTerrain, "map reports generated terrain");
+    var mapBytes = await File.ReadAllBytesAsync(firstMapRender.ImagePath);
+    AssertTrue(mapBytes is [0x42, 0x4D, ..], "map cache uses a valid BMP header");
+    var cachedMapRender = await mapService.RenderAsync(mapRequest);
+    AssertEqual(firstMapRender.ImagePath, cachedMapRender.ImagePath, "unchanged region headers reuse the map cache");
+    AssertEqual(0, cachedMapRender.ChangedChunkCount, "cached map avoids reparsing unchanged chunks");
+
+    var playerPositions = await mapService.ReadPlayerPositionsAsync(
+        mapProfile,
+        discoveredWorld,
+        ["TestPlayer"]);
+    AssertEqual(1, playerPositions.Count, "map reads a requested legacy player file");
+    AssertEqual("TestPlayer", playerPositions[0].PlayerName, "map preserves tracked player casing");
+    AssertEqual(8.5, playerPositions[0].X, "map reads player X position");
+    AssertEqual(71d, playerPositions[0].Y, "map reads player Y position");
+    AssertEqual(8.5, playerPositions[0].Z, "map reads player Z position");
+    AssertEqual(90f, playerPositions[0].Yaw, "map reads player yaw");
+    AssertEqual(0, playerPositions[0].DimensionId, "map reads the player's saved dimension");
+    AssertTrue(playerPositions[0].PlayerId is not null, "map reads the player's legacy UUID fields");
+    AssertEqual(
+        0,
+        (await mapService.ReadPlayerPositionsAsync(mapProfile, discoveredWorld, ["SomeoneElse"])).Count,
+        "map does not scan unrelated player names when showing online players");
+
+    var modernMapProfile = new ServerProfile
+    {
+        Id = "modern-map-test",
+        DisplayName = "Modern map test",
+        ServerType = "Fabric",
+        MinecraftVersion = "1.20.1",
+        ServerDirectory = mapServerRoot
+    };
+    await AssertThrowsAsync<NotSupportedException>(
+        () => mapService.DiscoverAsync(modernMapProfile),
+        "map reports known modern palette worlds as unsupported instead of rendering them incorrectly");
+
+    var escapedWorldProfile = new ServerProfile
+    {
+        Id = "escaped-map-test",
+        DisplayName = "Escaped map test",
+        ServerDirectory = Path.Combine(testRoot, "escaped-map-server")
+    };
+    Directory.CreateDirectory(escapedWorldProfile.ServerDirectory);
+    await File.WriteAllTextAsync(
+        Path.Combine(escapedWorldProfile.ServerDirectory, "server.properties"),
+        "level-name=..\\legacy-map-server\\mapworld\n");
+    await AssertThrowsAsync<InvalidDataException>(
+        () => mapService.DiscoverAsync(escapedWorldProfile),
+        "map rejects a world path that escapes the server folder");
+
+    var upgradedMojangSkinUri = MojangPlayerAvatarService.NormalizeTrustedSkinUri(
+        "http://textures.minecraft.net/texture/example");
+    AssertEqual("https", upgradedMojangSkinUri!.Scheme, "Mojang texture links are upgraded to HTTPS");
+    AssertTrue(
+        MojangPlayerAvatarService.NormalizeTrustedSkinUri("https://example.com/texture/example") is null,
+        "player skins reject non-Mojang texture hosts");
+    AssertTrue(
+        MojangPlayerAvatarService.NormalizeTrustedSkinUri("file:///C:/skin.png") is null,
+        "player skins reject non-HTTP texture schemes");
+
+    Console.WriteLine("Configuration dashboard, pack builder, content management, map parsing, launcher detection, and Java compatibility tests passed.");
 }
 catch (Exception exception)
 {
@@ -2320,6 +2473,161 @@ finally
     {
         Directory.Delete(testRoot, recursive: true);
     }
+}
+
+static void CreateLegacyLevelFile(string path, int spawnX, int spawnY, int spawnZ)
+{
+    using var payload = new MemoryStream();
+    payload.WriteByte(10);
+    WriteNbtString(payload, string.Empty);
+    WriteNamedNbtTag(payload, 10, "Data");
+    WriteNamedNbtInt(payload, "SpawnX", spawnX);
+    WriteNamedNbtInt(payload, "SpawnY", spawnY);
+    WriteNamedNbtInt(payload, "SpawnZ", spawnZ);
+    payload.WriteByte(0);
+    payload.WriteByte(0);
+    WriteGzipFile(path, payload.ToArray());
+}
+
+static void CreateLegacyPlayerFile(
+    string path,
+    double x,
+    double y,
+    double z,
+    float yaw,
+    int dimension,
+    Guid playerId)
+{
+    using var payload = new MemoryStream();
+    payload.WriteByte(10);
+    WriteNbtString(payload, string.Empty);
+
+    WriteNamedNbtTag(payload, 9, "Pos");
+    payload.WriteByte(6);
+    WriteNbtInt(payload, 3);
+    WriteNbtLong(payload, BitConverter.DoubleToInt64Bits(x));
+    WriteNbtLong(payload, BitConverter.DoubleToInt64Bits(y));
+    WriteNbtLong(payload, BitConverter.DoubleToInt64Bits(z));
+
+    WriteNamedNbtTag(payload, 9, "Rotation");
+    payload.WriteByte(5);
+    WriteNbtInt(payload, 2);
+    WriteNbtInt(payload, BitConverter.SingleToInt32Bits(yaw));
+    WriteNbtInt(payload, BitConverter.SingleToInt32Bits(0));
+    WriteNamedNbtInt(payload, "Dimension", dimension);
+
+    var compactId = playerId.ToString("N");
+    WriteNamedNbtLong(payload, "UUIDMost", unchecked((long)Convert.ToUInt64(compactId[..16], 16)));
+    WriteNamedNbtLong(payload, "UUIDLeast", unchecked((long)Convert.ToUInt64(compactId[16..], 16)));
+    payload.WriteByte(0);
+    WriteGzipFile(path, payload.ToArray());
+}
+
+static void CreateLegacyRegionFile(string path)
+{
+    var blocks = new byte[4096];
+    for (var z = 0; z < 16; z++)
+    {
+        for (var x = 0; x < 16; x++)
+        {
+            blocks[4 * 256 + z * 16 + x] = 2;
+        }
+    }
+
+    using var nbt = new MemoryStream();
+    nbt.WriteByte(10);
+    WriteNbtString(nbt, string.Empty);
+    WriteNamedNbtTag(nbt, 10, "Level");
+    WriteNamedNbtTag(nbt, 9, "Sections");
+    nbt.WriteByte(10);
+    WriteNbtInt(nbt, 1);
+    WriteNamedNbtTag(nbt, 1, "Y");
+    nbt.WriteByte(0);
+    WriteNamedNbtTag(nbt, 7, "Blocks");
+    WriteNbtInt(nbt, blocks.Length);
+    nbt.Write(blocks);
+    WriteNamedNbtTag(nbt, 7, "Data");
+    WriteNbtInt(nbt, 2048);
+    nbt.Write(new byte[2048]);
+    nbt.WriteByte(0);
+    nbt.WriteByte(0);
+    nbt.WriteByte(0);
+
+    byte[] compressed;
+    using (var compressedStream = new MemoryStream())
+    {
+        using (var zlib = new ZLibStream(compressedStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(nbt.ToArray());
+        }
+
+        compressed = compressedStream.ToArray();
+    }
+
+    var chunkLength = compressed.Length + 1;
+    var sectorCount = (4 + chunkLength + 4095) / 4096;
+    var header = new byte[8192];
+    var location = (2 << 8) | sectorCount;
+    BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(0, 4), location);
+    BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4096, 4), 1);
+
+    using var region = File.Create(path);
+    region.Write(header);
+    Span<byte> lengthBytes = stackalloc byte[4];
+    BinaryPrimitives.WriteInt32BigEndian(lengthBytes, chunkLength);
+    region.Write(lengthBytes);
+    region.WriteByte(2);
+    region.Write(compressed);
+    var allocatedLength = 8192 + sectorCount * 4096;
+    region.SetLength(allocatedLength);
+}
+
+static void WriteGzipFile(string path, byte[] payload)
+{
+    using var file = File.Create(path);
+    using var gzip = new GZipStream(file, CompressionLevel.Optimal);
+    gzip.Write(payload);
+}
+
+static void WriteNamedNbtTag(Stream stream, byte type, string name)
+{
+    stream.WriteByte(type);
+    WriteNbtString(stream, name);
+}
+
+static void WriteNamedNbtInt(Stream stream, string name, int value)
+{
+    WriteNamedNbtTag(stream, 3, name);
+    WriteNbtInt(stream, value);
+}
+
+static void WriteNamedNbtLong(Stream stream, string name, long value)
+{
+    WriteNamedNbtTag(stream, 4, name);
+    WriteNbtLong(stream, value);
+}
+
+static void WriteNbtString(Stream stream, string value)
+{
+    var bytes = Encoding.UTF8.GetBytes(value);
+    Span<byte> length = stackalloc byte[2];
+    BinaryPrimitives.WriteUInt16BigEndian(length, checked((ushort)bytes.Length));
+    stream.Write(length);
+    stream.Write(bytes);
+}
+
+static void WriteNbtInt(Stream stream, int value)
+{
+    Span<byte> bytes = stackalloc byte[4];
+    BinaryPrimitives.WriteInt32BigEndian(bytes, value);
+    stream.Write(bytes);
+}
+
+static void WriteNbtLong(Stream stream, long value)
+{
+    Span<byte> bytes = stackalloc byte[8];
+    BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+    stream.Write(bytes);
 }
 
 static void CreateJar(

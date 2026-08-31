@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace MinecraftServerManager.Models;
@@ -24,6 +25,7 @@ public sealed class ServerConfigurationField : INotifyPropertyChanged
 {
     private bool _booleanValue;
     private double _numericValue;
+    private string _numericText;
     private string _textValue;
     private ServerConfigurationChoiceOption? _selectedOption;
     private string _validationText = string.Empty;
@@ -60,6 +62,7 @@ public sealed class ServerConfigurationField : INotifyPropertyChanged
         Options = options;
         _booleanValue = booleanValue;
         _numericValue = numericValue;
+        _numericText = FormatNumericValue(numericValue, kind);
         _textValue = textValue;
         _selectedOption = selectedOption;
         LimitsText = limitsText;
@@ -103,9 +106,9 @@ public sealed class ServerConfigurationField : INotifyPropertyChanged
 
     public double? DeclaredMaximum { get; }
 
-    public double Minimum => DeclaredMinimum ?? double.NegativeInfinity;
+    public double Minimum => DeclaredMinimum ?? double.MinValue;
 
-    public double Maximum => DeclaredMaximum ?? double.PositiveInfinity;
+    public double Maximum => DeclaredMaximum ?? double.MaxValue;
 
     public double Step { get; }
 
@@ -122,7 +125,45 @@ public sealed class ServerConfigurationField : INotifyPropertyChanged
     public double NumericValue
     {
         get => _numericValue;
-        set => SetValue(ref _numericValue, value);
+        set
+        {
+            var formatted = FormatNumericValue(value, Kind);
+            if (_numericValue.Equals(value) && _numericText == formatted)
+            {
+                return;
+            }
+
+            _numericValue = value;
+            _numericText = formatted;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(NumericText));
+            Validate();
+            ValueChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string NumericText
+    {
+        get => _numericText;
+        set
+        {
+            value ??= string.Empty;
+            if (_numericText == value)
+            {
+                return;
+            }
+
+            _numericText = value;
+            OnPropertyChanged();
+            if (TryParseNumericText(value, out var parsedValue) && !_numericValue.Equals(parsedValue))
+            {
+                _numericValue = parsedValue;
+                OnPropertyChanged(nameof(NumericValue));
+            }
+
+            Validate();
+            ValueChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public string TextValue
@@ -178,28 +219,36 @@ public sealed class ServerConfigurationField : INotifyPropertyChanged
     {
         if (Kind is ServerConfigurationFieldKind.Integer or ServerConfigurationFieldKind.Number)
         {
-            if (double.IsNaN(NumericValue) || double.IsInfinity(NumericValue))
+            if (!TryParseNumericText(NumericText, out var parsedValue)
+                || double.IsNaN(parsedValue)
+                || double.IsInfinity(parsedValue))
             {
                 ValidationText = "Enter a valid number.";
                 return;
             }
 
-            if (Kind == ServerConfigurationFieldKind.Integer && NumericValue != Math.Truncate(NumericValue))
+            if (Kind == ServerConfigurationFieldKind.Integer && parsedValue != Math.Truncate(parsedValue))
             {
                 ValidationText = "Enter a whole number.";
                 return;
             }
 
-            if (DeclaredMinimum is not null && NumericValue < DeclaredMinimum)
+            if (DeclaredMinimum is not null && parsedValue < DeclaredMinimum)
             {
                 ValidationText = $"The minimum value is {DeclaredMinimum:0.########}.";
                 return;
             }
 
-            if (DeclaredMaximum is not null && NumericValue > DeclaredMaximum)
+            if (DeclaredMaximum is not null && parsedValue > DeclaredMaximum)
             {
                 ValidationText = $"The maximum value is {DeclaredMaximum:0.########}.";
                 return;
+            }
+
+            if (!_numericValue.Equals(parsedValue))
+            {
+                _numericValue = parsedValue;
+                OnPropertyChanged(nameof(NumericValue));
             }
         }
 
@@ -211,6 +260,23 @@ public sealed class ServerConfigurationField : INotifyPropertyChanged
 
         ValidationText = string.Empty;
     }
+
+    private static bool TryParseNumericText(string value, out double result) =>
+        double.TryParse(
+            value,
+            NumberStyles.Float | NumberStyles.AllowThousands,
+            CultureInfo.CurrentCulture,
+            out result)
+        || double.TryParse(
+            value,
+            NumberStyles.Float | NumberStyles.AllowThousands,
+            CultureInfo.InvariantCulture,
+            out result);
+
+    private static string FormatNumericValue(double value, ServerConfigurationFieldKind kind) =>
+        kind == ServerConfigurationFieldKind.Integer
+            ? Math.Truncate(value).ToString("0", CultureInfo.InvariantCulture)
+            : value.ToString("0.################", CultureInfo.InvariantCulture);
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

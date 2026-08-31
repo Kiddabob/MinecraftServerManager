@@ -193,6 +193,7 @@ public sealed class ServerDashboardViewModel : BindableBase
             {
                 NotifyCommandStates();
                 OnPropertyChanged(nameof(IsEditorReadOnly));
+                OnPropertyChanged(nameof(IsEditorEditable));
             }
         }
     }
@@ -211,6 +212,8 @@ public sealed class ServerDashboardViewModel : BindableBase
     }
 
     public bool IsEditorReadOnly => IsBusy || _document is null || IsServerActive;
+
+    public bool IsEditorEditable => !IsEditorReadOnly;
 
     public string EditorNotice
     {
@@ -365,6 +368,7 @@ public sealed class ServerDashboardViewModel : BindableBase
         {
             IsBusy = false;
             OnPropertyChanged(nameof(IsEditorReadOnly));
+            OnPropertyChanged(nameof(IsEditorEditable));
             OnPropertyChanged(nameof(EditorNotice));
             NotifyCommandStates();
         }
@@ -511,6 +515,7 @@ public sealed class ServerDashboardViewModel : BindableBase
         }
 
         OnPropertyChanged(nameof(IsEditorReadOnly));
+        OnPropertyChanged(nameof(IsEditorEditable));
         OnPropertyChanged(nameof(EditorNotice));
         NotifyCommandStates();
     }
@@ -603,6 +608,7 @@ public sealed class ServerDashboardViewModel : BindableBase
             or nameof(ServerSessionViewModel.IsServerActive))
         {
             OnPropertyChanged(nameof(IsEditorReadOnly));
+            OnPropertyChanged(nameof(IsEditorEditable));
             OnPropertyChanged(nameof(EditorNotice));
             NotifyCommandStates();
             if (IsServerActive && _document is not null)

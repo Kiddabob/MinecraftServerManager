@@ -9,7 +9,7 @@ namespace MinecraftServerManager;
 
 public partial class App : Application
 {
-    private Window? _window;
+    private MainWindow? _window;
 
     public App()
     {
@@ -22,7 +22,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _window = Services.GetRequiredService<MainWindow>();
-        _window.Activate();
+        _window.ShowWithRestoredPlacement();
     }
 
     private static ServiceProvider ConfigureServices()
@@ -32,6 +32,8 @@ public partial class App : Application
         services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
         services.AddSingleton<IWindowPlacementService, JsonWindowPlacementService>();
         services.AddSingleton<IPlayerPlaytimeService, JsonPlayerPlaytimeService>();
+        services.AddSingleton<IPlayerAvatarService, MojangPlayerAvatarService>();
+        services.AddSingleton<IWorldMapService, LegacyAnvilWorldMapService>();
         services.AddSingleton<IJavaRuntimeService, JavaRuntimeService>();
         services.AddSingleton<IServerLaunchRecommendationService, ServerLaunchRecommendationService>();
         services.AddSingleton<IManagedJavaRuntimeService, ManagedJavaRuntimeService>();
@@ -91,6 +93,7 @@ public partial class App : Application
         services.AddSingleton<IAppUpdateService, GitHubAppUpdateService>();
         services.AddSingleton<IUiDispatcher, DispatcherQueueUiDispatcher>();
         services.AddSingleton<ServerDashboardViewModel>();
+        services.AddSingleton<ServerMapViewModel>();
         services.AddSingleton<ServerContentViewModel>();
         services.AddSingleton<ModpackCatalogViewModel>();
         services.AddSingleton<PackBuilderViewModel>();

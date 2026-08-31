@@ -15,6 +15,7 @@ public sealed class MainViewModel : BindableBase
     private readonly IServerConsoleParserFactory _consoleParserFactory;
     private readonly IServerProcessServiceFactory _processServiceFactory;
     private readonly IPlayerPlaytimeService _playerPlaytimeService;
+    private readonly IPlayerAvatarService _playerAvatarService;
     private readonly IJavaRuntimeService _javaRuntimeService;
     private readonly IManagedJavaRuntimeService _managedJavaRuntimeService;
     private readonly IServerLaunchRecommendationService _launchRecommendationService;
@@ -68,6 +69,7 @@ public sealed class MainViewModel : BindableBase
         IServerConsoleParserFactory consoleParserFactory,
         IServerProcessServiceFactory processServiceFactory,
         IPlayerPlaytimeService playerPlaytimeService,
+        IPlayerAvatarService playerAvatarService,
         IJavaRuntimeService javaRuntimeService,
         IManagedJavaRuntimeService managedJavaRuntimeService,
         IServerLaunchRecommendationService launchRecommendationService,
@@ -78,6 +80,7 @@ public sealed class MainViewModel : BindableBase
         IModpackInstallLocationService installLocationService,
         ModpackCatalogViewModel modpacks,
         PackBuilderViewModel builder,
+        ServerMapViewModel map,
         ServerDashboardViewModel dashboard,
         ServerContentViewModel content,
         IUiDispatcher uiDispatcher)
@@ -88,6 +91,7 @@ public sealed class MainViewModel : BindableBase
         _consoleParserFactory = consoleParserFactory;
         _processServiceFactory = processServiceFactory;
         _playerPlaytimeService = playerPlaytimeService;
+        _playerAvatarService = playerAvatarService;
         _javaRuntimeService = javaRuntimeService;
         _managedJavaRuntimeService = managedJavaRuntimeService;
         _launchRecommendationService = launchRecommendationService;
@@ -99,6 +103,7 @@ public sealed class MainViewModel : BindableBase
         _uiDispatcher = uiDispatcher;
         Modpacks = modpacks;
         Builder = builder;
+        Map = map;
         Dashboard = dashboard;
         Content = content;
 
@@ -161,6 +166,8 @@ public sealed class MainViewModel : BindableBase
 
     public ServerDashboardViewModel Dashboard { get; }
 
+    public ServerMapViewModel Map { get; }
+
     public ServerContentViewModel Content { get; }
 
     public ModpackCatalogViewModel Modpacks { get; }
@@ -211,6 +218,7 @@ public sealed class MainViewModel : BindableBase
             _ = RefreshServerFilesAsync();
             _ = Dashboard.SelectProfileAsync(value);
             _ = Content.SelectProfileAsync(value);
+            _ = Map.SelectProfileAsync(value);
             _ = LoadProfileEditorAsync(value);
             _ = PersistPreferencesAsync("Profile selection saved.");
         }
@@ -489,6 +497,7 @@ public sealed class MainViewModel : BindableBase
             CurrentFilesPath = selected.ServerDirectory;
             await Dashboard.SelectProfileAsync(selected);
             await Content.SelectProfileAsync(selected);
+            await Map.SelectProfileAsync(selected);
             await LoadProfileEditorAsync(selected);
             await RefreshServerFilesAsync();
         }
@@ -662,6 +671,7 @@ public sealed class MainViewModel : BindableBase
         CurrentFilesPath = profile.ServerDirectory;
         await Dashboard.SelectProfileAsync(profile);
         await Content.SelectProfileAsync(profile);
+        await Map.SelectProfileAsync(profile);
         await LoadProfileEditorAsync(profile);
         await RefreshServerFilesAsync();
         await PersistPreferencesAsync("Profile selection saved.");
@@ -1008,6 +1018,7 @@ public sealed class MainViewModel : BindableBase
             session.RefreshProfile();
             await Dashboard.SelectProfileAsync(session);
             await Content.SelectProfileAsync(session);
+            await Map.SelectProfileAsync(session);
             ProfileEditorStatus = "Profile launch settings saved.";
             OnPropertyChanged(nameof(ProfileCountText));
             OnPropertyChanged(nameof(SelectedProfile));
@@ -1438,10 +1449,15 @@ public sealed class MainViewModel : BindableBase
             if (existing is null)
             {
                 PlayerPlaytimes.Insert(targetIndex, desired);
+                _ = LoadPlayerAvatarAsync(desired);
                 continue;
             }
 
             existing.UpdateFrom(desired);
+            if (string.IsNullOrWhiteSpace(existing.AvatarPath))
+            {
+                _ = LoadPlayerAvatarAsync(existing);
+            }
             var currentIndex = PlayerPlaytimes.IndexOf(existing);
             if (currentIndex != targetIndex)
             {
@@ -1453,6 +1469,15 @@ public sealed class MainViewModel : BindableBase
         PlayerSummaryText = orderedRows.Length == 0
             ? "No sessions yet  •  Tracking starts with the next player join"
             : $"{orderedRows.Length:N0} players tracked  •  {onlineCount:N0} online";
+    }
+
+    private async Task LoadPlayerAvatarAsync(PlayerPlaytimeRow row)
+    {
+        var avatarPath = await _playerAvatarService.GetAvatarPathAsync(row.PlayerName);
+        if (!string.IsNullOrWhiteSpace(avatarPath))
+        {
+            _uiDispatcher.TryEnqueue(() => row.SetAvatarPath(avatarPath));
+        }
     }
 
     private static string FormatPlaytime(TimeSpan playtime)
