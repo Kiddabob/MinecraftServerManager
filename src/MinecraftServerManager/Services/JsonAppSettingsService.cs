@@ -7,7 +7,8 @@ public sealed class JsonAppSettingsService : IAppSettingsService
 {
     private static readonly int[] SupportedIntervals = [5, 15, 30, 60, 360, 1_440];
     private static readonly string[] SupportedThemes = ["System", "Light", "Dark"];
-    private static readonly string[] SupportedAccents = ["System", "Blue", "Emerald", "Amethyst", "Amber"];
+    private static readonly string[] SupportedAccents = ["System", "Coral", "Blue", "Emerald", "Amethyst", "Amber", "Custom"];
+    private static readonly string[] SupportedBackdrops = ["Mica", "Acrylic"];
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -92,7 +93,28 @@ public sealed class JsonAppSettingsService : IAppSettingsService
                 : "System",
             AccentColor = SupportedAccents.Contains(preferences.AccentColor, StringComparer.OrdinalIgnoreCase)
                 ? SupportedAccents.First(value => value.Equals(preferences.AccentColor, StringComparison.OrdinalIgnoreCase))
-                : "System"
+                : "System",
+            CustomAccentColor = NormalizeAccentHex(preferences.CustomAccentColor),
+            Backdrop = SupportedBackdrops.Contains(preferences.Backdrop, StringComparer.OrdinalIgnoreCase)
+                ? SupportedBackdrops.First(value => value.Equals(preferences.Backdrop, StringComparison.OrdinalIgnoreCase))
+                : "Mica"
         };
+    }
+
+    private static string NormalizeAccentHex(string? value)
+    {
+        var candidate = value?.Trim() ?? string.Empty;
+        if (candidate.Length == 7
+            && candidate[0] == '#'
+            && uint.TryParse(
+                candidate.AsSpan(1),
+                System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out _))
+        {
+            return candidate.ToUpperInvariant();
+        }
+
+        return "#60CDFF";
     }
 }

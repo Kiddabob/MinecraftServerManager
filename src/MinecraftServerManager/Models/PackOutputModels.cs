@@ -95,3 +95,19 @@ public sealed record PackOutputResult(
     string ServerDirectory,
     string ServerLauncherFileName,
     int? RecommendedJavaMajor);
+
+public sealed record MinecraftLauncherInstallRequest(
+    string PackName,
+    string MinecraftVersion,
+    string LoaderId,
+    string LoaderVersion,
+    string ClientDirectory,
+    string ManifestPath);
+
+public sealed record MinecraftLauncherInstallResult(
+    string ProfileId,
+    string VersionId,
+    string LauncherProfilesPath,
+    string BackupPath,
+    string ClientDirectory,
+    string Message);

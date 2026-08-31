@@ -50,6 +50,12 @@ public sealed class PackDraftOutputService : IPackDraftOutputService
         var packName = NormalizePackName(request.PackName);
         ValidateLoaderSelection(request.Target, request.ClientLoaderId, request.ClientLoaderVersion, "client");
         ValidateLoaderSelection(request.Target, request.ServerLoaderId, request.ServerLoaderVersion, "server");
+        ValidateLinkedLoaderPair(
+            request.Target,
+            request.ClientLoaderId,
+            request.ClientLoaderVersion,
+            request.ServerLoaderId,
+            request.ServerLoaderVersion);
         var destinationDirectory = EnsureContainedPath(parentDirectory, Path.Combine(parentDirectory, packName));
         EnsureDestinationAvailable(destinationDirectory);
 
@@ -357,6 +363,30 @@ public sealed class PackDraftOutputService : IPackDraftOutputService
         }
     }
 
+    private static void ValidateLinkedLoaderPair(
+        PackBuildTarget target,
+        string clientLoaderId,
+        string clientLoaderVersion,
+        string serverLoaderId,
+        string serverLoaderVersion)
+    {
+        if (target != PackBuildTarget.ClientAndServer
+            || string.IsNullOrWhiteSpace(clientLoaderId)
+            || string.IsNullOrWhiteSpace(serverLoaderId))
+        {
+            return;
+        }
+
+        if (!clientLoaderId.Trim().Equals(serverLoaderId.Trim(), StringComparison.OrdinalIgnoreCase)
+            || !clientLoaderVersion.Trim().Equals(
+                serverLoaderVersion.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                "A linked client and server must use the same loader family and exact loader version.");
+        }
+    }
+
     private static IReadOnlyList<string> GetRelativePaths(
         PackBuildTarget target,
         PackDraftItem item,
@@ -455,8 +485,11 @@ public sealed class PackDraftOutputService : IPackDraftOutputService
             serverLoaderVersion = plan.ServerLoaderVersion,
             recommendedJavaMajor = plan.RecommendedJavaMajor,
             generatedAtUtc = DateTimeOffset.UtcNow,
-            contentOnly = baselineResult is null || plan.Target != PackBuildTarget.Server,
+            contentOnly = baselineResult is null,
+            clientPrepared = plan.Target is PackBuildTarget.Client or PackBuildTarget.ClientAndServer,
             clientPlayable = false,
+            minecraftLauncherProfileId = string.Empty,
+            minecraftLauncherVersionId = string.Empty,
             serverBaselinePrepared = baselineResult is not null,
             serverLauncher = baselineResult?.LauncherFileName ?? string.Empty,
             serverEulaAccepted = false,
@@ -499,7 +532,7 @@ public sealed class PackDraftOutputService : IPackDraftOutputService
             ? "No runnable server baseline was prepared for this platform."
             : $"A runnable {plan.ServerLoaderId} {plan.ServerLoaderVersion} server baseline was prepared in Server\\ using {baselineResult.LauncherFileName}.";
         var clientState = plan.Target is PackBuildTarget.Client or PackBuildTarget.ClientAndServer
-            ? "The Client folder is still an auditable content layout, not a launcher-authenticated playable client instance."
+            ? "The Client folder is an isolated game directory. Minecraft Server Manager can register it as a custom installation in the official Minecraft Launcher; account authentication remains entirely inside Minecraft Launcher."
             : "No client output was requested.";
         return $"""
         Minecraft Server Manager content bundle

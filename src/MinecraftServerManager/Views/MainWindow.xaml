@@ -11,8 +11,23 @@
         x:Name="RootGrid"
         Loaded="RootGrid_Loaded"
         SizeChanged="RootGrid_SizeChanged">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TitleBar
+            x:Name="AppTitleBar"
+            Title="Minecraft Server Manager"
+            Subtitle="Servers, packs, players and worlds">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="/Assets/AppIcon.png" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
         <NavigationView
             x:Name="MainNavigationView"
+            Grid.Row="1"
             AlwaysShowHeader="False"
             IsBackButtonVisible="Collapsed"
             IsPaneToggleButtonVisible="True"
@@ -24,20 +39,45 @@
 
             <NavigationView.PaneHeader>
                 <StackPanel
-                    Margin="0,10,0,14"
-                    Orientation="Horizontal"
-                    Spacing="10">
-                    <Image
-                        Width="32"
-                        Height="32"
-                        Source="/Assets/AppIcon.png" />
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock FontWeight="SemiBold" Text="Minecraft" />
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Server Manager" />
+                    x:Name="PaneHeaderContent"
+                    Margin="0,10,0,12"
+                    Spacing="12">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Image
+                            Width="32"
+                            Height="32"
+                            Source="/Assets/AppIcon.png" />
+                        <StackPanel
+                            x:Name="BrandTextStack"
+                            VerticalAlignment="Center">
+                            <TextBlock FontWeight="SemiBold" Text="Minecraft" />
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Server Manager" />
+                        </StackPanel>
                     </StackPanel>
+
+                    <Border
+                        x:Name="ProfilePaneContext"
+                        Margin="0,2,8,0"
+                        Padding="10"
+                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <StackPanel Spacing="6">
+                            <TextBlock
+                                Style="{StaticResource SectionLabelStyle}"
+                                Text="CURRENT SERVER" />
+                            <ComboBox
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Current server profile"
+                                DisplayMemberPath="DisplayName"
+                                ItemsSource="{Binding Profiles, Mode=OneWay}"
+                                SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </NavigationView.PaneHeader>
 
@@ -51,9 +91,10 @@
                         <FontIcon Glyph="&#xE80F;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItemHeader Content="SERVER" />
                 <NavigationViewItem Content="Dashboard" Tag="dashboard">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE9D2;" />
+                        <FontIcon Glyph="&#xE7C3;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Console" Tag="console">
@@ -68,7 +109,7 @@
                 </NavigationViewItem>
                 <NavigationViewItem Content="Map" Tag="map">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE81E;" />
+                        <FontIcon Glyph="&#xE707;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Server files" Tag="files">
@@ -81,19 +122,20 @@
                         <FontIcon Glyph="&#xE7FC;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Modpacks" Tag="modpacks">
+                <NavigationViewItem Content="Profiles" Tag="profiles">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8F1;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Build a pack" Tag="builder">
+                <NavigationViewItemHeader Content="PACKS" />
+                <NavigationViewItem Content="Modpacks" Tag="modpacks">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE719;" />
+                        <FontIcon Glyph="&#xE7B8;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Profiles" Tag="profiles">
+                <NavigationViewItem Content="Build a pack" Tag="builder">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8D4;" />
+                        <FontIcon Glyph="&#xE710;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
@@ -106,26 +148,14 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <NavigationView.PaneFooter>
-                <StackPanel
-                    x:Name="ProfilePaneFooter"
-                    Margin="12,12,12,8"
-                    HorizontalAlignment="Stretch"
-                    Spacing="6">
-                    <TextBlock
-                        FontSize="12"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Current profile" />
-                    <ComboBox
-                        HorizontalAlignment="Stretch"
-                        DisplayMemberPath="DisplayName"
-                        ItemsSource="{Binding Profiles, Mode=OneWay}"
-                        SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" />
-                </StackPanel>
-            </NavigationView.PaneFooter>
-
             <NavigationView.Content>
-                <Grid>
+                <Border
+                    Margin="0,0,12,12"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <Grid>
                     <ScrollViewer
                         x:Name="OverviewPage"
                         HorizontalContentAlignment="Stretch"
@@ -1354,6 +1384,7 @@
                                         MinZoomFactor="0.35"
                                         VerticalScrollBarVisibility="Auto"
                                         VerticalScrollMode="Enabled"
+                                        ViewChanged="WorldMapScrollViewer_ViewChanged"
                                         ZoomMode="Enabled">
                                         <Grid
                                             Width="{Binding Map.MapWidth, Mode=OneWay}"
@@ -1369,6 +1400,13 @@
                                                     CornerRadius="10"
                                                     ToolTipService.ToolTip="{Binding Map.SpawnToolTip, Mode=OneWay}"
                                                     Visibility="{Binding Map.HasSpawnMarker, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <Border.RenderTransform>
+                                                        <ScaleTransform
+                                                            CenterX="10"
+                                                            CenterY="10"
+                                                            ScaleX="{Binding Map.MarkerScale, Mode=OneWay}"
+                                                            ScaleY="{Binding Map.MarkerScale, Mode=OneWay}" />
+                                                    </Border.RenderTransform>
                                                     <FontIcon FontSize="11" Foreground="White" Glyph="&#xE80F;" />
                                                 </Border>
                                                 <ItemsControl
@@ -1386,11 +1424,19 @@
                                                                 Width="32"
                                                                 Height="32"
                                                                 Opacity="{Binding Opacity}"
-                                                                ToolTipService.ToolTip="{Binding ToolTipText}">
+                                                                ToolTipService.ToolTip="{Binding ToolTipText}"
+                                                                Visibility="{Binding IsVisibleOnMap, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                                 <Grid.RenderTransform>
-                                                                    <TranslateTransform
-                                                                        X="{Binding CanvasLeft}"
-                                                                        Y="{Binding CanvasTop}" />
+                                                                    <TransformGroup>
+                                                                        <ScaleTransform
+                                                                            CenterX="16"
+                                                                            CenterY="16"
+                                                                            ScaleX="{Binding MarkerScale}"
+                                                                            ScaleY="{Binding MarkerScale}" />
+                                                                        <TranslateTransform
+                                                                            X="{Binding CanvasLeft}"
+                                                                            Y="{Binding CanvasTop}" />
+                                                                    </TransformGroup>
                                                                 </Grid.RenderTransform>
                                                                 <Border
                                                                     Background="#D9202020"
@@ -1411,6 +1457,48 @@
                                                                     Fill="{Binding IsOnline, Converter={StaticResource PlayerOnlineToBrushConverter}}"
                                                                     Stroke="White"
                                                                     StrokeThickness="1" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <ItemsControl
+                                                    Width="{Binding Map.MapWidth, Mode=OneWay}"
+                                                    Height="{Binding Map.MapHeight, Mode=OneWay}"
+                                                    ItemsSource="{Binding Map.PointsOfInterest, Mode=OneWay}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <Canvas />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid
+                                                                Width="28"
+                                                                Height="28"
+                                                                ToolTipService.ToolTip="{Binding ToolTipText}"
+                                                                Visibility="{Binding IsVisibleOnMap, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <Grid.RenderTransform>
+                                                                    <TransformGroup>
+                                                                        <ScaleTransform
+                                                                            CenterX="14"
+                                                                            CenterY="14"
+                                                                            ScaleX="{Binding MarkerScale}"
+                                                                            ScaleY="{Binding MarkerScale}" />
+                                                                        <TranslateTransform
+                                                                            X="{Binding CanvasLeft}"
+                                                                            Y="{Binding CanvasTop}" />
+                                                                    </TransformGroup>
+                                                                </Grid.RenderTransform>
+                                                                <Border
+                                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                                    BorderBrush="White"
+                                                                    BorderThickness="2"
+                                                                    CornerRadius="14">
+                                                                    <FontIcon
+                                                                        FontSize="13"
+                                                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                                        Glyph="&#xE707;" />
+                                                                </Border>
                                                             </Grid>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
@@ -1450,10 +1538,43 @@
                                             Text="Positions are read from player files and can lag behind movement."
                                             TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <CheckBox
+                                    <Border
                                         Grid.Row="1"
-                                        Content="Include offline saved positions"
-                                        IsChecked="{Binding Map.ShowOfflinePlayers, Mode=TwoWay}" />
+                                        Padding="12,9"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="8">
+                                        <Grid MinWidth="216" ColumnSpacing="12" RowSpacing="3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontWeight="SemiBold"
+                                                Text="Saved player positions" />
+                                            <ToggleSwitch
+                                                Grid.Column="1"
+                                                Width="44"
+                                                MinWidth="0"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center"
+                                                AutomationProperties.Name="Include offline saved positions"
+                                                IsOn="{Binding Map.ShowOfflinePlayers, Mode=TwoWay}"
+                                                OffContent=""
+                                                OnContent="" />
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Grid.ColumnSpan="2"
+                                                FontSize="12"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Include players who are currently offline."
+                                                TextWrapping="Wrap" />
+                                        </Grid>
+                                    </Border>
                                     <ListView
                                         Grid.Row="2"
                                         ItemsSource="{Binding Map.PlayerMarkers, Mode=OneWay}"
@@ -1482,6 +1603,10 @@
                                                         <TextBlock
                                                             FontSize="12"
                                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding DimensionDisplayName}" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                             Text="{Binding FreshnessText}" />
                                                     </StackPanel>
                                                 </Grid>
@@ -1494,6 +1619,117 @@
                                         Command="{Binding Map.CenterOnSelectedPlayerCommand}"
                                         Content="Centre on selected player" />
                                     <StackPanel Grid.Row="4" Spacing="8">
+                                        <Border
+                                            Padding="12,9"
+                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                            CornerRadius="8">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock FontWeight="SemiBold" Text="Follow selected player" />
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="{Binding Map.FocusSummary, Mode=OneWay}"
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+                                                <ToggleSwitch
+                                                    Grid.Column="1"
+                                                    MinWidth="0"
+                                                    VerticalAlignment="Center"
+                                                    IsOn="{Binding Map.FollowSelectedPlayer, Mode=TwoWay}"
+                                                    OffContent=""
+                                                    OnContent="" />
+                                            </Grid>
+                                        </Border>
+                                        <Expander Header="Points of interest">
+                                            <StackPanel Padding="0,8,0,2" Spacing="8">
+                                                <ComboBox
+                                                    HorizontalAlignment="Stretch"
+                                                    DisplayMemberPath="Name"
+                                                    ItemsSource="{Binding Map.PointsOfInterest, Mode=OneWay}"
+                                                    PlaceholderText="Choose a saved place"
+                                                    SelectedItem="{Binding Map.SelectedPointOfInterest, Mode=TwoWay}" />
+                                                <TextBlock
+                                                    FontFamily="Cascadia Mono, Consolas"
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{Binding Map.SelectedPointOfInterest.CoordinatesText, Mode=OneWay}" />
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Button
+                                                        HorizontalAlignment="Stretch"
+                                                        Command="{Binding Map.CenterOnSelectedPointCommand}"
+                                                        Content="Centre" />
+                                                    <Button
+                                                        Grid.Column="1"
+                                                        HorizontalAlignment="Stretch"
+                                                        Command="{Binding Map.RemoveSelectedPointCommand}"
+                                                        Content="Remove" />
+                                                </Grid>
+                                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                                <TextBox
+                                                    Header="New point"
+                                                    MaxLength="80"
+                                                    PlaceholderText="For example: Moon base"
+                                                    Text="{Binding Map.NewPointName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <Grid ColumnSpacing="6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <NumberBox
+                                                        Header="X"
+                                                        Maximum="30000000"
+                                                        Minimum="-30000000"
+                                                        SpinButtonPlacementMode="Compact"
+                                                        Value="{Binding Map.NewPointX, Mode=TwoWay}" />
+                                                    <NumberBox
+                                                        Grid.Column="1"
+                                                        Header="Y"
+                                                        Maximum="4096"
+                                                        Minimum="-2048"
+                                                        SpinButtonPlacementMode="Compact"
+                                                        Value="{Binding Map.NewPointY, Mode=TwoWay}" />
+                                                    <NumberBox
+                                                        Grid.Column="2"
+                                                        Header="Z"
+                                                        Maximum="30000000"
+                                                        Minimum="-30000000"
+                                                        SpinButtonPlacementMode="Compact"
+                                                        Value="{Binding Map.NewPointZ, Mode=TwoWay}" />
+                                                </Grid>
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Button
+                                                        HorizontalAlignment="Stretch"
+                                                        Command="{Binding Map.UseMapCenterForPointCommand}"
+                                                        Content="Use centre" />
+                                                    <Button
+                                                        Grid.Column="1"
+                                                        HorizontalAlignment="Stretch"
+                                                        Command="{Binding Map.AddPointOfInterestCommand}"
+                                                        Content="Save point"
+                                                        Style="{StaticResource AppAccentButtonStyle}" />
+                                                </Grid>
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    MaxLines="3"
+                                                    Text="{Binding Map.PointOfInterestStatus, Mode=OneWay}"
+                                                    TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Expander>
                                         <Button
                                             HorizontalAlignment="Stretch"
                                             Command="{Binding Map.CenterOnSpawnCommand}"
@@ -1927,11 +2163,11 @@
                                 <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Find a modpack" />
                                 <TextBlock
                                     Style="{StaticResource BodySecondaryTextStyle}"
-                                    Text="Search Modrinth, Technic, and Feed The Beast together, then review the exact Minecraft, loader, Java, and server-package requirements before creating a profile." />
+                                    Text="Search Modrinth, CurseForge, Technic, and Feed The Beast together, then narrow the catalogue by source, Minecraft version, loader, and pack style." />
                             </StackPanel>
 
                             <Border Style="{StaticResource AppCardStyle}">
-                                <StackPanel Spacing="12">
+                                <StackPanel Spacing="14">
                                     <Grid ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -1949,6 +2185,68 @@
                                             Content="Search"
                                             Style="{StaticResource AppAccentButtonStyle}" />
                                     </Grid>
+
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Style="{StaticResource SectionLabelStyle}" Text="SOURCES" />
+                                        <ItemsControl ItemsSource="{Binding Modpacks.ProviderFilters, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <ToggleButton
+                                                        Content="{Binding DisplayName}"
+                                                        IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                        Style="{StaticResource FilterToggleButtonStyle}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="5">
+                                            <TextBlock FontWeight="SemiBold" Text="Minecraft version" />
+                                            <ComboBox
+                                                HorizontalAlignment="Stretch"
+                                                DisplayMemberPath="DisplayName"
+                                                ItemsSource="{Binding Modpacks.MinecraftVersionOptions, Mode=OneWay}"
+                                                SelectedItem="{Binding Modpacks.SelectedMinecraftVersion, Mode=TwoWay}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="5">
+                                            <TextBlock FontWeight="SemiBold" Text="Mod loader" />
+                                            <ComboBox
+                                                HorizontalAlignment="Stretch"
+                                                DisplayMemberPath="DisplayName"
+                                                ItemsSource="{Binding Modpacks.LoaderOptions, Mode=OneWay}"
+                                                SelectedItem="{Binding Modpacks.SelectedLoader, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Style="{StaticResource SectionLabelStyle}" Text="PACK STYLES" />
+                                        <ItemsControl ItemsSource="{Binding Modpacks.CategoryFilters, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <ToggleButton
+                                                        Content="{Binding DisplayName}"
+                                                        IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                        Style="{StaticResource FilterToggleButtonStyle}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
                                     <Grid ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
@@ -1969,7 +2267,7 @@
                                             Grid.Column="2"
                                             VerticalAlignment="Center"
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Modrinth • Technic • FTB" />
+                                            Text="Up to 100 results per source" />
                                     </Grid>
                                 </StackPanel>
                             </Border>
@@ -1984,13 +2282,13 @@
                                     <StackPanel Spacing="12">
                                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Search results" />
                                         <ListView
-                                            Height="560"
+                                            Height="510"
                                             ItemsSource="{Binding Modpacks.Results, Mode=OneWay}"
                                             SelectedItem="{Binding Modpacks.SelectedPack, Mode=TwoWay}"
                                             SelectionMode="Single">
                                             <ListView.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid MinHeight="104" Padding="8" ColumnSpacing="12">
+                                                    <Grid MinHeight="116" Padding="8" ColumnSpacing="12">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="56" />
                                                             <ColumnDefinition Width="*" />
@@ -2020,11 +2318,69 @@
                                                                 FontSize="12"
                                                                 Foreground="{StaticResource AppAccentBrush}"
                                                                 Text="{Binding VersionSummary}" />
+                                                            <TextBlock
+                                                                FontSize="12"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding LoaderSummary}" />
                                                         </StackPanel>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ListView.ItemTemplate>
                                         </ListView>
+
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button
+                                                Command="{Binding Modpacks.PreviousPageCommand}"
+                                                Content="Previous" />
+                                            <ListView
+                                                x:Name="ModpackPageList"
+                                                Grid.Column="1"
+                                                HorizontalAlignment="Center"
+                                                IsItemClickEnabled="True"
+                                                ItemClick="ModpackPageList_ItemClick"
+                                                ItemsSource="{Binding Modpacks.PageNumbers, Mode=OneWay}"
+                                                SelectedItem="{Binding Modpacks.CurrentPage, Mode=OneWay}"
+                                                SelectionMode="Single">
+                                                <ListView.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ListView.ItemsPanel>
+                                                <ListView.ItemContainerStyle>
+                                                    <Style TargetType="ListViewItem">
+                                                        <Setter Property="MinWidth" Value="36" />
+                                                        <Setter Property="MinHeight" Value="32" />
+                                                        <Setter Property="Padding" Value="10,5" />
+                                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                                    </Style>
+                                                </ListView.ItemContainerStyle>
+                                            </ListView>
+                                            <Button
+                                                Grid.Column="2"
+                                                Command="{Binding Modpacks.NextPageCommand}"
+                                                Content="Next" />
+                                        </Grid>
+
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Modpacks.PageSummary, Mode=OneWay}" />
+                                            <ComboBox
+                                                Grid.Column="1"
+                                                DisplayMemberPath="DisplayName"
+                                                ItemsSource="{Binding Modpacks.PageSizeOptions, Mode=OneWay}"
+                                                SelectedItem="{Binding Modpacks.SelectedPageSize, Mode=TwoWay}" />
+                                        </Grid>
                                     </StackPanel>
                                 </Border>
 
@@ -2443,9 +2799,28 @@
                             <Border Style="{StaticResource AppCardStyle}">
                                 <StackPanel Spacing="12">
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="2. Search supported providers" />
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Style="{StaticResource SectionLabelStyle}" Text="SOURCES" />
+                                        <ItemsControl ItemsSource="{Binding Builder.ProviderFilters, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <ToggleButton
+                                                        Content="{Binding DisplayName}"
+                                                        IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                        Style="{StaticResource FilterToggleButtonStyle}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                     <Grid ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="2*" />
+                                            <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
@@ -2459,14 +2834,43 @@
                                             Grid.Column="1"
                                             DisplayMemberPath="DisplayName"
                                             HorizontalAlignment="Stretch"
-                                            ItemsSource="{Binding Builder.Categories, Mode=OneWay}"
-                                            SelectedItem="{Binding Builder.SelectedCategory, Mode=TwoWay}" />
-                                        <Button
+                                            ItemsSource="{Binding Builder.SortOptions, Mode=OneWay}"
+                                            SelectedItem="{Binding Builder.SelectedSort, Mode=TwoWay}" />
+                                        <ComboBox
                                             Grid.Column="2"
+                                            DisplayMemberPath="DisplayName"
+                                            HorizontalAlignment="Stretch"
+                                            ItemsSource="{Binding Builder.PageSizeOptions, Mode=OneWay}"
+                                            SelectedItem="{Binding Builder.SelectedPageSize, Mode=TwoWay}" />
+                                        <Button
+                                            Grid.Column="3"
                                             Command="{Binding Builder.SearchCommand}"
                                             Content="Search all providers"
                                             Style="{StaticResource AppAccentButtonStyle}" />
                                     </Grid>
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Style="{StaticResource SectionLabelStyle}" Text="CONTENT FILTERS" />
+                                        <ItemsControl ItemsSource="{Binding Builder.CategoryFilters, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <ToggleButton
+                                                        Content="{Binding DisplayName}"
+                                                        IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                        Style="{StaticResource FilterToggleButtonStyle}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock
+                                            FontSize="12"
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="Minecraft version, loader, content type, and client/server side are inherited from the foundation above. Multiple content filters are combined for a narrower match."
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
                                     <Grid ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
@@ -2503,7 +2907,16 @@
                                 </Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource AppCardStyle}">
                                     <StackPanel Spacing="12">
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Compatible projects" />
+                                        <StackPanel Spacing="3">
+                                            <TextBlock
+                                                Style="{StaticResource SectionTitleTextStyle}"
+                                                Text="{Binding Builder.SearchResultsTitle, Mode=OneWay}" />
+                                            <TextBlock
+                                                FontSize="12"
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding Builder.SimilarContentExplanation, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
                                         <ListView
                                             Height="500"
                                             ItemsSource="{Binding Builder.SearchResults, Mode=OneWay}"
@@ -2544,6 +2957,52 @@
                                                 </DataTemplate>
                                             </ListView.ItemTemplate>
                                         </ListView>
+                                        <Button
+                                            Command="{Binding Builder.ShowMoreCommand}"
+                                            Content="Show more results"
+                                            HorizontalAlignment="Stretch"
+                                            Visibility="{Binding Builder.CanShowMore, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button
+                                                Command="{Binding Builder.PreviousSearchPageCommand}"
+                                                Content="Previous" />
+                                            <ListView
+                                                x:Name="BuilderSearchPageList"
+                                                Grid.Column="1"
+                                                HorizontalAlignment="Center"
+                                                IsItemClickEnabled="True"
+                                                ItemClick="BuilderSearchPageList_ItemClick"
+                                                ItemsSource="{Binding Builder.SearchPageNumbers, Mode=OneWay}"
+                                                SelectedItem="{Binding Builder.CurrentSearchPage, Mode=OneWay}"
+                                                SelectionMode="Single">
+                                                <ListView.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ListView.ItemsPanel>
+                                                <ListView.ItemContainerStyle>
+                                                    <Style TargetType="ListViewItem">
+                                                        <Setter Property="MinWidth" Value="36" />
+                                                        <Setter Property="MinHeight" Value="32" />
+                                                        <Setter Property="Padding" Value="10,5" />
+                                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                                    </Style>
+                                                </ListView.ItemContainerStyle>
+                                            </ListView>
+                                            <Button
+                                                Grid.Column="2"
+                                                Command="{Binding Builder.NextSearchPageCommand}"
+                                                Content="Next" />
+                                        </Grid>
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Builder.SearchPageSummary, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
                                     </StackPanel>
                                 </Border>
 
@@ -2558,6 +3017,10 @@
                                             Style="{StaticResource BodySecondaryTextStyle}"
                                             Text="{Binding Builder.SelectedProject.Description, Mode=OneWay}"
                                             TextWrapping="Wrap" />
+                                        <Button
+                                            Command="{Binding Builder.FindSimilarCommand}"
+                                            Content="{Binding Builder.SimilarContentButtonText, Mode=OneWay}"
+                                            HorizontalAlignment="Stretch" />
                                         <ComboBox
                                             DisplayMemberPath="DisplayName"
                                             HorizontalAlignment="Stretch"
@@ -2588,7 +3051,7 @@
                                         <TextBlock
                                             FontSize="12"
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Compatible required dependencies are added automatically. Optional dependencies remain notices."
+                                            Text="Required dependencies are shown before they are added. Optional dependencies remain unchecked until you choose them."
                                             TextWrapping="Wrap" />
                                     </StackPanel>
                                 </Border>
@@ -2622,6 +3085,7 @@
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel Spacing="2">
                                                         <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
@@ -2645,6 +3109,15 @@
                                                             Style="{StaticResource BodySecondaryTextStyle}"
                                                             Text="{Binding DetailsText}" />
                                                     </StackPanel>
+                                                    <Button
+                                                        Grid.Column="2"
+                                                        Margin="10,0,0,0"
+                                                        VerticalAlignment="Center"
+                                                        Click="RemoveBuilderDraftItem_Click"
+                                                        CommandParameter="{Binding}"
+                                                        Content="Remove"
+                                                        IsEnabled="{Binding CanRemove}"
+                                                        ToolTipService.ToolTip="Required dependencies are removed automatically when no selected item needs them" />
                                                 </Grid>
                                             </DataTemplate>
                                         </ListView.ItemTemplate>
@@ -2682,6 +3155,30 @@
                                                 Content="Open output folder"
                                                 Visibility="{Binding Builder.HasLastOutput, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                         </StackPanel>
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="8"
+                                            Visibility="{Binding Builder.HasLastClientOutput, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Button
+                                                Click="RegisterBuilderClientWithLauncher_Click"
+                                                Content="Add client to Minecraft Launcher"
+                                                IsEnabled="{Binding Builder.CanRegisterLastClientOutput, Mode=OneWay}"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                            <Button
+                                                Click="OpenMinecraftLauncher_Click"
+                                                Content="Open Minecraft Launcher"
+                                                Visibility="{Binding Builder.HasLauncherProfile, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <ProgressRing
+                                                Width="18"
+                                                Height="18"
+                                                IsActive="{Binding Builder.IsLauncherBusy, Mode=OneWay}"
+                                                Visibility="{Binding Builder.IsLauncherBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="{Binding Builder.LauncherStatusText, Mode=OneWay}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{Binding Builder.HasLastClientOutput, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                         <ProgressBar
                                             IsIndeterminate="{Binding Builder.IsOutputProgressIndeterminate, Mode=OneWay}"
                                             Maximum="100"
@@ -3002,54 +3499,418 @@
                         VerticalScrollBarVisibility="Auto"
                         Visibility="Collapsed">
                         <StackPanel
-                            MaxWidth="800"
-                            Margin="32,28,32,40"
-                            HorizontalAlignment="Stretch"
+                            MaxWidth="980"
+                            Margin="32,22,32,40"
+                            HorizontalAlignment="Center"
                             Spacing="20">
                             <StackPanel Spacing="5">
                                 <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Settings" />
                                 <TextBlock
                                     Style="{StaticResource BodySecondaryTextStyle}"
-                                    Text="Personalise the app and choose how often installed builds check GitHub Releases." />
+                                    Text="Control updates, visual style, Java runtimes and Windows integration." />
                             </StackPanel>
 
+                            <TextBlock Style="{StaticResource SectionLabelStyle}" Text="APP UPDATES" />
+
                             <Border Style="{StaticResource AppCardStyle}">
-                                <Grid ColumnSpacing="24" RowSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="260" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <StackPanel Spacing="4">
-                                        <TextBlock FontWeight="SemiBold" Text="App theme" />
-                                        <TextBlock
-                                            Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Follow Windows or keep the app light or dark." />
-                                    </StackPanel>
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        DisplayMemberPath="DisplayName"
-                                        ItemsSource="{Binding ThemeOptions, Mode=OneWay}"
-                                        SelectedItem="{Binding SelectedThemeOption, Mode=TwoWay}"
-                                        SelectionChanged="AppearanceSelectionChanged" />
-                                    <StackPanel Grid.Row="1" Spacing="4">
-                                        <TextBlock FontWeight="SemiBold" Text="Accent colour" />
-                                        <TextBlock
-                                            Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Used for app actions, profile, and folder highlights. Server status keeps its own health colour." />
-                                    </StackPanel>
-                                    <ComboBox
-                                        Grid.Row="1"
-                                        Grid.Column="1"
-                                        DisplayMemberPath="DisplayName"
-                                        ItemsSource="{Binding AccentOptions, Mode=OneWay}"
-                                        SelectedItem="{Binding SelectedAccentOption, Mode=TwoWay}"
-                                        SelectionChanged="AppearanceSelectionChanged" />
-                                </Grid>
+                                <StackPanel Spacing="16">
+                                    <Grid ColumnSpacing="20">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="3">
+                                            <TextBlock FontWeight="SemiBold" Text="Installed version" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="{Binding CurrentVersionText, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                            <Button
+                                                Command="{Binding CheckForUpdatesCommand}"
+                                                Content="Check now" />
+                                            <Button
+                                                Command="{Binding ApplyUpdateCommand}"
+                                                Content="Restart to update"
+                                                Style="{StaticResource AppAccentButtonStyle}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Rectangle
+                                        Height="1"
+                                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                                    <Grid ColumnSpacing="20">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="220" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock FontWeight="SemiBold" Text="Automatic checks" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="Installed builds check GitHub Releases in the background. Five minutes is the shortest interval." />
+                                        </StackPanel>
+                                        <ComboBox
+                                            Grid.Column="1"
+                                            HorizontalAlignment="Stretch"
+                                            Header="Check interval"
+                                            DisplayMemberPath="DisplayName"
+                                            ItemsSource="{Binding UpdateIntervalOptions, Mode=OneWay}"
+                                            SelectedItem="{Binding SelectedUpdateIntervalOption, Mode=TwoWay}" />
+                                    </Grid>
+
+                                    <InfoBar
+                                        IsClosable="False"
+                                        IsOpen="True"
+                                        Message="{Binding UpdateStatus, Mode=OneWay}"
+                                        Severity="{Binding UpdateState, Converter={StaticResource AppUpdateStateToInfoBarSeverityConverter}}"
+                                        Title="{Binding UpdateStatusTitle, Mode=OneWay}" />
+
+                                    <ProgressBar
+                                        AutomationProperties.Name="App update progress"
+                                        IsIndeterminate="{Binding IsUpdateProgressIndeterminate, Mode=OneWay}"
+                                        Maximum="100"
+                                        Value="{Binding UpdateProgressPercent, Mode=OneWay}"
+                                        Visibility="{Binding IsUpdateProgressVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                    <Expander Header="Recent changes and release history">
+                                        <StackPanel Padding="0,8,0,4" Spacing="8">
+                                            <TextBlock
+                                                FontWeight="SemiBold"
+                                                Text="Recent highlights" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="• Read-only server maps for legacy and modern Anvil worlds&#x0a;• Multi-provider pack discovery and verified pack output&#x0a;• Managed Java runtimes and automatic server launch recommendations"
+                                                TextWrapping="Wrap" />
+                                            <Button
+                                                HorizontalAlignment="Left"
+                                                Click="OpenExternalUri_Click"
+                                                Content="Open full release history"
+                                                Tag="https://github.com/Kiddabob/MinecraftServerManager/releases" />
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
                             </Border>
+
+                            <TextBlock Style="{StaticResource SectionLabelStyle}" Text="APPEARANCE" />
+
+                            <Border Style="{StaticResource AppCardStyle}">
+                                <StackPanel Spacing="18">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Appearance" />
+                                        <TextBlock
+                                            Style="{StaticResource BodySecondaryTextStyle}"
+                                            Text="These choices affect this app only and are saved for the current Windows account." />
+                                    </StackPanel>
+
+                                    <StackPanel Spacing="8">
+                                        <TextBlock FontWeight="SemiBold" Text="Theme" />
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Button
+                                                Grid.Column="0"
+                                                Click="ThemeChoice_Click"
+                                                Style="{StaticResource AppearanceChoiceButtonStyle}"
+                                                Tag="System">
+                                                <Border
+                                                    x:Name="SystemThemeCard"
+                                                    Padding="8"
+                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                    BorderBrush="Transparent"
+                                                    BorderThickness="2"
+                                                    CornerRadius="9">
+                                                    <StackPanel Spacing="7">
+                                                        <Border
+                                                            Height="56"
+                                                            Background="#FFF7F7F7"
+                                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="6">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <Rectangle Fill="#FFF7F7F7" />
+                                                                <Rectangle Grid.Column="1" Fill="#FF202020" />
+                                                                <Border
+                                                                    Grid.ColumnSpan="2"
+                                                                    Width="72"
+                                                                    Height="18"
+                                                                    Background="#FFE8E8E8"
+                                                                    CornerRadius="4" />
+                                                            </Grid>
+                                                        </Border>
+                                                        <TextBlock
+                                                            HorizontalAlignment="Center"
+                                                            FontWeight="SemiBold"
+                                                            Text="System" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Button>
+
+                                            <Button
+                                                Grid.Column="1"
+                                                Click="ThemeChoice_Click"
+                                                Style="{StaticResource AppearanceChoiceButtonStyle}"
+                                                Tag="Light">
+                                                <Border
+                                                    x:Name="LightThemeCard"
+                                                    Padding="8"
+                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                    BorderBrush="Transparent"
+                                                    BorderThickness="2"
+                                                    CornerRadius="9">
+                                                    <StackPanel Spacing="7">
+                                                        <Border
+                                                            Height="56"
+                                                            Background="#FFF7F7F7"
+                                                            BorderBrush="#22000000"
+                                                            BorderThickness="1"
+                                                            CornerRadius="6">
+                                                            <StackPanel
+                                                                Margin="14"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="6">
+                                                                <Border Height="5" Background="#66000000" CornerRadius="3" />
+                                                                <Border Width="64" Height="5" HorizontalAlignment="Left" Background="#22000000" CornerRadius="3" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <TextBlock
+                                                            HorizontalAlignment="Center"
+                                                            FontWeight="SemiBold"
+                                                            Text="Light" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Button>
+
+                                            <Button
+                                                Grid.Column="2"
+                                                Click="ThemeChoice_Click"
+                                                Style="{StaticResource AppearanceChoiceButtonStyle}"
+                                                Tag="Dark">
+                                                <Border
+                                                    x:Name="DarkThemeCard"
+                                                    Padding="8"
+                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                    BorderBrush="Transparent"
+                                                    BorderThickness="2"
+                                                    CornerRadius="9">
+                                                    <StackPanel Spacing="7">
+                                                        <Border
+                                                            Height="56"
+                                                            Background="#FF202020"
+                                                            BorderBrush="#33FFFFFF"
+                                                            BorderThickness="1"
+                                                            CornerRadius="6">
+                                                            <StackPanel
+                                                                Margin="14"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="6">
+                                                                <Border Height="5" Background="#66FFFFFF" CornerRadius="3" />
+                                                                <Border Width="64" Height="5" HorizontalAlignment="Left" Background="#22FFFFFF" CornerRadius="3" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <TextBlock
+                                                            HorizontalAlignment="Center"
+                                                            FontWeight="SemiBold"
+                                                            Text="Dark" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Rectangle
+                                        Height="1"
+                                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                                    <StackPanel Spacing="10">
+                                        <Grid ColumnSpacing="16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock FontWeight="SemiBold" Text="Accent colour" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="Used for actions, selections and focus. Server health colours stay fixed." />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7">
+                                                <Ellipse
+                                                    x:Name="SelectedAccentPreview"
+                                                    Width="18"
+                                                    Height="18"
+                                                    VerticalAlignment="Center"
+                                                    Fill="{StaticResource AppAccentBrush}" />
+                                                <TextBlock
+                                                    x:Name="SelectedAccentName"
+                                                    VerticalAlignment="Center"
+                                                    FontWeight="SemiBold" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <ScrollViewer
+                                            HorizontalScrollBarVisibility="Auto"
+                                            HorizontalScrollMode="Enabled"
+                                            VerticalScrollBarVisibility="Disabled"
+                                            VerticalScrollMode="Disabled">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="System">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="SystemAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse x:Name="SystemAccentSwatch" Width="28" Height="28" Fill="{StaticResource AppAccentBrush}" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Windows" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="Coral">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="CoralAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse Width="28" Height="28" Fill="#F78370" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Coral" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="Blue">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="BlueAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse Width="28" Height="28" Fill="#60CDFF" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Blue" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="Emerald">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="EmeraldAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse Width="28" Height="28" Fill="#2CCB70" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Emerald" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="Amethyst">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="AmethystAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse Width="28" Height="28" Fill="#A78BFA" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Amethyst" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="Amber">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="AmberAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse Width="28" Height="28" Fill="#F5B942" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Amber" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Click="AccentChoice_Click" Style="{StaticResource AppearanceChoiceButtonStyle}" Tag="Custom">
+                                                    <StackPanel Spacing="4">
+                                                        <Border x:Name="CustomAccentCard" Padding="3" BorderBrush="Transparent" BorderThickness="2" CornerRadius="18">
+                                                            <Ellipse x:Name="CustomAccentSwatch" Width="28" Height="28" Fill="#60CDFF" />
+                                                        </Border>
+                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" Text="Custom" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </StackPanel>
+                                        </ScrollViewer>
+
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="220" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox
+                                                x:Name="CustomAccentHexTextBox"
+                                                Header="Custom RGB hex colour"
+                                                MaxLength="7"
+                                                PlaceholderText="#60CDFF"
+                                                Text="{Binding CustomAccentHex, Mode=TwoWay}" />
+                                            <Button
+                                                Grid.Column="1"
+                                                Margin="0,24,0,0"
+                                                VerticalAlignment="Top"
+                                                Click="ApplyCustomAccent_Click"
+                                                Content="Use custom colour" />
+                                            <TextBlock
+                                                x:Name="CustomAccentValidationMessage"
+                                                Grid.Column="2"
+                                                Margin="4,28,0,0"
+                                                VerticalAlignment="Top"
+                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                Text="Enter a six-digit RGB colour such as #60CDFF."
+                                                TextWrapping="Wrap"
+                                                Visibility="Collapsed" />
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Rectangle
+                                        Height="1"
+                                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                                    <Grid ColumnSpacing="20">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="220" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock FontWeight="SemiBold" Text="Window material" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="Mica is calmer; acrylic is more translucent. Windows may use a solid fallback when transparency is disabled." />
+                                        </StackPanel>
+                                        <ComboBox
+                                            Grid.Column="1"
+                                            HorizontalAlignment="Stretch"
+                                            Header="Backdrop"
+                                            DisplayMemberPath="DisplayName"
+                                            ItemsSource="{Binding BackdropOptions, Mode=OneWay}"
+                                            SelectedItem="{Binding SelectedBackdropOption, Mode=TwoWay}"
+                                            SelectionChanged="AppearanceSelectionChanged" />
+                                    </Grid>
+
+                                    <Rectangle
+                                        Height="1"
+                                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                                    <Grid ColumnSpacing="20">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock FontWeight="SemiBold" Text="Windows accessibility" />
+                                            <TextBlock
+                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                Text="Text size and contrast remain Windows-wide choices and take priority over app colours." />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                            <Button
+                                                Click="OpenExternalUri_Click"
+                                                Content="Text size"
+                                                Tag="ms-settings:easeofaccess-display" />
+                                            <Button
+                                                Click="OpenExternalUri_Click"
+                                                Content="Contrast themes"
+                                                Tag="ms-settings:easeofaccess-highcontrast" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Style="{StaticResource SectionLabelStyle}" Text="JAVA AND RUNTIMES" />
 
                             <Border Style="{StaticResource AppCardStyle}">
                                 <StackPanel Spacing="16">
@@ -3123,52 +3984,71 @@
                                             Command="{Binding RefreshJavaRuntimesCommand}"
                                             Content="Scan again" />
                                     </Grid>
-                                    <ItemsControl ItemsSource="{Binding JavaRuntimeOptions, Mode=OneWay}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border
-                                                    Margin="0,4"
-                                                    Padding="12"
-                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="6">
-                                                    <StackPanel Spacing="3">
-                                                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
-                                                        <TextBlock
-                                                            Style="{StaticResource BodySecondaryTextStyle}"
-                                                            Text="{Binding DetailsText}" />
-                                                        <TextBlock
-                                                            FontFamily="Cascadia Mono"
-                                                            FontSize="12"
-                                                            Style="{StaticResource BodySecondaryTextStyle}"
-                                                            Text="{Binding ExecutablePath}"
-                                                            TextWrapping="Wrap" />
-                                                    </StackPanel>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                    <Expander Header="Show detected installations">
+                                        <ItemsControl
+                                            Padding="0,8,0,0"
+                                            ItemsSource="{Binding JavaRuntimeOptions, Mode=OneWay}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Margin="0,4"
+                                                        Padding="12"
+                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="8">
+                                                        <StackPanel Spacing="3">
+                                                            <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                                                            <TextBlock
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding DetailsText}" />
+                                                            <TextBlock
+                                                                FontFamily="Cascadia Mono"
+                                                                FontSize="12"
+                                                                Style="{StaticResource BodySecondaryTextStyle}"
+                                                                Text="{Binding ExecutablePath}"
+                                                                TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
                                 </StackPanel>
                             </Border>
 
+                            <TextBlock Style="{StaticResource SectionLabelStyle}" Text="ABOUT" />
+
                             <Border Style="{StaticResource AppCardStyle}">
-                                <Grid ColumnSpacing="24">
+                                <Grid ColumnSpacing="20">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="260" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Spacing="4">
-                                        <TextBlock FontWeight="SemiBold" Text="Check for updates" />
+                                    <Image
+                                        Width="48"
+                                        Height="48"
+                                        VerticalAlignment="Top"
+                                        Source="/Assets/AppIcon.png" />
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock
+                                            Style="{StaticResource SectionTitleTextStyle}"
+                                            Text="Minecraft Server Manager" />
                                         <TextBlock
                                             Style="{StaticResource BodySecondaryTextStyle}"
-                                            Text="Installed builds check GitHub in the background. Five minutes is the shortest interval." />
+                                            Text="A local Windows manager for Minecraft servers, modpacks, players and worlds." />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding CurrentVersionText, Mode=OneWay}" />
                                     </StackPanel>
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        DisplayMemberPath="DisplayName"
-                                        ItemsSource="{Binding UpdateIntervalOptions, Mode=OneWay}"
-                                        SelectedItem="{Binding SelectedUpdateIntervalOption, Mode=TwoWay}" />
+                                    <Button
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Click="OpenExternalUri_Click"
+                                        Content="View on GitHub"
+                                        Tag="https://github.com/Kiddabob/MinecraftServerManager" />
                                 </Grid>
                             </Border>
 
@@ -3190,7 +4070,8 @@
                             </Grid>
                         </StackPanel>
                     </ScrollViewer>
-                </Grid>
+                    </Grid>
+                </Border>
             </NavigationView.Content>
         </NavigationView>
     </Grid>

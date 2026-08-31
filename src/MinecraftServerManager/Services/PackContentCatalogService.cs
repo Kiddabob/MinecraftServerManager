@@ -19,16 +19,27 @@ public sealed class PackContentCatalogService : IPackContentCatalogService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var searches = _providers.Values.Select(provider => SearchProviderAsync(
+        var requestedProviders = request.ProviderIds.Count == 0
+            ? _providers.Values
+            : request.ProviderIds
+                .Where(providerId => !string.IsNullOrWhiteSpace(providerId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(providerId => _providers.GetValueOrDefault(providerId))
+                .Where(provider => provider is not null)
+                .Select(provider => provider!);
+        var searches = requestedProviders.Select(provider => SearchProviderAsync(
             provider,
             request,
             cancellationToken));
         var responses = await Task.WhenAll(searches);
         var projects = responses
             .SelectMany(response => response.Page?.Items ?? [])
+            .GroupBy(
+                project => $"{project.ProviderId}\u001f{project.ProjectId}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .OrderByDescending(project => project.Downloads)
             .ThenBy(project => project.Title, StringComparer.CurrentCultureIgnoreCase)
-            .Take(Math.Max(1, request.Limit))
             .ToArray();
         return new PackCatalogSearchPage(
             projects,

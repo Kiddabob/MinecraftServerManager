@@ -21,23 +21,7 @@
             Background="{ThemeResource ControlFillColorSecondaryBrush}"
             CornerRadius="6"
             Visibility="Collapsed">
-            <Viewbox Stretch="UniformToFill">
-                <Canvas Width="8" Height="8">
-                    <Canvas.Clip>
-                        <RectangleGeometry Rect="0,0,8,8" />
-                    </Canvas.Clip>
-                    <Image
-                        x:Name="FaceImage"
-                        Width="64"
-                        Canvas.Left="-8"
-                        Canvas.Top="-8" />
-                    <Image
-                        x:Name="HatImage"
-                        Width="64"
-                        Canvas.Left="-40"
-                        Canvas.Top="-8" />
-                </Canvas>
-            </Viewbox>
+            <Grid x:Name="ImageHost" />
         </Border>
     </Grid>
 </UserControl>

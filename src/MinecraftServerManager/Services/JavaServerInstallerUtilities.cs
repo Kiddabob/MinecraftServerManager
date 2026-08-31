@@ -82,7 +82,7 @@ internal static partial class JavaServerInstallerUtilities
             throw new InvalidDataException("The installer metadata contained an invalid SHA-256 checksum.");
         }
 
-        progress?.Report("Downloading and verifying the official server installer…");
+        progress?.Report("Downloading and verifying the official loader installer…");
         try
         {
             using var response = await HttpClient.GetAsync(
@@ -93,7 +93,7 @@ internal static partial class JavaServerInstallerUtilities
             EnsureOfficialUri(response.RequestMessage?.RequestUri, expectedHost);
             if (response.Content.Headers.ContentLength is > MaximumInstallerBytes)
             {
-                throw new InvalidDataException("The server installer exceeds the safe download limit.");
+                throw new InvalidDataException("The loader installer exceeds the safe download limit.");
             }
 
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -140,7 +140,7 @@ internal static partial class JavaServerInstallerUtilities
                 completed = checked(completed + read);
                 if (completed > MaximumInstallerBytes)
                 {
-                    throw new InvalidDataException("The server installer exceeds the safe download limit.");
+                    throw new InvalidDataException("The loader installer exceeds the safe download limit.");
                 }
 
                 hash.AppendData(buffer, 0, read);
@@ -153,7 +153,7 @@ internal static partial class JavaServerInstallerUtilities
         var actualHash = Convert.ToHexString(hash.GetHashAndReset());
         if (!actualHash.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("The server installer failed SHA-256 verification.");
+            throw new InvalidDataException("The loader installer failed SHA-256 verification.");
         }
 
         ValidateInstallerJar(destinationPath);
@@ -268,7 +268,7 @@ internal static partial class JavaServerInstallerUtilities
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start())
         {
-            throw new InvalidOperationException("The Java server installer could not be started.");
+            throw new InvalidOperationException("The Java loader installer could not be started.");
         }
 
         var tail = new ConcurrentQueue<string>();
@@ -285,7 +285,7 @@ internal static partial class JavaServerInstallerUtilities
         {
             TryKill(process);
             await ObserveOutputTasksAsync(standardOutput, standardError);
-            throw new TimeoutException("The Java server installer did not finish within 15 minutes.");
+            throw new TimeoutException("The Java loader installer did not finish within 15 minutes.");
         }
         catch
         {
@@ -298,7 +298,7 @@ internal static partial class JavaServerInstallerUtilities
         {
             var details = string.Join(Environment.NewLine, tail.TakeLast(12));
             throw new InvalidOperationException(
-                $"The Java server installer exited with code {process.ExitCode}."
+                $"The Java loader installer exited with code {process.ExitCode}."
                 + (details.Length == 0 ? string.Empty : $"{Environment.NewLine}{details}"));
         }
     }
@@ -415,7 +415,7 @@ internal static partial class JavaServerInstallerUtilities
             entry.FullName.Equals("META-INF/MANIFEST.MF", StringComparison.OrdinalIgnoreCase));
         if (manifest is null || manifest.Length > MaximumManifestBytes)
         {
-            throw new InvalidDataException("The downloaded server installer has no valid JAR manifest.");
+            throw new InvalidDataException("The downloaded loader installer has no valid JAR manifest.");
         }
 
         using var reader = new StreamReader(manifest.Open());
@@ -423,7 +423,7 @@ internal static partial class JavaServerInstallerUtilities
         if (!text.Contains("Main-Class:", StringComparison.OrdinalIgnoreCase)
             || !text.Contains("installer", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("The downloaded JAR is not a server installer.");
+            throw new InvalidDataException("The downloaded JAR is not a supported loader installer.");
         }
     }
 

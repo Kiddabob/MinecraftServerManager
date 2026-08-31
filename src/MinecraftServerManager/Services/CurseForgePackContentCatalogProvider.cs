@@ -180,7 +180,7 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
             $"classId={(request.Kind == ServerContentKind.Mod ? MinecraftModsClassId : BukkitPluginsClassId)}",
             $"index={request.Offset}",
             $"pageSize={request.Limit}",
-            "sortField=2",
+            $"sortField={GetSearchSortField(request.Sort)}",
             "sortOrder=desc"
         };
         AddParameter(parameters, "searchFilter", request.Query.Trim());
@@ -196,6 +196,14 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
 
         return $"v1/mods/search?{string.Join('&', parameters)}";
     }
+
+    private static int GetSearchSortField(string sort) => sort.ToLowerInvariant() switch
+    {
+        "downloads" => 6,
+        "updated" => 3,
+        "newest" => 11,
+        _ => 2
+    };
 
     internal static string BuildFilesRequestUri(
         string projectId,

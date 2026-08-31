@@ -40,12 +40,15 @@ public partial class App : Application
         services.AddSingleton<ModrinthModpackCatalogService>();
         services.AddSingleton<TechnicModpackCatalogService>();
         services.AddSingleton<FtbModpackCatalogService>();
+        services.AddSingleton<CurseForgeModpackCatalogService>();
         services.AddSingleton<IModpackCatalogProvider>(provider =>
             provider.GetRequiredService<ModrinthModpackCatalogService>());
         services.AddSingleton<IModpackCatalogProvider>(provider =>
             provider.GetRequiredService<TechnicModpackCatalogService>());
         services.AddSingleton<IModpackCatalogProvider>(provider =>
             provider.GetRequiredService<FtbModpackCatalogService>());
+        services.AddSingleton<IModpackCatalogProvider>(provider =>
+            provider.GetRequiredService<CurseForgeModpackCatalogService>());
         services.AddSingleton<IModpackCatalogService, ModpackCatalogService>();
         services.AddSingleton<IServerContentInventoryService, ServerContentInventoryService>();
         services.AddSingleton<ModrinthServerContentCatalogService>();
@@ -60,6 +63,7 @@ public partial class App : Application
         services.AddSingleton<IPackContentDownloadProvider, ModrinthPackContentDownloadProvider>();
         services.AddSingleton<IPackContentDownloadProvider, CurseForgePackContentDownloadProvider>();
         services.AddSingleton<IPackDraftOutputService, PackDraftOutputService>();
+        services.AddSingleton<IMinecraftLauncherIntegrationService, MinecraftLauncherIntegrationService>();
         services.AddSingleton<IPackDependencyResolver, PackDependencyResolver>();
         services.AddSingleton<IPackPlatformCatalogService, PackPlatformCatalogService>();
         services.AddSingleton<IPackPlatformVersionService, PackPlatformVersionService>();

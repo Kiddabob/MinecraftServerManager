@@ -4,4 +4,6 @@ public sealed record AppThemeOption(string Id, string DisplayName);
 
 public sealed record AccentColorOption(string Id, string DisplayName, string HexColor);
 
+public sealed record AppBackdropOption(string Id, string DisplayName);
+
 public sealed record UpdateIntervalOption(int Minutes, string DisplayName);

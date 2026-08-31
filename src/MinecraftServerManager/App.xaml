@@ -46,6 +46,7 @@
             <infrastructure:ServerLogLevelToBrushConverter x:Key="ServerLogLevelToBrushConverter" />
             <infrastructure:PlayerOnlineToBrushConverter x:Key="PlayerOnlineToBrushConverter" />
             <infrastructure:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <infrastructure:AppUpdateStateToInfoBarSeverityConverter x:Key="AppUpdateStateToInfoBarSeverityConverter" />
 
             <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI Variable Display" />
@@ -68,8 +69,26 @@
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="CornerRadius" Value="12" />
                 <Setter Property="Padding" Value="20" />
+            </Style>
+
+            <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="CharacterSpacing" Value="80" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+
+            <Style
+                x:Key="AppearanceChoiceButtonStyle"
+                TargetType="Button">
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Stretch" />
             </Style>
 
             <Style
@@ -78,6 +97,16 @@
                 TargetType="Button">
                 <Setter Property="Background" Value="{StaticResource AppAccentBrush}" />
                 <Setter Property="Foreground" Value="White" />
+            </Style>
+
+            <Style
+                x:Key="FilterToggleButtonStyle"
+                TargetType="ToggleButton">
+                <Setter Property="MinWidth" Value="148" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="Margin" Value="0,0,8,8" />
+                <Setter Property="Padding" Value="12,5" />
+                <Setter Property="CornerRadius" Value="16" />
             </Style>
 
             <Style x:Key="BulkSelectionToggleStyle" TargetType="ToggleButton">

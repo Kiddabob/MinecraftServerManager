@@ -102,6 +102,7 @@ public sealed class TechnicModpackCatalogService : IModpackCatalogProvider
                 -1,
                 [],
                 ["technic"],
+                [],
                 []));
         }
 

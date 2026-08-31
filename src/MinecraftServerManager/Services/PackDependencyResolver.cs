@@ -20,18 +20,23 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
         await AddVersionAsync(
             request.Project,
             request.Version,
-            isDependency: false,
-            "Selected by the user",
+            request.RootIsDependency,
+            request.RootDependencyType,
+            request.RootReason,
             state,
             cancellationToken);
         ValidateIncompatibilities(state);
-        return new PackResolutionPlan(state.Items, state.Warnings, state.Conflicts);
+        return new PackResolutionPlan(state.Items, state.Warnings, state.Conflicts)
+        {
+            OptionalDependencies = state.OptionalDependencies
+        };
     }
 
     private async Task AddVersionAsync(
         ServerContentProject? project,
         ServerContentVersion version,
         bool isDependency,
+        string dependencyType,
         string reason,
         ResolutionState state,
         CancellationToken cancellationToken)
@@ -110,7 +115,11 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
             contentKind,
             placement.Value,
             isDependency,
-            reason);
+            reason)
+        {
+            DependencyType = dependencyType,
+            IsExplicitSelection = !isDependency || dependencyType == "optional"
+        };
         state.Items.Add(item);
 
         foreach (var dependency in version.Dependencies)
@@ -134,18 +143,67 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
                     }
 
                     await AddVersionAsync(
-                        project: null,
+                        null,
                         dependencyVersion,
-                        isDependency: true,
+                        true,
+                        "required",
                         $"Required by {item.DisplayName}",
                         state,
                         cancellationToken);
                     break;
                 }
                 case "optional":
-                    state.Warnings.Add(
-                        $"{item.DisplayName} declares optional dependency {dependencyLabel}; it was not added automatically.");
+                {
+                    if (ContainsDependency(dependency, version.ProviderId, state))
+                    {
+                        break;
+                    }
+
+                    var optionalVersion = await ResolveDependencyVersionAsync(
+                        version.ProviderId,
+                        dependency,
+                        state,
+                        cancellationToken);
+                    if (optionalVersion is null)
+                    {
+                        state.Warnings.Add(
+                            $"{item.DisplayName} declares optional dependency {dependencyLabel}, but no compatible published version was found.");
+                        break;
+                    }
+
+                    var optionalKind = InferDependencyKind(optionalVersion, contentKind);
+                    var optionalPlacement = DeterminePlacement(
+                        optionalVersion,
+                        optionalKind,
+                        state.Request.Target,
+                        state.Request.ClientLoaderIds,
+                        state.Request.ServerLoaderIds,
+                        out var optionalWarning);
+                    if (optionalPlacement is null)
+                    {
+                        state.Warnings.Add(
+                            $"Optional dependency {DisplayName(null, optionalVersion)} does not match the selected client or server platform.");
+                        break;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(optionalWarning))
+                    {
+                        state.Warnings.Add($"{DisplayName(null, optionalVersion)}: {optionalWarning}");
+                    }
+
+                    if (!state.OptionalDependencies.Any(choice =>
+                            choice.ProviderId.Equals(optionalVersion.ProviderId, StringComparison.OrdinalIgnoreCase)
+                            && choice.ProjectId.Equals(optionalVersion.ProjectId, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        state.OptionalDependencies.Add(new PackOptionalDependencyChoice(
+                            item.DisplayName,
+                            optionalKind,
+                            optionalVersion,
+                            optionalPlacement.Value));
+                    }
+
                     break;
+                }
                 case "incompatible":
                     state.Incompatibilities.Add(new IncompatibilityRule(
                         item.DisplayName,
@@ -384,6 +442,8 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
         public List<string> Warnings { get; } = [];
 
         public List<string> Conflicts { get; } = [];
+
+        public List<PackOptionalDependencyChoice> OptionalDependencies { get; } = [];
 
         public List<IncompatibilityRule> Incompatibilities { get; } = [];
 

@@ -3,11 +3,5 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     IsHitTestVisible="False">
-    <Grid Background="#17202A">
-        <Image
-            x:Name="MapImage"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            Stretch="Fill" />
-    </Grid>
+    <Grid x:Name="ImageHost" Background="#17202A" />
 </UserControl>

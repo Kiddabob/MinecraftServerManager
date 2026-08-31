@@ -1,4 +1,39 @@
+using MinecraftServerManager.Infrastructure;
+
 namespace MinecraftServerManager.Models;
+
+public sealed record ModpackCatalogSearchRequest(
+    string Query,
+    int Offset,
+    int Limit,
+    IReadOnlyList<string> ProviderIds,
+    string MinecraftVersion,
+    string LoaderId,
+    IReadOnlyList<string> Categories);
+
+public sealed class ModpackFilterOption : BindableBase
+{
+    private bool _isSelected;
+
+    public ModpackFilterOption(string id, string displayName, bool isSelected = false)
+    {
+        Id = id;
+        DisplayName = displayName;
+        _isSelected = isSelected;
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+}
+
+public sealed record ModpackPageSizeOption(int Value, string DisplayName);
 
 public sealed record ModpackCatalogSearchPage(
     IReadOnlyList<ModpackCatalogItem> Items,
@@ -27,6 +62,7 @@ public sealed record ModpackCatalogItem(
     long Downloads,
     IReadOnlyList<string> MinecraftVersions,
     IReadOnlyList<string> Categories,
+    IReadOnlyList<string> Loaders,
     IReadOnlyList<string> Environments)
 {
     public string ProviderName => ProviderId.ToLowerInvariant() switch
@@ -34,6 +70,7 @@ public sealed record ModpackCatalogItem(
         "modrinth" => "Modrinth",
         "technic" => "Technic",
         "ftb" => "Feed The Beast",
+        "curseforge" => "CurseForge",
         _ => ProviderId
     };
 
@@ -50,6 +87,10 @@ public sealed record ModpackCatalogItem(
     public string CategorySummary => Categories.Count == 0
         ? "Modpack"
         : string.Join(" • ", Categories.Take(4).Select(ToDisplayText));
+
+    public string LoaderSummary => Loaders.Count == 0
+        ? "Loader metadata available after choosing a version"
+        : string.Join(" / ", Loaders.Select(ToDisplayText));
 
     private static string ToDisplayText(string value) => string.Join(
         " ",
@@ -117,6 +158,8 @@ public sealed record ModpackCatalogVersion(
     public string ServerCompatibilityText => Environment switch
     {
         "dedicated_server_only" => "Published for dedicated servers",
+        "catalog_only_server_pack" => "CurseForge marks a server pack for this release",
+        "catalog_only" => "Published in the CurseForge catalogue",
         "server_only" or "server_only_client_optional" => "Published as a server pack",
         "client_and_server" or "client_or_server" or "client_or_server_prefers_both" =>
             "Published for client and server use",
@@ -138,7 +181,9 @@ public sealed record ModpackCatalogVersion(
     };
 
     public string ImportReadinessText => PackFile is null
-        ? "This provider has not published a supported server download for this version."
+        ? Environment is "catalog_only" or "catalog_only_server_pack"
+            ? "CurseForge discovery is available. Direct CurseForge modpack installation is not enabled in this build yet."
+            : "This provider has not published a supported server download for this version."
         : IsServerCompatible
             ? PackFile.PackageKind switch
             {

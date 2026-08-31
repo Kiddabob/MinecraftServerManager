@@ -41,8 +41,12 @@ public sealed class MainViewModel : BindableBase
     private bool _isJavaInstallProgressIndeterminate;
     private bool _canNavigateUp;
     private bool _isUpdateReady;
+    private AppUpdateState _updateState = AppUpdateState.Disabled;
+    private double _updateProgressPercent;
     private AppThemeOption? _selectedThemeOption;
     private AccentColorOption? _selectedAccentOption;
+    private AppBackdropOption? _selectedBackdropOption;
+    private string _customAccentHex = "#60CDFF";
     private UpdateIntervalOption? _selectedUpdateIntervalOption;
     private PlayerScopeOption? _selectedPlayerScope;
     private string _playerSummaryText = "Tracking begins when a player joins a server started here.";
@@ -116,10 +120,17 @@ public sealed class MainViewModel : BindableBase
         AccentOptions =
         [
             new("System", "Windows accent", "#60CDFF"),
+            new("Coral", "Coral", "#F78370"),
             new("Blue", "Blue", "#60CDFF"),
             new("Emerald", "Emerald", "#2CCB70"),
             new("Amethyst", "Amethyst", "#A78BFA"),
-            new("Amber", "Amber", "#F5B942")
+            new("Amber", "Amber", "#F5B942"),
+            new("Custom", "Custom", "#60CDFF")
+        ];
+        BackdropOptions =
+        [
+            new("Mica", "Mica"),
+            new("Acrylic", "Acrylic")
         ];
         UpdateIntervalOptions =
         [
@@ -133,6 +144,7 @@ public sealed class MainViewModel : BindableBase
 
         StartSelectedCommand = new AsyncRelayCommand(StartSelectedAsync, CanStartSelected);
         StopSelectedCommand = new AsyncRelayCommand(StopSelectedAsync, CanStopSelected);
+        CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync);
         ApplyUpdateCommand = new AsyncRelayCommand(ApplyUpdateAsync, CanApplyUpdate);
         RefreshFilesCommand = new AsyncRelayCommand(RefreshServerFilesAsync, CanBrowseFiles);
         NavigateUpCommand = new AsyncRelayCommand(NavigateUpAsync, () => CanNavigateUp);
@@ -178,11 +190,15 @@ public sealed class MainViewModel : BindableBase
 
     public IReadOnlyList<AccentColorOption> AccentOptions { get; }
 
+    public IReadOnlyList<AppBackdropOption> BackdropOptions { get; }
+
     public IReadOnlyList<UpdateIntervalOption> UpdateIntervalOptions { get; }
 
     public AsyncRelayCommand StartSelectedCommand { get; }
 
     public AsyncRelayCommand StopSelectedCommand { get; }
+
+    public AsyncRelayCommand CheckForUpdatesCommand { get; }
 
     public AsyncRelayCommand ApplyUpdateCommand { get; }
 
@@ -341,6 +357,18 @@ public sealed class MainViewModel : BindableBase
         set => SetProperty(ref _selectedAccentOption, value);
     }
 
+    public AppBackdropOption? SelectedBackdropOption
+    {
+        get => _selectedBackdropOption;
+        set => SetProperty(ref _selectedBackdropOption, value);
+    }
+
+    public string CustomAccentHex
+    {
+        get => _customAccentHex;
+        set => SetProperty(ref _customAccentHex, value);
+    }
+
     public UpdateIntervalOption? SelectedUpdateIntervalOption
     {
         get => _selectedUpdateIntervalOption;
@@ -375,6 +403,51 @@ public sealed class MainViewModel : BindableBase
     {
         get => _updateStatus;
         private set => SetProperty(ref _updateStatus, value);
+    }
+
+    public AppUpdateState UpdateState
+    {
+        get => _updateState;
+        private set
+        {
+            if (SetProperty(ref _updateState, value))
+            {
+                OnPropertyChanged(nameof(UpdateStatusTitle));
+                OnPropertyChanged(nameof(IsUpdateProgressVisible));
+                OnPropertyChanged(nameof(IsUpdateProgressIndeterminate));
+            }
+        }
+    }
+
+    public string UpdateStatusTitle => UpdateState switch
+    {
+        AppUpdateState.UpToDate => "App is up to date",
+        AppUpdateState.Downloading => "Downloading update",
+        AppUpdateState.ReadyToApply => "Update ready",
+        AppUpdateState.Failed => "Update check failed",
+        AppUpdateState.Checking => "Checking for updates",
+        _ => "App updates"
+    };
+
+    public double UpdateProgressPercent
+    {
+        get => _updateProgressPercent;
+        private set => SetProperty(ref _updateProgressPercent, value);
+    }
+
+    public bool IsUpdateProgressVisible => UpdateState is AppUpdateState.Checking or AppUpdateState.Downloading;
+
+    public bool IsUpdateProgressIndeterminate => UpdateState == AppUpdateState.Checking;
+
+    public string CurrentVersionText
+    {
+        get
+        {
+            var version = typeof(MainViewModel).Assembly.GetName().Version;
+            return version is null
+                ? "Development build"
+                : $"Version {version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
+        }
     }
 
     public string CurrentFilesPath
@@ -461,6 +534,8 @@ public sealed class MainViewModel : BindableBase
             var preferences = await _appSettingsService.LoadAsync();
             SelectedThemeOption = ThemeOptions.First(option => option.Id == preferences.Theme);
             SelectedAccentOption = AccentOptions.First(option => option.Id == preferences.AccentColor);
+            CustomAccentHex = preferences.CustomAccentColor;
+            SelectedBackdropOption = BackdropOptions.First(option => option.Id == preferences.Backdrop);
             SelectedUpdateIntervalOption = UpdateIntervalOptions.First(
                 option => option.Minutes == preferences.UpdateCheckIntervalMinutes);
 
@@ -1164,6 +1239,8 @@ public sealed class MainViewModel : BindableBase
 
     private bool CanApplyUpdate() => IsUpdateReady;
 
+    private Task CheckForUpdatesAsync() => _appUpdateService.CheckNowAsync();
+
     private bool CanBrowseFiles() => SelectedProfile is not null
         && Directory.Exists(SelectedProfile.ServerDirectory);
 
@@ -1289,6 +1366,8 @@ public sealed class MainViewModel : BindableBase
         {
             Theme = SelectedThemeOption?.Id ?? "System",
             AccentColor = SelectedAccentOption?.Id ?? "System",
+            CustomAccentColor = CustomAccentHex,
+            Backdrop = SelectedBackdropOption?.Id ?? "Mica",
             UpdateCheckIntervalMinutes = SelectedUpdateIntervalOption?.Minutes ?? 15,
             LastProfileId = SelectedProfile?.Id
         };
@@ -1347,6 +1426,8 @@ public sealed class MainViewModel : BindableBase
         _uiDispatcher.TryEnqueue(() =>
         {
             UpdateStatus = args.Message;
+            UpdateState = args.State;
+            UpdateProgressPercent = args.ProgressPercent ?? 0;
             IsUpdateReady = args.State == AppUpdateState.ReadyToApply;
         });
     }

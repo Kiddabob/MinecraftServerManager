@@ -777,6 +777,9 @@ try
     AssertTrue(
         modpackSearch.Items.Single().IconUrl.StartsWith("https://cdn.modrinth.com/", StringComparison.Ordinal),
         "Modrinth icon host validation");
+    AssertTrue(
+        modpackSearch.Items.Single().Loaders.Contains("forge", StringComparer.OrdinalIgnoreCase),
+        "Modrinth modpack search derives loader metadata from display categories");
 
     using var technicSearchDocument = JsonDocument.Parse("""
         {
@@ -876,6 +879,9 @@ try
     var ftbPack = FtbModpackCatalogService.ParsePackItem(ftbPackDocument.RootElement)!;
     AssertEqual("ftb", ftbPack.ProviderId, "FTB provider identity");
     AssertEqual("FTB Academy 1.16", ftbPack.Title, "FTB catalogue title");
+    AssertTrue(
+        ftbPack.Loaders.Contains("forge", StringComparer.OrdinalIgnoreCase),
+        "FTB catalogue item exposes loader metadata for filtering");
     var ftbVersion = FtbModpackCatalogService.ParseVersions(
         ftbPackDocument.RootElement,
         ftbPack).Single();
@@ -949,6 +955,22 @@ try
         builderFacets.Any(group => group.Contains("environment:client_only"))
         && builderFacets.Any(group => group.Contains("environment:server_only")),
         "linked builder searches both client and server environments");
+    var similarContentFacets = ModrinthServerContentCatalogService.BuildPackSearchFacets(
+        new PackCatalogSearchRequest(
+            string.Empty,
+            "1.12.2",
+            ServerContentKind.Mod,
+            PackBuildTarget.ClientAndServer,
+            ["forge"],
+            ["technology"])
+        {
+            Environments = ["client_and_server", "client_or_server"]
+        });
+    AssertTrue(
+        similarContentFacets.Any(group => group.Contains("environment:client_and_server")
+            && group.Contains("environment:client_or_server"))
+        && !similarContentFacets.Any(group => group.Contains("environment:client_only")),
+        "similar-content facets preserve the source project's client and server compatibility");
 
     var contentVersionsJson = """
         [{
@@ -1013,7 +1035,10 @@ try
         ServerContentKind.Mod,
         PackBuildTarget.ClientAndServer,
         ["forge"],
-        []);
+        [])
+    {
+        Sort = "downloads"
+    };
     var curseForgeSearchUri = CurseForgePackContentCatalogProvider.BuildSearchRequestUri(
         curseForgeSearchRequest,
         CurseForgePackContentCatalogProvider.ToModLoaderType("forge"));
@@ -1021,8 +1046,9 @@ try
         curseForgeSearchUri.Contains("gameId=432", StringComparison.Ordinal)
         && curseForgeSearchUri.Contains("classId=6", StringComparison.Ordinal)
         && curseForgeSearchUri.Contains("gameVersion=1.20.1", StringComparison.Ordinal)
-        && curseForgeSearchUri.Contains("modLoaderType=1", StringComparison.Ordinal),
-        "CurseForge search targets Minecraft mods, release, and Forge loader");
+        && curseForgeSearchUri.Contains("modLoaderType=1", StringComparison.Ordinal)
+        && curseForgeSearchUri.Contains("sortField=6", StringComparison.Ordinal),
+        "CurseForge search targets Minecraft mods, release, Forge loader, and requested sort");
     using var curseForgeSearchDocument = JsonDocument.Parse("""
         {
           "data": [{
@@ -1059,6 +1085,69 @@ try
     AssertTrue(
         curseForgeSearch.Items.Single().MinecraftVersions.Contains("1.20.1"),
         "CurseForge search retains Minecraft 1.20.1 compatibility");
+
+    using var curseForgeClassesDocument = JsonDocument.Parse("""
+        {
+          "data": [
+            { "id": 6, "name": "Mods", "slug": "mc-mods" },
+            { "id": 4471, "name": "Modpacks", "slug": "modpacks" }
+          ]
+        }
+        """);
+    AssertEqual(
+        4471,
+        CurseForgeModpackCatalogService.ParseModpackClassId(curseForgeClassesDocument.RootElement),
+        "CurseForge modpack class is discovered from API metadata");
+    var curseForgeModpackSearch = CurseForgeModpackCatalogService.ParseSearchResponse(
+        curseForgeSearchDocument.RootElement);
+    AssertEqual(1, curseForgeModpackSearch.Items.Count, "CurseForge modpack catalogue parsing");
+    AssertEqual("curseforge", curseForgeModpackSearch.Items.Single().ProviderId, "CurseForge modpack identity");
+    AssertTrue(
+        curseForgeModpackSearch.Items.Single().Loaders.Contains("forge", StringComparer.OrdinalIgnoreCase),
+        "CurseForge modpack loader metadata");
+    using var curseForgeModpackVersionsDocument = JsonDocument.Parse("""
+        {
+          "data": [{
+            "id": 4800000,
+            "isAvailable": true,
+            "displayName": "Example Pack 1.20.1",
+            "fileName": "Example-Pack-1.20.1.zip",
+            "releaseType": 1,
+            "fileDate": "2024-01-01T12:00:00Z",
+            "gameVersions": ["1.20.1", "Forge"],
+            "serverPackFileId": 4800001
+          }]
+        }
+        """);
+    var curseForgeModpackVersions = CurseForgeModpackCatalogService.ParseVersionsResponse(
+        curseForgeModpackVersionsDocument.RootElement,
+        curseForgeModpackSearch.Items.Single());
+    AssertEqual(1, curseForgeModpackVersions.Count, "CurseForge modpack version parsing");
+    AssertEqual(
+        "catalog_only_server_pack",
+        curseForgeModpackVersions.Single().Environment,
+        "CurseForge server-pack availability remains visible without claiming import support");
+    AssertTrue(
+        curseForgeModpackVersions.Single().MinecraftVersions.Contains("1.20.1")
+        && curseForgeModpackVersions.Single().Loaders.Contains("forge"),
+        "CurseForge modpack version retains Minecraft and loader filters");
+
+    var filteredCatalog = new ModpackCatalogService(
+    [
+        new StubModpackCatalogProvider("modrinth", "Modrinth", modpackSearch),
+        new StubModpackCatalogProvider("curseforge", "CurseForge", curseForgeModpackSearch)
+    ]);
+    var filteredModpacks = await filteredCatalog.SearchAsync(new ModpackCatalogSearchRequest(
+        "Example",
+        0,
+        20,
+        ["modrinth"],
+        "1.20.1",
+        "forge",
+        ["adventure"]));
+    AssertEqual(1, filteredModpacks.Items.Count, "combined modpack catalogue applies provider and metadata filters");
+    AssertEqual(1, filteredModpacks.ProviderStatuses.Count, "combined modpack catalogue searches selected providers only");
+    AssertEqual(1, filteredModpacks.TotalHits, "combined modpack catalogue reports its bounded result window");
 
     using var curseForgeFilesDocument = JsonDocument.Parse("""
         {
@@ -1837,19 +1926,29 @@ try
         "fabric",
         "client_only",
         [new ServerContentDependency(string.Empty, "root-project", string.Empty, "required")]);
+    var optionalLibrary = MakePackVersion(
+        "optional-project",
+        "optional-compatible",
+        "Optional Library 1.0",
+        "1.0.0",
+        "1.20.1",
+        "fabric",
+        "client_only");
     var packProvider = new StubPackContentCatalogProvider(
         "stub",
         [packRootProject],
         new Dictionary<string, IReadOnlyList<ServerContentVersion>>(StringComparer.OrdinalIgnoreCase)
         {
             ["root-project"] = [packRootVersion],
-            ["library-project"] = [incompatibleNewestLibrary, compatibleLibrary]
+            ["library-project"] = [incompatibleNewestLibrary, compatibleLibrary],
+            ["optional-project"] = [optionalLibrary]
         },
         new Dictionary<string, ServerContentVersion>(StringComparer.OrdinalIgnoreCase)
         {
             [packRootVersion.VersionId] = packRootVersion,
             [incompatibleNewestLibrary.VersionId] = incompatibleNewestLibrary,
-            [compatibleLibrary.VersionId] = compatibleLibrary
+            [compatibleLibrary.VersionId] = compatibleLibrary,
+            [optionalLibrary.VersionId] = optionalLibrary
         });
     var packCatalog = new PackContentCatalogService(
         [packProvider, new FailingPackContentCatalogProvider()]);
@@ -1866,6 +1965,21 @@ try
     AssertTrue(
         aggregatedSearch.Providers.Any(provider => !provider.IsAvailable),
         "pack catalogue isolates a provider failure");
+    var providerFilteredSearch = await packCatalog.SearchAsync(new PackCatalogSearchRequest(
+        "root",
+        "1.20.1",
+        ServerContentKind.Mod,
+        PackBuildTarget.ClientAndServer,
+        ["fabric"],
+        [],
+        0,
+        20)
+    {
+        ProviderIds = ["stub"]
+    });
+    AssertEqual(1, providerFilteredSearch.Providers.Count, "pack catalogue searches only selected providers");
+    AssertEqual(1, providerFilteredSearch.TotalHits, "pack catalogue totals selected provider hits");
+    AssertEqual(1, providerFilteredSearch.MaximumProviderHits, "pack catalogue page depth uses largest provider");
     var unconfiguredCurseForge = new CurseForgePackContentCatalogProvider(
         new HttpClient { BaseAddress = new Uri("https://api.curseforge.com/") },
         string.Empty);
@@ -1906,9 +2020,14 @@ try
             item.VersionId == "root-version"
             && item.Placement == PackContentPlacement.Both),
         "pack resolver places shared content on both sides");
+    AssertEqual(1, readyPlan.OptionalDependencies.Count, "pack resolver exposes optional dependency choices");
+    AssertEqual(
+        "optional-compatible",
+        readyPlan.OptionalDependencies.Single().VersionId,
+        "pack resolver selects a compatible optional dependency without auto-adding it");
     AssertTrue(
-        readyPlan.Warnings.Any(warning => warning.Contains("optional", StringComparison.OrdinalIgnoreCase)),
-        "pack resolver surfaces optional dependency without auto-adding it");
+        readyPlan.Items.All(item => item.VersionId != "optional-compatible"),
+        "optional dependency stays out of the draft until selected");
 
     var rootOutputBytes = Encoding.UTF8.GetBytes("verified root content");
     var libraryOutputBytes = Encoding.UTF8.GetBytes("verified client library");
@@ -1964,6 +2083,20 @@ try
         string.Empty,
         outputParent,
         readyPlan.Items);
+    await AssertThrowsAsync<InvalidDataException>(
+        () => outputService.CreatePlanAsync(new PackOutputRequest(
+            "Mismatched Linked Pack",
+            PackBuildTarget.ClientAndServer,
+            "1.20.1",
+            "fabric-client",
+            "forge-server",
+            "fabric-loader",
+            "0.16.10",
+            "forge",
+            "47.3.5",
+            outputParent,
+            readyPlan.Items)),
+        "builder refuses mismatched client and server loader versions");
     var outputPlan = await outputService.CreatePlanAsync(outputRequest);
     AssertEqual(2, outputPlan.Items.Count, "builder output plan resolves every draft version");
     AssertEqual(3, outputPlan.Items.Sum(item => item.RelativePaths.Count), "builder output side placement count");
@@ -1986,8 +2119,114 @@ try
         AssertTrue(
             outputManifest.RootElement.GetProperty("contentOnly").GetBoolean(),
             "builder manifest declares content-only output");
+        AssertTrue(
+            outputManifest.RootElement.GetProperty("clientPrepared").GetBoolean()
+            && !outputManifest.RootElement.GetProperty("clientPlayable").GetBoolean(),
+            "builder manifest distinguishes prepared client files from launcher registration");
         AssertEqual(2, outputManifest.RootElement.GetProperty("items").GetArrayLength(), "builder manifest item count");
     }
+
+    var launcherRoot = Path.Combine(testRoot, "minecraft-launcher-data");
+    Directory.CreateDirectory(launcherRoot);
+    var launcherProfilesPath = Path.Combine(launcherRoot, "launcher_profiles.json");
+    await File.WriteAllTextAsync(
+        launcherProfilesPath,
+        """
+        {
+          "profiles": {
+            "existing-profile": {
+              "name": "Existing profile",
+              "lastVersionId": "1.20.1"
+            }
+          },
+          "selectedProfile": "existing-profile",
+          "clientToken": "test-sentinel-token",
+          "settings": { "keepThis": true }
+        }
+        """);
+    var fabricClientProfileJson = """
+        {
+          "id": "fabric-loader-0.16.10-1.20.1",
+          "inheritsFrom": "1.20.1",
+          "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+          "libraries": [{ "name": "net.fabricmc:fabric-loader:0.16.10" }]
+        }
+        """;
+    var launcherHttpClient = new HttpClient(new StubHttpMessageHandler(request =>
+    {
+        AssertEqual("meta.fabricmc.net", request.RequestUri!.Host, "Fabric client launcher profile host");
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = request,
+            Content = new StringContent(fabricClientProfileJson, Encoding.UTF8, "application/json")
+        };
+    }));
+    var launcherIntegration = new MinecraftLauncherIntegrationService(
+        launcherRoot,
+        launcherHttpClient,
+        runtimeService,
+        isLauncherRunning: () => false,
+        openLauncher: () => false);
+    var launcherInstallRequest = new MinecraftLauncherInstallRequest(
+        "Example Built Pack",
+        "1.20.1",
+        "fabric-loader",
+        "0.16.10",
+        Path.Combine(outputResult.OutputDirectory, "Client"),
+        outputResult.ManifestPath);
+    var launcherInstallResult = await launcherIntegration.InstallAsync(launcherInstallRequest);
+    AssertEqual(
+        "fabric-loader-0.16.10-1.20.1",
+        launcherInstallResult.VersionId,
+        "launcher integration records exact Fabric client version");
+    AssertTrue(
+        File.Exists(Path.Combine(
+            launcherRoot,
+            "versions",
+            launcherInstallResult.VersionId,
+            launcherInstallResult.VersionId + ".json")),
+        "launcher integration installs the official Fabric version profile");
+    AssertTrue(File.Exists(launcherInstallResult.BackupPath), "launcher integration backs up profiles before editing");
+    using (var launcherProfiles = JsonDocument.Parse(File.ReadAllText(launcherProfilesPath)))
+    {
+        var root = launcherProfiles.RootElement;
+        AssertEqual(
+            "test-sentinel-token",
+            root.GetProperty("clientToken").GetString(),
+            "launcher integration preserves unrelated profile data");
+        AssertTrue(root.GetProperty("settings").GetProperty("keepThis").GetBoolean(),
+            "launcher integration preserves launcher settings");
+        AssertEqual(
+            launcherInstallResult.ProfileId,
+            root.GetProperty("selectedProfile").GetString(),
+            "launcher integration selects the built pack");
+        var builtProfile = root.GetProperty("profiles").GetProperty(launcherInstallResult.ProfileId);
+        AssertEqual(
+            Path.Combine(outputResult.OutputDirectory, "Client"),
+            builtProfile.GetProperty("gameDir").GetString(),
+            "launcher integration isolates the built client game directory");
+    }
+
+    using (var playableManifest = JsonDocument.Parse(File.ReadAllText(outputResult.ManifestPath)))
+    {
+        AssertTrue(
+            playableManifest.RootElement.GetProperty("clientPlayable").GetBoolean(),
+            "launcher integration marks the built client playable");
+        AssertEqual(
+            launcherInstallResult.ProfileId,
+            playableManifest.RootElement.GetProperty("minecraftLauncherProfileId").GetString(),
+            "launcher integration records the launcher profile in the audit manifest");
+    }
+
+    var blockedLauncherIntegration = new MinecraftLauncherIntegrationService(
+        launcherRoot,
+        launcherHttpClient,
+        runtimeService,
+        isLauncherRunning: () => true,
+        openLauncher: () => false);
+    await AssertThrowsAsync<InvalidOperationException>(
+        () => blockedLauncherIntegration.InstallAsync(launcherInstallRequest),
+        "launcher integration refuses to edit profiles while Minecraft Launcher is open");
 
     var serverOutputParent = Path.Combine(testRoot, "builder-runnable-server");
     Directory.CreateDirectory(serverOutputParent);
@@ -2274,14 +2513,23 @@ try
         runtimeService,
         new StubCurseForgeApiKeyService(),
         new StubPackDraftOutputService(),
+        new StubMinecraftLauncherIntegrationService(),
         new ModpackInstallLocationService(Path.Combine(testRoot, "builder-local-app-data")));
     builderViewModel.SelectedMinecraftVersion = "1.6.4";
     AssertEqual("forge-client", builderViewModel.SelectedClientPlatform!.Id, "legacy client fallback");
     AssertEqual("forge-server", builderViewModel.SelectedServerPlatform!.Id, "legacy server fallback");
     builderViewModel.SelectedMinecraftVersion = "1.20.2";
     AssertEqual("forge-client", builderViewModel.SelectedClientPlatform!.Id, "valid client choice is preserved");
+    AssertTrue(
+        builderViewModel.ServerPlatforms.Select(platform => platform.Id).Order().SequenceEqual(
+            new[] { "forge-server", "hybrid-forge-server" }.Order()),
+        "linked builder offers only server platforms compatible with the selected client loader");
     builderViewModel.SelectedClientPlatform = builderViewModel.ClientPlatforms.Single(platform =>
         platform.Id == "neoforge-client");
+    AssertEqual(
+        "neoforge-server",
+        builderViewModel.ServerPlatforms.Single().Id,
+        "changing the linked client loader narrows the matching server choices");
     builderViewModel.SelectedServerPlatform = builderViewModel.ServerPlatforms.Single(platform =>
         platform.Id == "neoforge-server");
     builderViewModel.SelectedMinecraftVersion = "1.20.1";
@@ -2290,6 +2538,117 @@ try
     AssertTrue(
         builderViewModel.ClientPlatformGuidance.Contains("Available for Minecraft 1.20.1", StringComparison.Ordinal),
         "loader guidance names the selected Minecraft release");
+    builderViewModel.SelectedProject = packRootProject with
+    {
+        Title = "Food Example",
+        Categories = ["fabric", "food"]
+    };
+    await builderViewModel.FindSimilarAsync();
+    AssertTrue(
+        builderViewModel.IsShowingSimilarContent
+        && builderViewModel.SearchResultsTitle.Contains("Food Example", StringComparison.Ordinal),
+        "builder clearly labels inferred similar-content results");
+    AssertTrue(
+        builderViewModel.CategoryFilters.Single(filter => filter.Id == "food").IsSelected,
+        "builder derives similar content from a published functional category instead of title words");
+    var unavailableTargetProject = packRootProject with
+    {
+        ProviderId = "modrinth",
+        ProjectId = "create",
+        Slug = "create",
+        Title = "Create",
+        Description = "A technology and automation mod published after Minecraft 1.12.2.",
+        MinecraftVersions = ["1.20.1"],
+        Categories = ["decoration", "technology"],
+        Environments = ["client_and_server"]
+    };
+    var compatibleAlternativeProject = packRootProject with
+    {
+        ProviderId = "modrinth",
+        ProjectId = "immersive-engineering",
+        Slug = "immersive-engineering",
+        Title = "Immersive Engineering",
+        Description = "A differently named technology and automation alternative.",
+        MinecraftVersions = ["1.12.2"],
+        Categories = ["technology", "forge"],
+        Environments = ["client_and_server"]
+    };
+    var clientOnlyTechnologyProject = packRootProject with
+    {
+        ProviderId = "modrinth",
+        ProjectId = "euphoria-patches",
+        Slug = "euphoria-patches",
+        Title = "Euphoria Patches",
+        Description = "A client-only shader add-on that Modrinth also tags as technology.",
+        Downloads = compatibleAlternativeProject.Downloads + 10_000_000,
+        MinecraftVersions = ["1.12.2"],
+        Categories = ["technology", "forge"],
+        Environments = ["client_only"]
+    };
+    var alternativeProvider = new StubPackContentCatalogProvider(
+        "modrinth",
+        [],
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(),
+        new Dictionary<string, ServerContentVersion>(),
+        request =>
+        {
+            if (request.Query.Equals("Create", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(request.MinecraftVersion))
+            {
+                return [unavailableTargetProject];
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Query)
+                && request.MinecraftVersion == "1.12.2"
+                && request.Categories.Contains("technology", StringComparer.OrdinalIgnoreCase))
+            {
+                return request.Environments.Contains(
+                    "client_and_server",
+                    StringComparer.OrdinalIgnoreCase)
+                    ? [compatibleAlternativeProject]
+                    : [clientOnlyTechnologyProject, compatibleAlternativeProject];
+            }
+
+            return [];
+        });
+    var alternativeCatalog = new PackContentCatalogService([alternativeProvider]);
+    var alternativeBuilder = new PackBuilderViewModel(
+        alternativeCatalog,
+        new PackDependencyResolver(alternativeCatalog),
+        platformCatalog,
+        new StubPackPlatformVersionService(),
+        runtimeService,
+        new StubCurseForgeApiKeyService(),
+        new StubPackDraftOutputService(),
+        new StubMinecraftLauncherIntegrationService(),
+        new ModpackInstallLocationService(Path.Combine(testRoot, "alternative-builder-local-app-data")));
+    alternativeBuilder.SelectedMinecraftVersion = "1.12.2";
+    alternativeBuilder.SearchText = "Create";
+    await alternativeBuilder.SearchFromStartAsync();
+    AssertEqual(0, alternativeBuilder.SearchResults.Count, "missing target-version mod has no direct result");
+    AssertTrue(
+        alternativeBuilder.CanFindSimilar
+        && alternativeBuilder.SimilarContentButtonText.Contains("compatible alternatives", StringComparison.OrdinalIgnoreCase),
+        "missing direct result enables compatible-alternatives action");
+    await alternativeBuilder.FindSimilarAsync();
+    AssertTrue(
+        alternativeBuilder.IsShowingSimilarContent
+        && alternativeBuilder.SearchResultsTitle.Contains(
+            "Compatible alternatives to Create",
+            StringComparison.Ordinal),
+        "builder labels alternatives inferred from an older or otherwise incompatible project");
+    AssertTrue(
+        alternativeBuilder.CategoryFilters.Single(filter => filter.Id == "technology").IsSelected,
+        "builder prefers Create's defining technology category over its secondary decoration category");
+    AssertTrue(
+        alternativeBuilder.SearchResults.Any(project => project.ProjectId == "immersive-engineering"),
+        "Minecraft 1.12.2 Create alternatives include differently named Immersive Engineering");
+    AssertTrue(
+        alternativeBuilder.SearchResults.All(project => project.ProjectId != "euphoria-patches"),
+        "both-sides Create alternatives exclude Modrinth's client-only Euphoria Patches technology tag");
+    AssertTrue(
+        builderViewModel.PageSizeOptions.All(option => option.Value <= 50),
+        "builder page sizes respect every configured provider's supported maximum");
     builderViewModel.CommitPlan(readyPlan);
     AssertEqual(2, builderViewModel.DraftItems.Count, "builder commits selected content and required dependency together");
     AssertTrue(
@@ -2298,6 +2657,46 @@ try
     AssertTrue(
         builderViewModel.DraftStatusText.Contains("required dependency automatically", StringComparison.OrdinalIgnoreCase),
         "builder explains automatic required dependency addition");
+
+    var dependencyBuilder = new PackBuilderViewModel(
+        packCatalog,
+        resolver,
+        platformCatalog,
+        new StubPackPlatformVersionService(),
+        runtimeService,
+        new StubCurseForgeApiKeyService(),
+        new StubPackDraftOutputService(),
+        new StubMinecraftLauncherIntegrationService(),
+        new ModpackInstallLocationService(Path.Combine(testRoot, "dependency-builder-local-app-data")));
+    dependencyBuilder.SelectedMinecraftVersion = "1.20.1";
+    var reviewedOptionalPlan = await dependencyBuilder.PrepareOptionalDependenciesAsync(
+        readyPlan,
+        readyPlan.OptionalDependencies);
+    AssertTrue(reviewedOptionalPlan?.IsReady == true, "chosen optional dependency produces a ready final plan");
+    AssertTrue(
+        reviewedOptionalPlan!.Items.Any(item =>
+            item.VersionId == "optional-compatible"
+            && item.DependencyType == "optional"
+            && item.CanRemove),
+        "chosen optional dependency is explicit and removable");
+    dependencyBuilder.CommitPlan(reviewedOptionalPlan);
+    var requiredDraftItem = dependencyBuilder.DraftItems.Single(item =>
+        item.VersionId == "library-compatible");
+    AssertTrue(
+        !await dependencyBuilder.RemoveDraftItemAsync(requiredDraftItem),
+        "required draft dependency cannot be removed directly");
+    var optionalDraftItem = dependencyBuilder.DraftItems.Single(item =>
+        item.VersionId == "optional-compatible");
+    AssertTrue(
+        await dependencyBuilder.RemoveDraftItemAsync(optionalDraftItem)
+        && dependencyBuilder.DraftItems.Count == 2,
+        "removing an optional draft item rebuilds and retains required dependencies");
+    var selectedDraftItem = dependencyBuilder.DraftItems.Single(item =>
+        item.VersionId == "root-version");
+    AssertTrue(
+        await dependencyBuilder.RemoveDraftItemAsync(selectedDraftItem)
+        && dependencyBuilder.DraftItems.Count == 0,
+        "removing the selected root also removes now-orphaned required dependencies");
 
     var clientOnlyPlacement = PackDependencyResolver.DeterminePlacement(
         compatibleLibrary,
@@ -2347,9 +2746,13 @@ try
     var mapWorldRoot = Path.Combine(mapServerRoot, "mapworld");
     var mapRegionRoot = Path.Combine(mapWorldRoot, "region");
     var mapNetherRegionRoot = Path.Combine(mapWorldRoot, "DIM-1", "region");
+    var mapSpaceStationRegionRoot = Path.Combine(mapWorldRoot, "DIM_SPACESTATION31", "region");
+    var mapMystcraftRegionRoot = Path.Combine(mapWorldRoot, "DIM_MYST14", "region");
     var mapPlayersRoot = Path.Combine(mapWorldRoot, "players");
     Directory.CreateDirectory(mapRegionRoot);
     Directory.CreateDirectory(mapNetherRegionRoot);
+    Directory.CreateDirectory(mapSpaceStationRegionRoot);
+    Directory.CreateDirectory(mapMystcraftRegionRoot);
     Directory.CreateDirectory(mapPlayersRoot);
     await File.WriteAllTextAsync(
         Path.Combine(mapServerRoot, "server.properties"),
@@ -2364,6 +2767,14 @@ try
         90,
         0,
         Guid.Parse("12345678-1234-5678-90ab-cdef12345678"));
+    CreateLegacyPlayerFile(
+        Path.Combine(mapPlayersRoot, "StationPlayer.dat"),
+        4.5,
+        72,
+        4.5,
+        180,
+        31,
+        Guid.Parse("87654321-4321-8765-ba09-876543210fed"));
 
     var mapProfile = new ServerProfile
     {
@@ -2379,10 +2790,19 @@ try
     AssertEqual(8, discoveredWorld.SpawnX, "map reads SpawnX from level.dat");
     AssertEqual(70, discoveredWorld.SpawnY, "map reads SpawnY from level.dat");
     AssertEqual(8, discoveredWorld.SpawnZ, "map reads SpawnZ from level.dat");
-    AssertEqual(2, discoveredWorld.Dimensions.Count, "map discovers overworld and Nether dimensions");
+    AssertEqual(4, discoveredWorld.Dimensions.Count, "map discovers vanilla and modded legacy dimensions");
     AssertEqual("Overworld", discoveredWorld.Dimensions[0].DisplayName, "map orders the overworld first");
-    AssertEqual("Nether", discoveredWorld.Dimensions[1].DisplayName, "map names DIM-1 as Nether");
-    AssertEqual(120, discoveredWorld.Dimensions[1].SurfaceMaximumY, "Nether renderer stays below the bedrock roof");
+    var discoveredNether = discoveredWorld.Dimensions.Single(dimension => dimension.NumericId == -1);
+    AssertEqual("Nether", discoveredNether.DisplayName, "map names DIM-1 as Nether");
+    AssertEqual(120, discoveredNether.SurfaceMaximumY, "Nether renderer stays below the bedrock roof");
+    AssertEqual(
+        "Space Station 31",
+        discoveredWorld.Dimensions.Single(dimension => dimension.NumericId == 31).DisplayName,
+        "map discovers Galacticraft space-station folders");
+    AssertEqual(
+        "Mystcraft Age 14",
+        discoveredWorld.Dimensions.Single(dimension => dimension.NumericId == 14).DisplayName,
+        "map discovers Mystcraft age folders");
 
     var mapRequest = new WorldMapRenderRequest(
         mapProfile,
@@ -2420,6 +2840,13 @@ try
     AssertEqual(0, playerPositions[0].DimensionId, "map reads the player's saved dimension");
     AssertEqual("overworld", playerPositions[0].DimensionKey, "map normalizes the legacy player dimension");
     AssertTrue(playerPositions[0].PlayerId is not null, "map reads the player's legacy UUID fields");
+    var stationPositions = await mapService.ReadPlayerPositionsAsync(
+        mapProfile,
+        discoveredWorld,
+        ["StationPlayer"]);
+    AssertEqual(1, stationPositions.Count, "map reads a player saved in a Galacticraft station");
+    AssertEqual(31, stationPositions[0].DimensionId, "map preserves a modded numeric dimension ID");
+    AssertEqual("DIM31", stationPositions[0].DimensionKey, "map does not collapse modded dimensions into the overworld");
     AssertEqual(
         0,
         (await mapService.ReadPlayerPositionsAsync(mapProfile, discoveredWorld, ["SomeoneElse"])).Count,
@@ -3126,17 +3553,20 @@ sealed class StubPackContentCatalogProvider : IPackContentCatalogProvider
     private readonly IReadOnlyList<ServerContentProject> _projects;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ServerContentVersion>> _versionsByProject;
     private readonly IReadOnlyDictionary<string, ServerContentVersion> _versionsById;
+    private readonly Func<PackCatalogSearchRequest, IReadOnlyList<ServerContentProject>>? _searchSelector;
 
     public StubPackContentCatalogProvider(
         string providerId,
         IReadOnlyList<ServerContentProject> projects,
         IReadOnlyDictionary<string, IReadOnlyList<ServerContentVersion>> versionsByProject,
-        IReadOnlyDictionary<string, ServerContentVersion> versionsById)
+        IReadOnlyDictionary<string, ServerContentVersion> versionsById,
+        Func<PackCatalogSearchRequest, IReadOnlyList<ServerContentProject>>? searchSelector = null)
     {
         ProviderId = providerId;
         _projects = projects;
         _versionsByProject = versionsByProject;
         _versionsById = versionsById;
+        _searchSelector = searchSelector;
     }
 
     public string ProviderId { get; }
@@ -3145,12 +3575,15 @@ sealed class StubPackContentCatalogProvider : IPackContentCatalogProvider
 
     public Task<ServerContentSearchPage> SearchPackContentAsync(
         PackCatalogSearchRequest request,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(new ServerContentSearchPage(
-            _projects,
+        CancellationToken cancellationToken = default)
+    {
+        var projects = _searchSelector?.Invoke(request) ?? _projects;
+        return Task.FromResult(new ServerContentSearchPage(
+            projects,
             request.Offset,
             request.Limit,
-            _projects.Count));
+            projects.Count));
+    }
 
     public Task<IReadOnlyList<ServerContentVersion>> GetPackVersionsAsync(
         string projectId,
@@ -3272,6 +3705,59 @@ sealed class StubPackDraftOutputService : IPackDraftOutputService
         IProgress<PackOutputProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+}
+
+sealed class StubMinecraftLauncherIntegrationService : IMinecraftLauncherIntegrationService
+{
+    public string LauncherDirectory => string.Empty;
+
+    public Task<MinecraftLauncherInstallResult> InstallAsync(
+        MinecraftLauncherInstallRequest request,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public bool TryOpenLauncher(out string message)
+    {
+        message = "Not opened in configuration tests.";
+        return false;
+    }
+}
+
+sealed class StubModpackCatalogProvider(
+    string providerId,
+    string displayName,
+    ModpackCatalogSearchPage page) : IModpackCatalogProvider
+{
+    public string ProviderId => providerId;
+
+    public string DisplayName => displayName;
+
+    public Task<ModpackCatalogSearchPage> SearchAsync(
+        string query,
+        int offset = 0,
+        int limit = 20,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var items = page.Items
+            .Where(item => string.IsNullOrWhiteSpace(query)
+                || item.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || item.Description.Contains(query, StringComparison.CurrentCultureIgnoreCase))
+            .Skip(offset)
+            .Take(limit)
+            .ToArray();
+        return Task.FromResult(new ModpackCatalogSearchPage(
+            items,
+            offset,
+            limit,
+            page.TotalHits));
+    }
+
+    public Task<IReadOnlyList<ModpackCatalogVersion>> GetVersionsAsync(
+        ModpackCatalogItem pack,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ModpackCatalogVersion>>([]);
 }
 
 sealed class StubPackPlatformVersionService : IPackPlatformVersionService

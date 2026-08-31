@@ -237,6 +237,7 @@ public sealed class JsonProfileService : IProfileService
             RequiredDirectories = template.RequiredDirectories,
             ConfigurationSources = template.ConfigurationSources,
             ConfigurationSchemas = template.ConfigurationSchemas,
+            MapPointsOfInterest = template.MapPointsOfInterest,
             ReadyPatterns = template.ReadyPatterns,
             FailurePatterns = template.FailurePatterns.Count == 0
                 ? DefaultFailurePatterns

@@ -111,17 +111,11 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
         {
             cancellationToken.ThrowIfCancellationRequested();
             var name = Path.GetFileName(directory);
-            if (name.Length <= 3 || !int.TryParse(name[3..], out var numericId))
+            if (!TryDescribeLegacyDimensionDirectory(name, out var numericId, out var displayName))
             {
                 continue;
             }
 
-            var displayName = numericId switch
-            {
-                -1 => "Nether",
-                1 => "The End",
-                _ => $"Dimension {numericId}"
-            };
             TryAddDimension(
                 dimensions,
                 directory,
@@ -172,6 +166,49 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
             numericId,
             WorldMapFormat.Anvil,
             surfaceMaximumY));
+    }
+
+    private static bool TryDescribeLegacyDimensionDirectory(
+        string name,
+        out int numericId,
+        out string displayName)
+    {
+        numericId = 0;
+        displayName = string.Empty;
+        if (name.Length <= 3 || !name.StartsWith("DIM", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var suffix = name[3..];
+        if (int.TryParse(suffix, out numericId))
+        {
+            displayName = numericId switch
+            {
+                -1 => "Nether",
+                1 => "The End",
+                _ => $"Dimension {numericId}"
+            };
+            return true;
+        }
+
+        const string spaceStationPrefix = "_SPACESTATION";
+        if (suffix.StartsWith(spaceStationPrefix, StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(suffix[spaceStationPrefix.Length..], out numericId))
+        {
+            displayName = $"Space Station {numericId}";
+            return true;
+        }
+
+        const string mystcraftPrefix = "_MYST";
+        if (suffix.StartsWith(mystcraftPrefix, StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(suffix[mystcraftPrefix.Length..], out numericId))
+        {
+            displayName = $"Mystcraft Age {numericId}";
+            return true;
+        }
+
+        return false;
     }
 
     private static void DiscoverCustomDimensions(
@@ -966,9 +1003,10 @@ public sealed class LegacyAnvilWorldMapService : IWorldMapService
 
     private static string DimensionKeyFromNumericId(int numericId) => numericId switch
     {
+        0 => "overworld",
         -1 => "DIM-1",
         1 => "DIM1",
-        _ => "overworld"
+        _ => $"DIM{numericId}"
     };
 
     private static IReadOnlyList<RegionSnapshot> ReadRegionSnapshots(

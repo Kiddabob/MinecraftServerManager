@@ -43,6 +43,8 @@ public sealed class ServerProfile
 
     public IReadOnlyList<ServerConfigurationSchema> ConfigurationSchemas { get; set; } = [];
 
+    public IReadOnlyList<WorldMapPointOfInterest> MapPointsOfInterest { get; set; } = [];
+
     public IReadOnlyList<string> ReadyPatterns { get; set; } = [];
 
     public IReadOnlyList<string> FailurePatterns { get; set; } = [];

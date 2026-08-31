@@ -8,5 +8,9 @@ public sealed record AppPreferences
 
     public string AccentColor { get; init; } = "System";
 
+    public string CustomAccentColor { get; init; } = "#60CDFF";
+
+    public string Backdrop { get; init; } = "Mica";
+
     public string? LastProfileId { get; init; }
 }

@@ -12,5 +12,7 @@ public interface IAppUpdateService
 
     void StartMonitoring();
 
+    Task CheckNowAsync(CancellationToken cancellationToken = default);
+
     void ApplyUpdateAndRestart();
 }

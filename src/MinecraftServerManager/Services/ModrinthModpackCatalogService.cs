@@ -82,6 +82,12 @@ public sealed class ModrinthModpackCatalogService : IModpackCatalogProvider
                 continue;
             }
 
+            var categories = GetStringArray(hit, "display_categories");
+            var loaders = GetStringArray(hit, "categories")
+                .Concat(categories)
+                .Where(IsLoaderCategory)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             items.Add(new ModpackCatalogItem(
                 "modrinth",
                 projectId,
@@ -92,7 +98,8 @@ public sealed class ModrinthModpackCatalogService : IModpackCatalogProvider
                 GetTrustedCdnUrl(hit, "icon_url"),
                 GetInt64(hit, "downloads"),
                 GetStringArray(hit, "versions"),
-                GetStringArray(hit, "display_categories"),
+                categories,
+                loaders,
                 GetStringArray(hit, "environment")));
         }
 
@@ -244,6 +251,9 @@ public sealed class ModrinthModpackCatalogService : IModpackCatalogProvider
         DateTimeOffset.TryParse(GetString(element, propertyName), out var value)
             ? value
             : DateTimeOffset.MinValue;
+
+    private static bool IsLoaderCategory(string value) => value.ToLowerInvariant() is
+        "forge" or "fabric" or "quilt" or "neoforge" or "liteloader" or "rift";
 
     private static HttpClient CreateHttpClient()
     {

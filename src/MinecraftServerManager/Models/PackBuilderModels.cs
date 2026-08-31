@@ -82,6 +82,10 @@ public sealed record PackPlatformVersionOption(
 
 public sealed record PackCategoryOption(string Id, string DisplayName);
 
+public sealed record PackCatalogSortOption(string Id, string DisplayName);
+
+public sealed record PackCatalogPageSizeOption(int Value, string DisplayName);
+
 public sealed record PackCatalogSearchRequest(
     string Query,
     string MinecraftVersion,
@@ -90,7 +94,14 @@ public sealed record PackCatalogSearchRequest(
     IReadOnlyList<string> LoaderIds,
     IReadOnlyList<string> Categories,
     int Offset = 0,
-    int Limit = 20);
+    int Limit = 20)
+{
+    public IReadOnlyList<string> ProviderIds { get; init; } = [];
+
+    public IReadOnlyList<string> Environments { get; init; } = [];
+
+    public string Sort { get; init; } = "relevance";
+}
 
 public sealed record PackProviderStatus(
     string ProviderId,
@@ -110,6 +121,16 @@ public sealed record PackCatalogSearchPage(
 {
     public int AvailableProviderCount => Providers.Count(provider => provider.IsAvailable);
 
+    public int TotalHits => Providers
+        .Where(provider => provider.IsAvailable)
+        .Sum(provider => provider.ResultCount);
+
+    public int MaximumProviderHits => Providers
+        .Where(provider => provider.IsAvailable)
+        .Select(provider => provider.ResultCount)
+        .DefaultIfEmpty()
+        .Max();
+
     public string ProviderSummary => Providers.Count == 0
         ? "No catalogue providers are configured."
         : $"{AvailableProviderCount:N0} of {Providers.Count:N0} supported provider{(Providers.Count == 1 ? string.Empty : "s")} responded";
@@ -122,7 +143,14 @@ public sealed record PackResolveRequest(
     IReadOnlyList<string> ServerLoaderIds,
     ServerContentProject Project,
     ServerContentVersion Version,
-    IReadOnlyList<PackDraftItem> ExistingItems);
+    IReadOnlyList<PackDraftItem> ExistingItems)
+{
+    public bool RootIsDependency { get; init; }
+
+    public string RootDependencyType { get; init; } = "selected";
+
+    public string RootReason { get; init; } = "Selected by the user";
+}
 
 public sealed record PackDraftItem(
     string ProviderId,
@@ -135,6 +163,10 @@ public sealed record PackDraftItem(
     bool IsDependency,
     string Reason)
 {
+    public string DependencyType { get; init; } = IsDependency ? "required" : "selected";
+
+    public bool IsExplicitSelection { get; init; } = !IsDependency;
+
     public string PlacementText => Placement switch
     {
         PackContentPlacement.Client => "Client",
@@ -145,9 +177,33 @@ public sealed record PackDraftItem(
 
     public string SourceText => $"{ProviderId}  •  {VersionNumber}";
 
-    public string DetailsText => IsDependency
-        ? $"Required dependency  •  {PlacementText}"
-        : $"Selected content  •  {PlacementText}";
+    public string DetailsText => DependencyType switch
+    {
+        "required" => $"Required dependency  •  {PlacementText}",
+        "optional" => $"Chosen optional dependency  •  {PlacementText}",
+        _ => $"Selected content  •  {PlacementText}"
+    };
+
+    public bool CanRemove => IsExplicitSelection;
+}
+
+public sealed record PackOptionalDependencyChoice(
+    string OwnerName,
+    ServerContentKind Kind,
+    ServerContentVersion Version,
+    PackContentPlacement Placement)
+{
+    public string ProviderId => Version.ProviderId;
+
+    public string ProjectId => Version.ProjectId;
+
+    public string VersionId => Version.VersionId;
+
+    public string DisplayName => string.IsNullOrWhiteSpace(Version.Name)
+        ? Version.ProjectId
+        : Version.Name;
+
+    public string DetailsText => $"{Version.VersionNumber}  •  {Placement}  •  Optional for {OwnerName}";
 }
 
 public sealed record PackResolutionPlan(
@@ -155,11 +211,27 @@ public sealed record PackResolutionPlan(
     IReadOnlyList<string> Warnings,
     IReadOnlyList<string> Conflicts)
 {
-    public bool IsReady => Conflicts.Count == 0 && Items.Count > 0;
+    public IReadOnlyList<PackOptionalDependencyChoice> OptionalDependencies { get; init; } = [];
+
+    public bool IsReady => Conflicts.Count == 0
+        && Items.Count > 0
+        && Items.All(item => item.Placement != PackContentPlacement.Review);
+
+    public bool HasDependencyReview => Items.Any(item => item.IsDependency)
+        || OptionalDependencies.Count > 0;
 
     public string SummaryText => Conflicts.Count > 0
         ? $"Resolve {Conflicts.Count:N0} conflict{(Conflicts.Count == 1 ? string.Empty : "s")} before adding this item."
-        : Items.Count == 1
-            ? $"Add {Items[0].DisplayName} to the draft."
-            : $"Add {Items[0].DisplayName} and {Items.Count - 1:N0} required dependenc{(Items.Count == 2 ? "y" : "ies")} to the draft.";
+        : CreateReadySummary();
+
+    private string CreateReadySummary()
+    {
+        var requiredCount = Items.Count(item => item.DependencyType == "required");
+        var optionalText = OptionalDependencies.Count == 0
+            ? string.Empty
+            : $" Choose from {OptionalDependencies.Count:N0} optional dependenc{(OptionalDependencies.Count == 1 ? "y" : "ies")}.";
+        return requiredCount == 0
+            ? $"Add {Items[0].DisplayName} to the draft.{optionalText}"
+            : $"Add {Items[0].DisplayName} and {requiredCount:N0} required dependenc{(requiredCount == 1 ? "y" : "ies")} to the draft.{optionalText}";
+    }
 }

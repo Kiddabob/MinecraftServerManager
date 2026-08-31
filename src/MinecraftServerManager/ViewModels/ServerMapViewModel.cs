@@ -10,6 +10,7 @@ public sealed class ServerMapViewModel : BindableBase
     private readonly IWorldMapService _worldMapService;
     private readonly IPlayerPlaytimeService _playerPlaytimeService;
     private readonly IPlayerAvatarService _avatarService;
+    private readonly IProfileService _profileService;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
@@ -19,12 +20,22 @@ public sealed class ServerMapViewModel : BindableBase
     private WorldMapRadiusOption _selectedRadius;
     private WorldMapRefreshOption _selectedRefreshInterval;
     private WorldMapPlayerMarker? _selectedPlayerMarker;
+    private WorldMapPointOfInterest? _selectedPointOfInterest;
     private CancellationTokenSource? _profileCancellation;
     private CancellationTokenSource? _timerCancellation;
     private bool _isActive;
     private bool _isBusy;
     private bool _isLiveRefreshEnabled = true;
     private bool _showOfflinePlayers;
+    private bool _followSelectedPlayer = true;
+    private bool _suppressSelectionFollow;
+    private bool _suppressPointCentering;
+    private double _markerScale = 1;
+    private string _newPointName = string.Empty;
+    private double _newPointX;
+    private double _newPointY = 64;
+    private double _newPointZ;
+    private string _pointOfInterestStatus = "Save useful bases, portals, and landmarks for this server profile.";
     private string _statusText = "Open a server profile to discover its world.";
     private string _worldSummary = "No world selected";
     private string _imagePath = string.Empty;
@@ -41,11 +52,13 @@ public sealed class ServerMapViewModel : BindableBase
         IWorldMapService worldMapService,
         IPlayerPlaytimeService playerPlaytimeService,
         IPlayerAvatarService avatarService,
+        IProfileService profileService,
         IUiDispatcher uiDispatcher)
     {
         _worldMapService = worldMapService;
         _playerPlaytimeService = playerPlaytimeService;
         _avatarService = avatarService;
+        _profileService = profileService;
         _uiDispatcher = uiDispatcher;
 
         RadiusOptions =
@@ -69,11 +82,21 @@ public sealed class ServerMapViewModel : BindableBase
         CenterOnSelectedPlayerCommand = new AsyncRelayCommand(
             CenterOnSelectedPlayerAsync,
             () => SelectedPlayerMarker is not null);
+        UseMapCenterForPointCommand = new AsyncRelayCommand(UseMapCenterForPointAsync, () => _world is not null);
+        AddPointOfInterestCommand = new AsyncRelayCommand(AddPointOfInterestAsync, CanAddPointOfInterest);
+        CenterOnSelectedPointCommand = new AsyncRelayCommand(
+            CenterOnSelectedPointAsync,
+            () => SelectedPointOfInterest is not null);
+        RemoveSelectedPointCommand = new AsyncRelayCommand(
+            RemoveSelectedPointAsync,
+            () => SelectedPointOfInterest is not null);
     }
 
     public ObservableCollection<WorldMapDimension> Dimensions { get; } = [];
 
     public ObservableCollection<WorldMapPlayerMarker> PlayerMarkers { get; } = [];
+
+    public ObservableCollection<WorldMapPointOfInterest> PointsOfInterest { get; } = [];
 
     public IReadOnlyList<WorldMapRadiusOption> RadiusOptions { get; }
 
@@ -85,6 +108,14 @@ public sealed class ServerMapViewModel : BindableBase
 
     public AsyncRelayCommand CenterOnSelectedPlayerCommand { get; }
 
+    public AsyncRelayCommand UseMapCenterForPointCommand { get; }
+
+    public AsyncRelayCommand AddPointOfInterestCommand { get; }
+
+    public AsyncRelayCommand CenterOnSelectedPointCommand { get; }
+
+    public AsyncRelayCommand RemoveSelectedPointCommand { get; }
+
     public WorldMapDimension? SelectedDimension
     {
         get => _selectedDimension;
@@ -93,6 +124,7 @@ public sealed class ServerMapViewModel : BindableBase
             if (SetProperty(ref _selectedDimension, value) && value is not null)
             {
                 OnPropertyChanged(nameof(SelectedDimensionDetails));
+                AddPointOfInterestCommand.NotifyCanExecuteChanged();
                 _ = RefreshAsync(forceRefresh: false);
             }
         }
@@ -134,6 +166,135 @@ public sealed class ServerMapViewModel : BindableBase
             if (SetProperty(ref _selectedPlayerMarker, value))
             {
                 CenterOnSelectedPlayerCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(FocusSummary));
+                if (!_suppressSelectionFollow && value is not null)
+                {
+                    SetSelectedPointWithoutCentering(null);
+                    if (FollowSelectedPlayer)
+                    {
+                        _ = CenterOnSelectedPlayerAsync();
+                    }
+                }
+            }
+        }
+    }
+
+    public WorldMapPointOfInterest? SelectedPointOfInterest
+    {
+        get => _selectedPointOfInterest;
+        set
+        {
+            if (SetProperty(ref _selectedPointOfInterest, value))
+            {
+                CenterOnSelectedPointCommand.NotifyCanExecuteChanged();
+                RemoveSelectedPointCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(FocusSummary));
+                if (!_suppressPointCentering && value is not null)
+                {
+                    SetSelectedPlayerWithoutFollowing(null);
+                    FollowSelectedPlayer = false;
+                    _ = CenterOnSelectedPointAsync();
+                }
+            }
+        }
+    }
+
+    public bool FollowSelectedPlayer
+    {
+        get => _followSelectedPlayer;
+        set
+        {
+            if (SetProperty(ref _followSelectedPlayer, value))
+            {
+                OnPropertyChanged(nameof(FocusSummary));
+                if (value && SelectedPlayerMarker is not null)
+                {
+                    _ = CenterOnSelectedPlayerAsync();
+                }
+            }
+        }
+    }
+
+    public string FocusSummary => SelectedPointOfInterest is not null
+        ? $"Centred on {SelectedPointOfInterest.Name}."
+        : SelectedPlayerMarker is null
+            ? "Area is centred on the chosen map coordinates."
+        : FollowSelectedPlayer
+            ? $"Following {SelectedPlayerMarker.PlayerName}'s latest saved position."
+            : $"{SelectedPlayerMarker.PlayerName} is selected; follow is paused.";
+
+    public string NewPointName
+    {
+        get => _newPointName;
+        set
+        {
+            if (SetProperty(ref _newPointName, value))
+            {
+                AddPointOfInterestCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public double NewPointX
+    {
+        get => _newPointX;
+        set
+        {
+            if (SetProperty(ref _newPointX, value))
+            {
+                AddPointOfInterestCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public double NewPointY
+    {
+        get => _newPointY;
+        set
+        {
+            if (SetProperty(ref _newPointY, value))
+            {
+                AddPointOfInterestCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public double NewPointZ
+    {
+        get => _newPointZ;
+        set
+        {
+            if (SetProperty(ref _newPointZ, value))
+            {
+                AddPointOfInterestCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string PointOfInterestStatus
+    {
+        get => _pointOfInterestStatus;
+        private set => SetProperty(ref _pointOfInterestStatus, value);
+    }
+
+    public double MarkerScale
+    {
+        get => _markerScale;
+        private set
+        {
+            if (!SetProperty(ref _markerScale, value))
+            {
+                return;
+            }
+
+            foreach (var marker in PlayerMarkers)
+            {
+                marker.MarkerScale = value;
+            }
+
+            foreach (var point in PointsOfInterest)
+            {
+                point.MarkerScale = value;
             }
         }
     }
@@ -162,7 +323,7 @@ public sealed class ServerMapViewModel : BindableBase
         {
             if (SetProperty(ref _showOfflinePlayers, value))
             {
-                _ = RefreshPlayerMarkersAsync(_generation, CancellationToken.None);
+                _ = RefreshAsync(forceRefresh: false);
             }
         }
     }
@@ -245,6 +406,11 @@ public sealed class ServerMapViewModel : BindableBase
 
     public string CenterText => $"Centre X {CenterX:N0}, Z {CenterZ:N0}";
 
+    public void SetZoomFactor(float zoomFactor)
+    {
+        MarkerScale = 1d / Math.Clamp(zoomFactor, 0.35f, 4f);
+    }
+
     public async Task SelectProfileAsync(ServerSessionViewModel session)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -257,7 +423,18 @@ public sealed class ServerMapViewModel : BindableBase
         ImagePath = string.Empty;
         Dimensions.Clear();
         PlayerMarkers.Clear();
+        PointsOfInterest.Clear();
+        foreach (var point in session.Profile.MapPointsOfInterest
+                     .Where(point => !string.IsNullOrWhiteSpace(point.Name))
+                     .OrderBy(point => point.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            point.MarkerScale = MarkerScale;
+            PointsOfInterest.Add(point);
+        }
+
         SelectedPlayerMarker = null;
+        SetSelectedPointWithoutCentering(null);
+        MarkerScale = 1;
         HasSpawnMarker = false;
         StatusText = $"Discovering {session.DisplayName}'s world…";
         WorldSummary = "Scanning server.properties and region folders";
@@ -279,6 +456,9 @@ public sealed class ServerMapViewModel : BindableBase
 
             CenterX = world.SpawnX;
             CenterZ = world.SpawnZ;
+            NewPointX = world.SpawnX;
+            NewPointY = world.SpawnY;
+            NewPointZ = world.SpawnZ;
             OnPropertyChanged(nameof(CenterText));
             OnPropertyChanged(nameof(SpawnToolTip));
             WorldSummary = $"{world.LevelName} • {world.Dimensions.Count} compatible dimension{(world.Dimensions.Count == 1 ? string.Empty : "s")}";
@@ -290,6 +470,8 @@ public sealed class ServerMapViewModel : BindableBase
             OnPropertyChanged(nameof(SelectedDimension));
             OnPropertyChanged(nameof(SelectedDimensionDetails));
             CenterOnSpawnCommand.NotifyCanExecuteChanged();
+            UseMapCenterForPointCommand.NotifyCanExecuteChanged();
+            AddPointOfInterestCommand.NotifyCanExecuteChanged();
             RefreshCommand.NotifyCanExecuteChanged();
             RestartTimer();
             if (_isActive && SelectedDimension is not null)
@@ -331,9 +513,8 @@ public sealed class ServerMapViewModel : BindableBase
     {
         var session = _session;
         var world = _world;
-        var dimension = SelectedDimension;
         var generation = _generation;
-        if (session is null || world is null || dimension is null
+        if (session is null || world is null
             || !await _refreshGate.WaitAsync(0))
         {
             return;
@@ -344,6 +525,24 @@ public sealed class ServerMapViewModel : BindableBase
         try
         {
             var cancellationToken = _profileCancellation?.Token ?? CancellationToken.None;
+            await RefreshPlayerLocationsAsync(generation, cancellationToken);
+            if (generation != _generation)
+            {
+                return;
+            }
+
+            if (FollowSelectedPlayer && SelectedPlayerMarker is not null)
+            {
+                ApplySelectedPlayerFocus(SelectedPlayerMarker);
+            }
+
+            var dimension = SelectedDimension;
+            if (dimension is null)
+            {
+                StatusText = "No compatible saved dimension is available to render.";
+                return;
+            }
+
             var result = await _worldMapService.RenderAsync(
                 new WorldMapRenderRequest(
                     session.Profile,
@@ -367,7 +566,8 @@ public sealed class ServerMapViewModel : BindableBase
 
             ImagePath = result.ImagePath;
             UpdateSpawnMarker(result, dimension);
-            await RefreshPlayerMarkersAsync(generation, cancellationToken, result);
+            UpdatePlayerMarkerPlacements(result, dimension);
+            UpdatePointOfInterestPlacements(result, dimension);
             StatusText = result.HasTerrain
                 ? $"{result.LoadedChunkCount:N0} chunks shown • {result.ChangedChunkCount:N0} read from disk • {result.BlocksPerPixel} block{(result.BlocksPerPixel == 1 ? string.Empty : "s")} per pixel • {result.RenderedUtc.ToLocalTime():HH:mm:ss}"
                 : "No generated chunks were found in the selected area.";
@@ -393,21 +593,13 @@ public sealed class ServerMapViewModel : BindableBase
         }
     }
 
-    private async Task RefreshPlayerMarkersAsync(
+    private async Task RefreshPlayerLocationsAsync(
         int generation,
-        CancellationToken cancellationToken,
-        WorldMapRenderResult? renderResult = null)
+        CancellationToken cancellationToken)
     {
         var session = _session;
         var world = _world;
-        var dimension = SelectedDimension;
-        if (session is null || world is null || dimension is null)
-        {
-            return;
-        }
-
-        renderResult ??= CurrentRenderBounds();
-        if (renderResult is null)
+        if (session is null || world is null)
         {
             return;
         }
@@ -431,18 +623,24 @@ public sealed class ServerMapViewModel : BindableBase
         }
 
         var now = DateTimeOffset.UtcNow;
-        var markers = positions
-            .Where(position => position.DimensionKey.Equals(dimension.Id, StringComparison.OrdinalIgnoreCase))
-            .Where(position => position.X >= renderResult.MinimumX && position.X <= renderResult.MaximumX)
-            .Where(position => position.Z >= renderResult.MinimumZ && position.Z <= renderResult.MaximumZ)
-            .Select(position =>
+        var existingByKey = PlayerMarkers.ToDictionary(marker => marker.StableKey, StringComparer.OrdinalIgnoreCase);
+        var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var position in positions
+                     .OrderByDescending(position => onlineNames.Contains(position.PlayerName))
+                     .ThenBy(position => position.PlayerName, StringComparer.OrdinalIgnoreCase))
+        {
+            var stableKey = position.PlayerId?.ToString("N") ?? position.PlayerName.ToUpperInvariant();
+            seenKeys.Add(stableKey);
+            var online = onlineNames.Contains(position.PlayerName);
+            var age = now - position.SavedUtc;
+            var freshness = age < TimeSpan.FromMinutes(1)
+                ? $"Saved {Math.Max(0, (int)age.TotalSeconds)} seconds ago"
+                : $"Last saved {FormatAge(age)} ago";
+            var dimensionDisplayName = ResolveDimension(position.DimensionId, position.DimensionKey)?.DisplayName
+                ?? $"Unknown dimension {position.DimensionId}";
+            if (!existingByKey.TryGetValue(stableKey, out var marker))
             {
-                var online = onlineNames.Contains(position.PlayerName);
-                var age = now - position.SavedUtc;
-                var freshness = age < TimeSpan.FromMinutes(1)
-                    ? $"Saved {Math.Max(0, (int)age.TotalSeconds)} seconds ago"
-                    : $"Last saved {FormatAge(age)} ago";
-                return new WorldMapPlayerMarker(
+                marker = new WorldMapPlayerMarker(
                     position.PlayerName,
                     position.PlayerId,
                     online,
@@ -450,24 +648,270 @@ public sealed class ServerMapViewModel : BindableBase
                     position.Y,
                     position.Z,
                     position.Yaw,
-                    (position.X - renderResult.MinimumX) / renderResult.BlocksPerPixel - 16,
-                    (position.Z - renderResult.MinimumZ) / renderResult.BlocksPerPixel - 16,
+                    position.DimensionId,
+                    position.DimensionKey,
+                    dimensionDisplayName,
+                    0,
+                    0,
+                    position.SavedUtc,
+                    freshness,
+                    online ? 1 : 0.7,
+                    false)
+                {
+                    MarkerScale = MarkerScale
+                };
+                PlayerMarkers.Add(marker);
+            }
+            else
+            {
+                marker.Update(
+                    position.PlayerName,
+                    online,
+                    position.X,
+                    position.Y,
+                    position.Z,
+                    position.Yaw,
+                    position.DimensionId,
+                    position.DimensionKey,
+                    dimensionDisplayName,
                     position.SavedUtc,
                     freshness,
                     online ? 1 : 0.7);
-            })
+            }
+
+            if (string.IsNullOrWhiteSpace(marker.AvatarPath))
+            {
+                _ = LoadAvatarAsync(marker, generation);
+            }
+        }
+
+        for (var index = PlayerMarkers.Count - 1; index >= 0; index--)
+        {
+            if (!seenKeys.Contains(PlayerMarkers[index].StableKey))
+            {
+                if (ReferenceEquals(SelectedPlayerMarker, PlayerMarkers[index]))
+                {
+                    SetSelectedPlayerWithoutFollowing(null);
+                }
+
+                PlayerMarkers.RemoveAt(index);
+            }
+        }
+
+        var ordered = PlayerMarkers
             .OrderByDescending(marker => marker.IsOnline)
             .ThenBy(marker => marker.PlayerName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-
-        PlayerMarkers.Clear();
-        foreach (var marker in markers)
+        for (var targetIndex = 0; targetIndex < ordered.Length; targetIndex++)
         {
-            PlayerMarkers.Add(marker);
-            _ = LoadAvatarAsync(marker, generation);
+            var currentIndex = PlayerMarkers.IndexOf(ordered[targetIndex]);
+            if (currentIndex != targetIndex)
+            {
+                PlayerMarkers.Move(currentIndex, targetIndex);
+            }
         }
 
-        SelectedPlayerMarker = PlayerMarkers.FirstOrDefault();
+        var bounds = CurrentRenderBounds();
+        if (bounds is not null && SelectedDimension is not null)
+        {
+            UpdatePlayerMarkerPlacements(bounds, SelectedDimension);
+        }
+    }
+
+    private void UpdatePlayerMarkerPlacements(
+        WorldMapRenderResult renderResult,
+        WorldMapDimension dimension)
+    {
+        foreach (var marker in PlayerMarkers)
+        {
+            var isVisible = IsSameDimension(marker, dimension)
+                && marker.X >= renderResult.MinimumX
+                && marker.X <= renderResult.MaximumX
+                && marker.Z >= renderResult.MinimumZ
+                && marker.Z <= renderResult.MaximumZ;
+            marker.UpdateMapPlacement(
+                (marker.X - renderResult.MinimumX) / renderResult.BlocksPerPixel - 16,
+                (marker.Z - renderResult.MinimumZ) / renderResult.BlocksPerPixel - 16,
+                isVisible);
+        }
+    }
+
+    private void UpdatePointOfInterestPlacements(
+        WorldMapRenderResult renderResult,
+        WorldMapDimension dimension)
+    {
+        foreach (var point in PointsOfInterest)
+        {
+            var isVisible = (point.DimensionId == dimension.NumericId
+                    || point.DimensionKey.Equals(dimension.Id, StringComparison.OrdinalIgnoreCase))
+                && point.X >= renderResult.MinimumX
+                && point.X <= renderResult.MaximumX
+                && point.Z >= renderResult.MinimumZ
+                && point.Z <= renderResult.MaximumZ;
+            point.UpdateMapPlacement(
+                (point.X - renderResult.MinimumX) / renderResult.BlocksPerPixel - 14,
+                (point.Z - renderResult.MinimumZ) / renderResult.BlocksPerPixel - 14,
+                isVisible);
+        }
+    }
+
+    private WorldMapDimension? ResolveDimension(int numericId, string dimensionKey)
+    {
+        return Dimensions.FirstOrDefault(dimension => dimension.NumericId == numericId)
+            ?? Dimensions.FirstOrDefault(dimension =>
+                dimension.Id.Equals(dimensionKey, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSameDimension(WorldMapPlayerMarker marker, WorldMapDimension dimension)
+    {
+        return marker.DimensionId == dimension.NumericId
+            || marker.DimensionKey.Equals(dimension.Id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplySelectedPlayerFocus(WorldMapPlayerMarker marker)
+    {
+        var dimension = ResolveDimension(marker.DimensionId, marker.DimensionKey);
+        if (dimension is not null && !ReferenceEquals(_selectedDimension, dimension))
+        {
+            _selectedDimension = dimension;
+            OnPropertyChanged(nameof(SelectedDimension));
+            OnPropertyChanged(nameof(SelectedDimensionDetails));
+            AddPointOfInterestCommand.NotifyCanExecuteChanged();
+        }
+
+        CenterX = (int)Math.Floor(marker.X);
+        CenterZ = (int)Math.Floor(marker.Z);
+        OnPropertyChanged(nameof(CenterText));
+    }
+
+    private void SetSelectedPlayerWithoutFollowing(WorldMapPlayerMarker? marker)
+    {
+        _suppressSelectionFollow = true;
+        try
+        {
+            SelectedPlayerMarker = marker;
+        }
+        finally
+        {
+            _suppressSelectionFollow = false;
+        }
+    }
+
+    private void SetSelectedPointWithoutCentering(WorldMapPointOfInterest? point)
+    {
+        _suppressPointCentering = true;
+        try
+        {
+            SelectedPointOfInterest = point;
+        }
+        finally
+        {
+            _suppressPointCentering = false;
+        }
+    }
+
+    private Task UseMapCenterForPointAsync()
+    {
+        NewPointX = CenterX;
+        NewPointZ = CenterZ;
+        if (_world is not null && NewPointY == 0)
+        {
+            NewPointY = _world.SpawnY;
+        }
+
+        PointOfInterestStatus = "The current map centre is ready to save as a point of interest.";
+        return Task.CompletedTask;
+    }
+
+    private bool CanAddPointOfInterest()
+    {
+        return _session is not null
+            && SelectedDimension is not null
+            && !string.IsNullOrWhiteSpace(NewPointName)
+            && NewPointName.Trim().Length <= 80
+            && double.IsFinite(NewPointX)
+            && double.IsFinite(NewPointY)
+            && double.IsFinite(NewPointZ);
+    }
+
+    private async Task AddPointOfInterestAsync()
+    {
+        var session = _session;
+        var dimension = SelectedDimension;
+        if (session is null || dimension is null || !CanAddPointOfInterest())
+        {
+            return;
+        }
+
+        var point = new WorldMapPointOfInterest
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = NewPointName.Trim(),
+            X = NewPointX,
+            Y = NewPointY,
+            Z = NewPointZ,
+            DimensionId = dimension.NumericId,
+            DimensionKey = dimension.Id,
+            MarkerScale = MarkerScale
+        };
+        PointsOfInterest.Add(point);
+        await SavePointsOfInterestAsync(session);
+        NewPointName = string.Empty;
+        SetSelectedPointWithoutCentering(point);
+        SetSelectedPlayerWithoutFollowing(null);
+        FollowSelectedPlayer = false;
+        PointOfInterestStatus = $"Saved {point.Name} for {dimension.DisplayName}.";
+        ApplyPointOfInterestFocus(point);
+        await RefreshAsync(forceRefresh: false);
+    }
+
+    private Task CenterOnSelectedPointAsync()
+    {
+        if (SelectedPointOfInterest is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        ApplyPointOfInterestFocus(SelectedPointOfInterest);
+        return RefreshAsync(forceRefresh: false);
+    }
+
+    private async Task RemoveSelectedPointAsync()
+    {
+        var session = _session;
+        var point = SelectedPointOfInterest;
+        if (session is null || point is null)
+        {
+            return;
+        }
+
+        PointsOfInterest.Remove(point);
+        SetSelectedPointWithoutCentering(null);
+        await SavePointsOfInterestAsync(session);
+        PointOfInterestStatus = $"Removed {point.Name}.";
+    }
+
+    private void ApplyPointOfInterestFocus(WorldMapPointOfInterest point)
+    {
+        var dimension = ResolveDimension(point.DimensionId, point.DimensionKey);
+        if (dimension is not null && !ReferenceEquals(_selectedDimension, dimension))
+        {
+            _selectedDimension = dimension;
+            OnPropertyChanged(nameof(SelectedDimension));
+            OnPropertyChanged(nameof(SelectedDimensionDetails));
+            AddPointOfInterestCommand.NotifyCanExecuteChanged();
+        }
+
+        CenterX = (int)Math.Floor(point.X);
+        CenterZ = (int)Math.Floor(point.Z);
+        OnPropertyChanged(nameof(CenterText));
+        OnPropertyChanged(nameof(FocusSummary));
+    }
+
+    private async Task SavePointsOfInterestAsync(ServerSessionViewModel session)
+    {
+        session.Profile.MapPointsOfInterest = PointsOfInterest.ToArray();
+        await _profileService.SaveAsync(session.Profile);
     }
 
     private WorldMapRenderResult? CurrentRenderBounds()
@@ -529,6 +973,8 @@ public sealed class ServerMapViewModel : BindableBase
             return Task.CompletedTask;
         }
 
+        FollowSelectedPlayer = false;
+        SetSelectedPointWithoutCentering(null);
         CenterX = _world.SpawnX;
         CenterZ = _world.SpawnZ;
         OnPropertyChanged(nameof(CenterText));
@@ -542,9 +988,7 @@ public sealed class ServerMapViewModel : BindableBase
             return Task.CompletedTask;
         }
 
-        CenterX = (int)Math.Floor(SelectedPlayerMarker.X);
-        CenterZ = (int)Math.Floor(SelectedPlayerMarker.Z);
-        OnPropertyChanged(nameof(CenterText));
+        ApplySelectedPlayerFocus(SelectedPlayerMarker);
         return RefreshAsync(forceRefresh: false);
     }
 

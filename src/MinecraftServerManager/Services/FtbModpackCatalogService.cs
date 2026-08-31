@@ -113,6 +113,13 @@ public sealed class FtbModpackCatalogService : IModpackCatalogProvider
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(version => version, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var loaders = versions
+            .SelectMany(version => GetTargets(version))
+            .Where(target => target.Type.Equals("modloader", StringComparison.OrdinalIgnoreCase))
+            .Select(target => target.Name)
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         var tags = root.TryGetProperty("tags", out var tagElements)
             && tagElements.ValueKind == JsonValueKind.Array
                 ? tagElements.EnumerateArray()
@@ -139,6 +146,7 @@ public sealed class FtbModpackCatalogService : IModpackCatalogProvider
             GetInt64(root, "installs"),
             minecraftVersions,
             tags,
+            loaders,
             ["server"]);
     }
 

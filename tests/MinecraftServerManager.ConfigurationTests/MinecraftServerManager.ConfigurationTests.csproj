@@ -54,6 +54,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthModpackCatalogService.cs" Link="Services\ModrinthModpackCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\TechnicModpackCatalogService.cs" Link="Services\TechnicModpackCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\FtbModpackCatalogService.cs" Link="Services\FtbModpackCatalogService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgeModpackCatalogService.cs" Link="Services\CurseForgeModpackCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IModpackInstallLocationService.cs" Link="Services\IModpackInstallLocationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModpackInstallLocationService.cs" Link="Services\ModpackInstallLocationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IProfileService.cs" Link="Services\IProfileService.cs" />
@@ -77,6 +78,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackPlatformVersionService.cs" Link="Services\IPackPlatformVersionService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackContentDownloadProvider.cs" Link="Services\IPackContentDownloadProvider.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackDraftOutputService.cs" Link="Services\IPackDraftOutputService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IMinecraftLauncherIntegrationService.cs" Link="Services\IMinecraftLauncherIntegrationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackContentCatalogService.cs" Link="Services\PackContentCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackDependencyResolver.cs" Link="Services\PackDependencyResolver.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackPlatformCatalogService.cs" Link="Services\PackPlatformCatalogService.cs" />
@@ -87,6 +89,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\ModrinthPackContentDownloadProvider.cs" Link="Services\ModrinthPackContentDownloadProvider.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgePackContentDownloadProvider.cs" Link="Services\CurseForgePackContentDownloadProvider.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackDraftOutputService.cs" Link="Services\PackDraftOutputService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\MinecraftLauncherIntegrationService.cs" Link="Services\MinecraftLauncherIntegrationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyStore.cs" Link="Services\ICurseForgeApiKeyStore.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyService.cs" Link="Services\ICurseForgeApiKeyService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgeApiKeyService.cs" Link="Services\CurseForgeApiKeyService.cs" />

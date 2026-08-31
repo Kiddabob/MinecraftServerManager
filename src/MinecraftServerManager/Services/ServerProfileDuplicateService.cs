@@ -301,6 +301,18 @@ public sealed class ServerProfileDuplicateService : IServerProfileDuplicateServi
         target.RequiredDirectories = source.RequiredDirectories.ToArray();
         target.ConfigurationSources = source.ConfigurationSources.ToArray();
         target.ConfigurationSchemas = source.ConfigurationSchemas.ToArray();
+        target.MapPointsOfInterest = source.MapPointsOfInterest
+            .Select(point => new WorldMapPointOfInterest
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Name = point.Name,
+                X = point.X,
+                Y = point.Y,
+                Z = point.Z,
+                DimensionId = point.DimensionId,
+                DimensionKey = point.DimensionKey
+            })
+            .ToArray();
         target.ReadyPatterns = source.ReadyPatterns.ToArray();
         target.FailurePatterns = source.FailurePatterns.ToArray();
         target.PlayerJoinPatterns = source.PlayerJoinPatterns.ToArray();

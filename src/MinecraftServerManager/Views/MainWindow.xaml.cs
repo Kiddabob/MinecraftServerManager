@@ -66,6 +66,8 @@ public sealed partial class MainWindow : Window
         _windowPlacementService.Load();
         RootGrid.DataContext = ViewModel;
         Title = "Minecraft Server Manager";
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         SystemBackdrop = new MicaBackdrop();
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -135,11 +137,22 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(UpdatePaneFooterVisibility);
     }
 
+    private void WorldMapScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs args)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            ViewModel.Map.SetZoomFactor(scrollViewer.ZoomFactor);
+        }
+    }
+
     private void UpdatePaneFooterVisibility()
     {
-        ProfilePaneFooter.Visibility = MainNavigationView.IsPaneOpen
+        var expandedVisibility = MainNavigationView.IsPaneOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
+        PaneHeaderContent.Visibility = expandedVisibility;
+        ProfilePaneContext.Visibility = expandedVisibility;
+        BrandTextStack.Visibility = expandedVisibility;
     }
 
     private void MainNavigationView_SelectionChanged(
@@ -480,6 +493,22 @@ public sealed partial class MainWindow : Window
         ViewModel.Modpacks.SearchCommand.Execute(null);
     }
 
+    private async void ModpackPageList_ItemClick(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is int pageNumber)
+        {
+            await ViewModel.Modpacks.GoToPageAsync(pageNumber);
+        }
+    }
+
+    private async void BuilderSearchPageList_ItemClick(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is int pageNumber)
+        {
+            await ViewModel.Builder.GoToSearchPageAsync(pageNumber);
+        }
+    }
+
     private void ServerContentSearchTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key != VirtualKey.Enter || !ViewModel.Content.SearchCommand.CanExecute(null))
@@ -566,12 +595,53 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (plan.IsReady)
+        if (plan.IsReady && !plan.HasDependencyReview && plan.Warnings.Count == 0)
         {
             ViewModel.Builder.CommitPlan(plan);
             return;
         }
 
+        var selectedOptionalDependencies = await ShowBuilderPlanDialogAsync(
+            plan,
+            plan.Conflicts.Count > 0 ? "Compatibility needs attention" : "Review dependencies",
+            plan.IsReady ? "Add to draft" : string.Empty,
+            includeOptionalChoices: true);
+        if (selectedOptionalDependencies is null || !plan.IsReady)
+        {
+            return;
+        }
+
+        if (selectedOptionalDependencies.Count == 0)
+        {
+            ViewModel.Builder.CommitPlan(plan);
+            return;
+        }
+
+        var finalPlan = await ViewModel.Builder.PrepareOptionalDependenciesAsync(
+            plan,
+            selectedOptionalDependencies);
+        if (finalPlan is null)
+        {
+            return;
+        }
+
+        var confirmed = await ShowBuilderPlanDialogAsync(
+            finalPlan,
+            finalPlan.IsReady ? "Confirm draft additions" : "Dependency conflict",
+            finalPlan.IsReady ? "Add reviewed items" : string.Empty,
+            includeOptionalChoices: false);
+        if (confirmed is not null && finalPlan.IsReady)
+        {
+            ViewModel.Builder.CommitPlan(finalPlan);
+        }
+    }
+
+    private async Task<IReadOnlyList<PackOptionalDependencyChoice>?> ShowBuilderPlanDialogAsync(
+        PackResolutionPlan plan,
+        string title,
+        string primaryButtonText,
+        bool includeOptionalChoices)
+    {
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(new TextBlock
         {
@@ -581,14 +651,49 @@ public sealed partial class MainWindow : Window
         });
         foreach (var item in plan.Items)
         {
+            var requirement = item.DependencyType switch
+            {
+                "required" => "Required automatically",
+                "optional" => "Chosen optional dependency",
+                _ => "Selected mod or plugin"
+            };
             content.Children.Add(new TextBlock
             {
                 MaxWidth = 580,
                 FontFamily = new FontFamily("Cascadia Mono"),
                 FontSize = 12,
-                Text = $"• {item.DisplayName} {item.VersionNumber}\n  {item.PlacementText} — {item.Reason}",
+                Text = $"• {item.DisplayName} {item.VersionNumber}\n  {requirement} • {item.PlacementText} — {item.Reason}",
                 TextWrapping = TextWrapping.Wrap
             });
+        }
+
+        var optionalCheckBoxes = new List<(CheckBox CheckBox, PackOptionalDependencyChoice Choice)>();
+        if (includeOptionalChoices && plan.OptionalDependencies.Count > 0)
+        {
+            content.Children.Add(new TextBlock
+            {
+                Margin = new Thickness(0, 6, 0, 0),
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Text = "Optional dependencies",
+                TextWrapping = TextWrapping.Wrap
+            });
+            content.Children.Add(new TextBlock
+            {
+                MaxWidth = 580,
+                Text = "Choose any optional additions you want. They are unchecked by default; their own required dependencies will be resolved before the final confirmation.",
+                TextWrapping = TextWrapping.Wrap
+            });
+            foreach (var choice in plan.OptionalDependencies)
+            {
+                var checkBox = new CheckBox
+                {
+                    MaxWidth = 580,
+                    Content = $"{choice.DisplayName}\n{choice.DetailsText}",
+                    IsChecked = false
+                };
+                optionalCheckBoxes.Add((checkBox, choice));
+                content.Children.Add(checkBox);
+            }
         }
 
         foreach (var warning in plan.Warnings)
@@ -622,7 +727,7 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = RootGrid.XamlRoot,
-            Title = "Compatibility needs attention",
+            Title = title,
             Content = new ScrollViewer
             {
                 MaxHeight = 520,
@@ -630,10 +735,28 @@ public sealed partial class MainWindow : Window
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = content
             },
+            PrimaryButtonText = primaryButtonText,
             CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Close
         };
-        await dialog.ShowAsync();
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary
+            || string.IsNullOrWhiteSpace(primaryButtonText))
+        {
+            return null;
+        }
+
+        return optionalCheckBoxes
+            .Where(option => option.CheckBox.IsChecked == true)
+            .Select(option => option.Choice)
+            .ToArray();
+    }
+
+    private async void RemoveBuilderDraftItem_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { CommandParameter: PackDraftItem item })
+        {
+            await ViewModel.Builder.RemoveDraftItemAsync(item);
+        }
     }
 
     private async void DownloadBuilderDraftToManaged_Click(object sender, RoutedEventArgs args)
@@ -717,8 +840,12 @@ public sealed partial class MainWindow : Window
             Severity = InfoBarSeverity.Warning,
             Title = plan.PreparesServerBaseline ? "Runnable server baseline" : "Content-only output",
             Message = plan.PreparesServerBaseline
-                ? "The exact official server loader will be installed in the atomic staging folder and the completed server will be added as a profile. Java must already be available. The Minecraft EULA remains unaccepted until you explicitly review it in the app. Client output still needs a launcher export."
-                : "This creates verified Client/Server mod and plugin folders plus a manifest. The selected platform does not yet have a safe runnable baseline installer here, and no Minecraft EULA is accepted."
+                ? plan.Target == PackBuildTarget.ClientAndServer
+                    ? "The exact official server loader will be installed and the server will be added as the selected manager profile. The isolated Client folder will also be registered in Minecraft Launcher; close Minecraft and its launcher before continuing. The server EULA remains unaccepted until you explicitly review it."
+                    : "The exact official server loader will be installed in the atomic staging folder and the completed server will be added as a profile. Java must already be available. The Minecraft EULA remains unaccepted until you explicitly review it in the app."
+                : plan.Target == PackBuildTarget.Client
+                    ? "This creates a verified, isolated Client game directory and registers the exact selected loader in Minecraft Launcher. Close Minecraft and its launcher before continuing. No account credentials are read or changed."
+                    : "This creates verified Client/Server mod and plugin folders plus a manifest. The selected platform does not yet have a safe runnable baseline installer here, and no Minecraft EULA is accepted."
         });
         var dialog = new ContentDialog
         {
@@ -742,7 +869,12 @@ public sealed partial class MainWindow : Window
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
             var result = await ViewModel.Builder.CreateOutputAsync(plan);
-            if (result?.ServerBaselinePrepared == true)
+            if (result is null)
+            {
+                return;
+            }
+
+            if (result.ServerBaselinePrepared)
             {
                 var importResult = await ViewModel.ImportServerFolderAsync(
                     result.ServerDirectory,
@@ -758,7 +890,53 @@ public sealed partial class MainWindow : Window
                     }
                 }
             }
+
+            if (plan.Target is PackBuildTarget.Client or PackBuildTarget.ClientAndServer)
+            {
+                var launcherResult = await ViewModel.Builder.RegisterLastClientWithLauncherAsync();
+                if (launcherResult is not null)
+                {
+                    await ShowMinecraftLauncherReadyDialogAsync(launcherResult);
+                }
+            }
         }
+    }
+
+    private async Task ShowMinecraftLauncherReadyDialogAsync(
+        MinecraftLauncherInstallResult launcherResult)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Client pack ready",
+            Content = new TextBlock
+            {
+                MaxWidth = 560,
+                Text = $"{launcherResult.Message}\n\nMinecraft Launcher will download its normal game libraries the first time you press Play. The manager did not read or change your Microsoft account credentials.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Open Minecraft Launcher",
+            CloseButtonText = "Later",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            ViewModel.Builder.TryOpenMinecraftLauncher();
+        }
+    }
+
+    private async void RegisterBuilderClientWithLauncher_Click(object sender, RoutedEventArgs args)
+    {
+        var result = await ViewModel.Builder.RegisterLastClientWithLauncherAsync();
+        if (result is not null)
+        {
+            await ShowMinecraftLauncherReadyDialogAsync(result);
+        }
+    }
+
+    private void OpenMinecraftLauncher_Click(object sender, RoutedEventArgs args)
+    {
+        ViewModel.Builder.TryOpenMinecraftLauncher();
     }
 
     private async void OpenBuilderOutputFolder_Click(object sender, RoutedEventArgs args)
@@ -1139,6 +1317,78 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ThemeChoice_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { Tag: string id })
+        {
+            return;
+        }
+
+        var option = ViewModel.ThemeOptions.FirstOrDefault(candidate => candidate.Id == id);
+        if (option is null)
+        {
+            return;
+        }
+
+        ViewModel.SelectedThemeOption = option;
+        ApplyAppearance();
+    }
+
+    private void AccentChoice_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { Tag: string id })
+        {
+            return;
+        }
+
+        if (id == "Custom" && !TryParseColor(ViewModel.CustomAccentHex, out _))
+        {
+            CustomAccentValidationMessage.Visibility = Visibility.Visible;
+            CustomAccentHexTextBox.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        var option = ViewModel.AccentOptions.FirstOrDefault(candidate => candidate.Id == id);
+        if (option is null)
+        {
+            return;
+        }
+
+        CustomAccentValidationMessage.Visibility = Visibility.Collapsed;
+        ViewModel.SelectedAccentOption = option;
+        ApplyAppearance();
+    }
+
+    private void ApplyCustomAccent_Click(object sender, RoutedEventArgs args)
+    {
+        var candidate = CustomAccentHexTextBox.Text.Trim();
+        if (!candidate.StartsWith('#'))
+        {
+            candidate = $"#{candidate}";
+        }
+
+        if (!TryParseColor(candidate, out _))
+        {
+            CustomAccentValidationMessage.Visibility = Visibility.Visible;
+            CustomAccentHexTextBox.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        ViewModel.CustomAccentHex = candidate.ToUpperInvariant();
+        ViewModel.SelectedAccentOption = ViewModel.AccentOptions.First(option => option.Id == "Custom");
+        CustomAccentValidationMessage.Visibility = Visibility.Collapsed;
+        ApplyAppearance();
+    }
+
+    private async void OpenExternalUri_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { Tag: string value }
+            && Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            await Launcher.LaunchUriAsync(uri);
+        }
+    }
+
     private void ApplyAppearance()
     {
         RootGrid.RequestedTheme = ViewModel.SelectedThemeOption?.Id switch
@@ -1148,9 +1398,16 @@ public sealed partial class MainWindow : Window
             _ => ElementTheme.Default
         };
 
-        var accentColor = ViewModel.SelectedAccentOption?.Id == "System"
-            ? GetSystemAccentColor()
-            : ParseColor(ViewModel.SelectedAccentOption?.HexColor ?? "#60CDFF");
+        SystemBackdrop = ViewModel.SelectedBackdropOption?.Id == "Acrylic"
+            ? new DesktopAcrylicBackdrop()
+            : new MicaBackdrop();
+
+        var accentColor = ViewModel.SelectedAccentOption?.Id switch
+        {
+            "System" => GetSystemAccentColor(),
+            "Custom" => ParseColor(ViewModel.CustomAccentHex),
+            _ => ParseColor(ViewModel.SelectedAccentOption?.HexColor ?? "#60CDFF")
+        };
 
         foreach (var resourceKey in AccentBrushResourceKeys)
         {
@@ -1164,6 +1421,44 @@ public sealed partial class MainWindow : Window
         {
             profileSelectionBrush.Color = accentColor;
         }
+
+        UpdateAppearanceChoiceVisuals(accentColor);
+    }
+
+    private void UpdateAppearanceChoiceVisuals(Color accentColor)
+    {
+        var selectedBrush = new SolidColorBrush(accentColor);
+        var clearBrush = new SolidColorBrush(Colors.Transparent);
+        var selectedTheme = ViewModel.SelectedThemeOption?.Id ?? "System";
+        foreach (var (id, card) in new (string Id, Border Card)[]
+        {
+            ("System", SystemThemeCard),
+            ("Light", LightThemeCard),
+            ("Dark", DarkThemeCard)
+        })
+        {
+            card.BorderBrush = id == selectedTheme ? selectedBrush : clearBrush;
+        }
+
+        var selectedAccent = ViewModel.SelectedAccentOption?.Id ?? "System";
+        foreach (var (id, card) in new (string Id, Border Card)[]
+        {
+            ("System", SystemAccentCard),
+            ("Coral", CoralAccentCard),
+            ("Blue", BlueAccentCard),
+            ("Emerald", EmeraldAccentCard),
+            ("Amethyst", AmethystAccentCard),
+            ("Amber", AmberAccentCard),
+            ("Custom", CustomAccentCard)
+        })
+        {
+            card.BorderBrush = id == selectedAccent ? selectedBrush : clearBrush;
+        }
+
+        SelectedAccentPreview.Fill = selectedBrush;
+        SelectedAccentName.Text = ViewModel.SelectedAccentOption?.DisplayName ?? "Windows accent";
+        SystemAccentSwatch.Fill = new SolidColorBrush(GetSystemAccentColor());
+        CustomAccentSwatch.Fill = new SolidColorBrush(ParseColor(ViewModel.CustomAccentHex));
     }
 
     private static Color GetSystemAccentColor()
@@ -1176,17 +1471,31 @@ public sealed partial class MainWindow : Window
 
     private static Color ParseColor(string value)
     {
+        return TryParseColor(value, out var color)
+            ? color
+            : Colors.DeepSkyBlue;
+    }
+
+    private static bool TryParseColor(string value, out Color color)
+    {
         var hex = value.Trim().TrimStart('#');
-        if (hex.Length != 6 || !uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var rgb))
+        if (hex.Length != 6
+            || !uint.TryParse(
+                hex,
+                System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var rgb))
         {
-            return Colors.DeepSkyBlue;
+            color = Colors.Transparent;
+            return false;
         }
 
-        return Color.FromArgb(
+        color = Color.FromArgb(
             255,
             (byte)((rgb >> 16) & 0xFF),
             (byte)((rgb >> 8) & 0xFF),
             (byte)(rgb & 0xFF));
+        return true;
     }
 
     private static Color WithResourceOpacity(string resourceKey, Color color) => resourceKey switch

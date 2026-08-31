@@ -67,6 +67,23 @@ public sealed class GitHubAppUpdateService : IAppUpdateService
         _updateManager.ApplyUpdatesAndRestart(_pendingUpdate);
     }
 
+    public async Task CheckNowAsync(CancellationToken cancellationToken = default)
+    {
+        if (_updateManager is null)
+        {
+            Report(AppUpdateState.Checking, "The updater is still starting. Try again in a moment.");
+            return;
+        }
+
+        if (!_updateManager.IsInstalled)
+        {
+            Report(AppUpdateState.Disabled, "Automatic updates become active after installing the app.");
+            return;
+        }
+
+        await CheckAndDownloadAsync(cancellationToken);
+    }
+
     private async Task MonitorAsync(CancellationToken cancellationToken)
     {
         AppUpdateSettings settings;

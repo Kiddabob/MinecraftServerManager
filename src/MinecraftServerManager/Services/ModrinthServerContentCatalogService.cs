@@ -40,7 +40,7 @@ public sealed class ModrinthServerContentCatalogService :
         }
 
         var facets = BuildPackSearchFacets(request);
-        var index = string.IsNullOrWhiteSpace(request.Query) ? "downloads" : "relevance";
+        var index = GetSearchIndex(request.Sort, request.Query);
         var requestUri = $"search?query={Uri.EscapeDataString(request.Query.Trim())}"
             + $"&facets={Uri.EscapeDataString(JsonSerializer.Serialize(facets))}"
             + $"&index={index}&offset={request.Offset}&limit={request.Limit}";
@@ -50,6 +50,15 @@ public sealed class ModrinthServerContentCatalogService :
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         return ParseSearchResponse(document.RootElement, request.Kind);
     }
+
+    private static string GetSearchIndex(string sort, string query) => sort.ToLowerInvariant() switch
+    {
+        "downloads" => "downloads",
+        "follows" => "follows",
+        "newest" => "newest",
+        "updated" => "updated",
+        _ => string.IsNullOrWhiteSpace(query) ? "downloads" : "relevance"
+    };
 
     public async Task<IReadOnlyList<ServerContentVersion>> GetPackVersionsAsync(
         string projectId,
@@ -183,39 +192,45 @@ public sealed class ModrinthServerContentCatalogService :
     internal static IReadOnlyList<IReadOnlyList<string>> BuildPackSearchFacets(
         PackCatalogSearchRequest request)
     {
-        var environments = request.Target switch
-        {
-            PackBuildTarget.Client => new[]
+        var environments = request.Environments.Count > 0
+            ? request.Environments
+                .Where(environment => !string.IsNullOrWhiteSpace(environment))
+                .Select(environment => environment.Trim().ToLowerInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : request.Target switch
             {
-                "singleplayer_only",
-                "client_only",
-                "client_only_server_optional",
-                "client_and_server",
-                "client_or_server",
-                "client_or_server_prefers_both"
-            },
-            PackBuildTarget.Server => new[]
-            {
-                "dedicated_server_only",
-                "server_only",
-                "server_only_client_optional",
-                "client_and_server",
-                "client_or_server",
-                "client_or_server_prefers_both"
-            },
-            _ => new[]
-            {
-                "singleplayer_only",
-                "client_only",
-                "client_only_server_optional",
-                "dedicated_server_only",
-                "server_only",
-                "server_only_client_optional",
-                "client_and_server",
-                "client_or_server",
-                "client_or_server_prefers_both"
-            }
-        };
+                PackBuildTarget.Client =>
+                [
+                    "singleplayer_only",
+                    "client_only",
+                    "client_only_server_optional",
+                    "client_and_server",
+                    "client_or_server",
+                    "client_or_server_prefers_both"
+                ],
+                PackBuildTarget.Server =>
+                [
+                    "dedicated_server_only",
+                    "server_only",
+                    "server_only_client_optional",
+                    "client_and_server",
+                    "client_or_server",
+                    "client_or_server_prefers_both"
+                ],
+                _ =>
+                [
+                    "singleplayer_only",
+                    "client_only",
+                    "client_only_server_optional",
+                    "dedicated_server_only",
+                    "server_only",
+                    "server_only_client_optional",
+                    "client_and_server",
+                    "client_or_server",
+                    "client_or_server_prefers_both"
+                ]
+            };
         var facets = new List<IReadOnlyList<string>>
         {
             new[]
