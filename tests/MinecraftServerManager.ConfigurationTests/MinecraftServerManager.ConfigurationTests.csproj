@@ -79,6 +79,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackContentDownloadProvider.cs" Link="Services\IPackContentDownloadProvider.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IPackDraftOutputService.cs" Link="Services\IPackDraftOutputService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\IMinecraftLauncherIntegrationService.cs" Link="Services\IMinecraftLauncherIntegrationService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\IManagedMinecraftLauncherService.cs" Link="Services\IManagedMinecraftLauncherService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackContentCatalogService.cs" Link="Services\PackContentCatalogService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackDependencyResolver.cs" Link="Services\PackDependencyResolver.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackPlatformCatalogService.cs" Link="Services\PackPlatformCatalogService.cs" />
@@ -90,6 +91,7 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgePackContentDownloadProvider.cs" Link="Services\CurseForgePackContentDownloadProvider.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\PackDraftOutputService.cs" Link="Services\PackDraftOutputService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\MinecraftLauncherIntegrationService.cs" Link="Services\MinecraftLauncherIntegrationService.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ManagedMinecraftLauncherService.cs" Link="Services\ManagedMinecraftLauncherService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyStore.cs" Link="Services\ICurseForgeApiKeyStore.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyService.cs" Link="Services\ICurseForgeApiKeyService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgeApiKeyService.cs" Link="Services\CurseForgeApiKeyService.cs" />

@@ -126,7 +126,9 @@ public sealed record ServerContentDependency(
     string VersionId,
     string ProjectId,
     string FileName,
-    string DependencyType);
+    string DependencyType,
+    string DisplayName = "",
+    string IconUrl = "");
 
 public sealed record ServerContentVersion(
     string ProviderId,

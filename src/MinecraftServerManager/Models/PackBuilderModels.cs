@@ -163,6 +163,8 @@ public sealed record PackDraftItem(
     bool IsDependency,
     string Reason)
 {
+    public string IconUrl { get; init; } = string.Empty;
+
     public string DependencyType { get; init; } = IsDependency ? "required" : "selected";
 
     public bool IsExplicitSelection { get; init; } = !IsDependency;
@@ -187,21 +189,48 @@ public sealed record PackDraftItem(
     public bool CanRemove => IsExplicitSelection;
 }
 
+public sealed record PackDraftSortOption(string Id, string DisplayName);
+
+public sealed record PackDraftDisplayItem(PackDraftItem Item, int IndentLevel)
+{
+    public string DisplayName => Item.DisplayName;
+
+    public string IconUrl => Item.IconUrl;
+
+    public string SourceText => Item.SourceText;
+
+    public string Reason => Item.Reason;
+
+    public string PlacementText => Item.PlacementText;
+
+    public string DetailsText => Item.DetailsText;
+
+    public bool CanRemove => Item.CanRemove;
+
+    public double IndentWidth => Math.Clamp(IndentLevel, 0, 5) * 24d;
+}
+
 public sealed record PackOptionalDependencyChoice(
     string OwnerName,
     ServerContentKind Kind,
     ServerContentVersion Version,
     PackContentPlacement Placement)
 {
+    public string ProjectDisplayName { get; init; } = string.Empty;
+
+    public string IconUrl { get; init; } = string.Empty;
+
     public string ProviderId => Version.ProviderId;
 
     public string ProjectId => Version.ProjectId;
 
     public string VersionId => Version.VersionId;
 
-    public string DisplayName => string.IsNullOrWhiteSpace(Version.Name)
-        ? Version.ProjectId
-        : Version.Name;
+    public string DisplayName => !string.IsNullOrWhiteSpace(ProjectDisplayName)
+        ? ProjectDisplayName
+        : string.IsNullOrWhiteSpace(Version.Name)
+            ? Version.ProjectId
+            : Version.Name;
 
     public string DetailsText => $"{Version.VersionNumber}  •  {Placement}  •  Optional for {OwnerName}";
 }

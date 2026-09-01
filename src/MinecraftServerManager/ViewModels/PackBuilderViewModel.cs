@@ -35,8 +35,9 @@ public sealed class PackBuilderViewModel : BindableBase
     private readonly IJavaRuntimeService _javaRuntimeService;
     private readonly ICurseForgeApiKeyService _curseForgeApiKeyService;
     private readonly IPackDraftOutputService _outputService;
-    private readonly IMinecraftLauncherIntegrationService _launcherIntegrationService;
+    private readonly IManagedMinecraftLauncherService _managedLauncherService;
     private readonly IModpackInstallLocationService _installLocationService;
+    private readonly List<ServerContentProject> _loadedSearchResults = [];
     private PackBuildTargetOption? _selectedTarget;
     private string? _selectedMinecraftVersion;
     private PackPlatformOption? _selectedClientPlatform;
@@ -47,6 +48,7 @@ public sealed class PackBuilderViewModel : BindableBase
     private PackCategoryOption? _selectedCategory;
     private PackCatalogSortOption _selectedSort;
     private PackCatalogPageSizeOption _selectedPageSize;
+    private PackDraftSortOption _selectedDraftSort;
     private ServerContentProject? _selectedProject;
     private ServerContentVersion? _selectedVersion;
     private string _searchText = string.Empty;
@@ -60,7 +62,7 @@ public sealed class PackBuilderViewModel : BindableBase
         "Choose a Minecraft version and platform to resolve exact official loader versions.";
     private string _lastOutputDirectory = string.Empty;
     private string _launcherStatusText =
-        "A built client can be registered as an isolated installation in the official Minecraft Launcher.";
+        "A built client can be added to the manager-owned portable launcher without changing your normal Minecraft Launcher.";
     private double _outputProgressPercent;
     private bool _isOutputProgressIndeterminate = true;
     private string _curseForgeConnectionStatusText =
@@ -68,7 +70,8 @@ public sealed class PackBuilderViewModel : BindableBase
     private bool _isBusy;
     private bool _isOutputBusy;
     private bool _isLauncherBusy;
-    private bool _hasLauncherProfile;
+    private bool _hasManagedLauncherInstance;
+    private string? _managedLauncherInstanceId;
     private bool _isCurseForgeConnectionBusy;
     private bool _isCurseForgeApiKeyStored;
     private bool _isResolvingPlatformVersions;
@@ -81,6 +84,7 @@ public sealed class PackBuilderViewModel : BindableBase
     private int _currentSearchPage = 1;
     private int _totalSearchHits;
     private int _totalSearchPages = 1;
+    private int _hiddenDraftSearchResultCount;
     private bool _hasSearched;
     private string _activeSearchQuery = string.Empty;
     private bool _isShowingSimilarContent;
@@ -99,7 +103,7 @@ public sealed class PackBuilderViewModel : BindableBase
         IJavaRuntimeService javaRuntimeService,
         ICurseForgeApiKeyService curseForgeApiKeyService,
         IPackDraftOutputService outputService,
-        IMinecraftLauncherIntegrationService launcherIntegrationService,
+        IManagedMinecraftLauncherService managedLauncherService,
         IModpackInstallLocationService installLocationService)
     {
         _catalogService = catalogService;
@@ -112,8 +116,8 @@ public sealed class PackBuilderViewModel : BindableBase
         _curseForgeApiKeyService = curseForgeApiKeyService
             ?? throw new ArgumentNullException(nameof(curseForgeApiKeyService));
         _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
-        _launcherIntegrationService = launcherIntegrationService
-            ?? throw new ArgumentNullException(nameof(launcherIntegrationService));
+        _managedLauncherService = managedLauncherService
+            ?? throw new ArgumentNullException(nameof(managedLauncherService));
         _installLocationService = installLocationService
             ?? throw new ArgumentNullException(nameof(installLocationService));
 
@@ -137,6 +141,15 @@ public sealed class PackBuilderViewModel : BindableBase
         ];
         _selectedSort = SortOptions[0];
         _selectedPageSize = PageSizeOptions[0];
+        DraftSortOptions =
+        [
+            new("added", "Added order"),
+            new("name", "Name (A–Z)"),
+            new("selected-tree", "Selected mod → dependencies"),
+            new("dependency-tree", "Dependency → mods using it"),
+            new("type", "Selection type")
+        ];
+        _selectedDraftSort = DraftSortOptions[0];
         SearchPageNumbers.Add(1);
 
         foreach (var option in platformCatalog.GetBuildTargets())
@@ -193,6 +206,10 @@ public sealed class PackBuilderViewModel : BindableBase
     public ObservableCollection<ServerContentVersion> Versions { get; } = [];
 
     public ObservableCollection<PackDraftItem> DraftItems { get; } = [];
+
+    public ObservableCollection<PackDraftDisplayItem> DraftDisplayItems { get; } = [];
+
+    public IReadOnlyList<PackDraftSortOption> DraftSortOptions { get; }
 
     public AsyncRelayCommand SearchCommand { get; }
 
@@ -371,6 +388,18 @@ public sealed class PackBuilderViewModel : BindableBase
         }
     }
 
+    public PackDraftSortOption SelectedDraftSort
+    {
+        get => _selectedDraftSort;
+        set
+        {
+            if (value is not null && SetProperty(ref _selectedDraftSort, value))
+            {
+                RefreshDraftDisplayItems();
+            }
+        }
+    }
+
     public int CurrentSearchPage
     {
         get => _currentSearchPage;
@@ -540,11 +569,24 @@ public sealed class PackBuilderViewModel : BindableBase
         }
     }
 
-    public bool HasLauncherProfile
+    public bool HasManagedLauncherInstance
     {
-        get => _hasLauncherProfile;
-        private set => SetProperty(ref _hasLauncherProfile, value);
+        get => _hasManagedLauncherInstance;
+        private set
+        {
+            if (SetProperty(ref _hasManagedLauncherInstance, value))
+            {
+                OnPropertyChanged(nameof(CanRegisterLastClientOutput));
+                OnPropertyChanged(nameof(ManagedLauncherActionText));
+            }
+        }
     }
+
+    public bool IsManagedLauncherInstalled => _managedLauncherService.IsInstalled;
+
+    public string ManagedLauncherActionText => IsManagedLauncherInstalled
+        ? "Add client to managed launcher"
+        : "Install managed launcher & add client";
 
     public string CurseForgeConnectionStatusText
     {
@@ -659,7 +701,10 @@ public sealed class PackBuilderViewModel : BindableBase
 
     public string SearchPageSummary => TotalSearchHits == 0
         ? "No matching catalogue entries"
-        : $"{SearchResults.Count:N0} loaded  •  page {CurrentSearchPage:N0} of {TotalSearchPages:N0}  •  {TotalSearchHits:N0} across the responding sources";
+        : $"{SearchResults.Count:N0} shown  •  page {CurrentSearchPage:N0} of {TotalSearchPages:N0}  •  {TotalSearchHits:N0} across the responding sources"
+            + (_hiddenDraftSearchResultCount == 0
+                ? string.Empty
+                : $"  •  {_hiddenDraftSearchResultCount:N0} already in draft hidden");
 
     public bool HasSelectedProject => SelectedProject is not null;
 
@@ -702,6 +747,7 @@ public sealed class PackBuilderViewModel : BindableBase
         && _lastOutputResult is not null;
 
     public bool CanRegisterLastClientOutput => HasLastClientOutput
+        && !HasManagedLauncherInstance
         && !IsBusy
         && !IsLauncherBusy;
 
@@ -725,7 +771,7 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             (true, true) when SelectedServerRuntimeVersion?.CanPrepareServer == true =>
                 "Runnable client + server output",
-            (true, _) => "Minecraft Launcher client output",
+            (true, _) => "Managed launcher client output",
             (_, true) when SelectedServerRuntimeVersion?.CanPrepareServer == true =>
                 "Runnable server output",
             _ => "Content-only output"
@@ -741,9 +787,9 @@ public sealed class PackBuilderViewModel : BindableBase
             }
 
             var clientText = ShowClientRuntimeVersion && SelectedClientRuntimeVersion is { } clientVersion
-                ? $"The isolated Client folder will use {SelectedClientPlatform?.DisplayName} {clientVersion.Version} and can be added directly to Minecraft Launcher."
+                ? $"The isolated Client folder will use {SelectedClientPlatform?.DisplayName} {clientVersion.Version} and can be added to the manager-owned portable launcher."
                 : ShowClientPlatform
-                    ? "The selected client platform has no supported official-launcher installer yet."
+                    ? "The selected client platform has no supported managed-launcher component yet."
                     : string.Empty;
             var serverText = ShowServerRuntimeVersion
                 && SelectedServerRuntimeVersion is { CanPrepareServer: true } serverVersion
@@ -884,7 +930,8 @@ public sealed class PackBuilderViewModel : BindableBase
         LastOutputDirectory = string.Empty;
         _lastOutputPlan = null;
         _lastOutputResult = null;
-        HasLauncherProfile = false;
+        HasManagedLauncherInstance = false;
+        _managedLauncherInstanceId = null;
         OnPropertyChanged(nameof(HasLastClientOutput));
         OnPropertyChanged(nameof(CanRegisterLastClientOutput));
         try
@@ -900,7 +947,7 @@ public sealed class PackBuilderViewModel : BindableBase
             if (HasLastClientOutput)
             {
                 LauncherStatusText =
-                    "Client files are ready. Close Minecraft Launcher, then add this isolated game directory to it.";
+                    "Client files are ready. Add them to the manager-owned launcher; your normal Minecraft installation will remain untouched.";
             }
             OutputStatusText = result.ServerBaselinePrepared
                 ? $"Created {result.DownloadedFileCount:N0} verified download{(result.DownloadedFileCount == 1 ? string.Empty : "s")}, "
@@ -926,31 +973,37 @@ public sealed class PackBuilderViewModel : BindableBase
         }
     }
 
-    public async Task<MinecraftLauncherInstallResult?> RegisterLastClientWithLauncherAsync()
+    public async Task<ManagedLauncherInstallResult?> RegisterLastClientWithManagedLauncherAsync()
     {
         if (!CanRegisterLastClientOutput
             || _lastOutputPlan is not { } plan
             || _lastOutputResult is not { } result)
         {
-            LauncherStatusText = "Build a client output before adding it to Minecraft Launcher.";
+            LauncherStatusText = "Build a client output before adding it to the managed launcher.";
             return null;
         }
 
         IsLauncherBusy = true;
-        LauncherStatusText = "Preparing Minecraft Launcher integration…";
+        LauncherStatusText = _managedLauncherService.IsInstalled
+            ? "Preparing the managed launcher instance…"
+            : "Preparing the verified managed launcher download…";
         try
         {
             var clientDirectory = Path.Combine(result.OutputDirectory, "Client");
-            var installed = await _launcherIntegrationService.InstallAsync(
-                new MinecraftLauncherInstallRequest(
+            var installed = await _managedLauncherService.InstallPackAsync(
+                new ManagedLauncherInstallRequest(
                     plan.PackName,
                     plan.MinecraftVersion,
                     plan.ClientLoaderId,
                     plan.ClientLoaderVersion,
                     clientDirectory,
-                    result.ManifestPath),
+                    result.ManifestPath,
+                    plan.RecommendedJavaMajor),
                 new Progress<string>(message => LauncherStatusText = message));
-            HasLauncherProfile = true;
+            _managedLauncherInstanceId = installed.InstanceId;
+            HasManagedLauncherInstance = true;
+            OnPropertyChanged(nameof(IsManagedLauncherInstalled));
+            OnPropertyChanged(nameof(ManagedLauncherActionText));
             LauncherStatusText = installed.Message;
             return installed;
         }
@@ -960,8 +1013,8 @@ public sealed class PackBuilderViewModel : BindableBase
                 or TaskCanceledException or UnauthorizedAccessException
                 or System.ComponentModel.Win32Exception)
         {
-            HasLauncherProfile = false;
-            LauncherStatusText = $"The client files are safe, but Minecraft Launcher setup did not finish: {exception.Message}";
+            HasManagedLauncherInstance = false;
+            LauncherStatusText = $"The client files are safe, but managed launcher setup did not finish: {exception.Message}";
             return null;
         }
         finally
@@ -970,9 +1023,11 @@ public sealed class PackBuilderViewModel : BindableBase
         }
     }
 
-    public bool TryOpenMinecraftLauncher()
+    public bool TryOpenManagedLauncher()
     {
-        var opened = _launcherIntegrationService.TryOpenLauncher(out var message);
+        var opened = _managedLauncherService.TryOpenLauncher(
+            _managedLauncherInstanceId,
+            out var message);
         LauncherStatusText = message;
         return opened;
     }
@@ -1068,7 +1123,11 @@ public sealed class PackBuilderViewModel : BindableBase
                              StringComparer.OrdinalIgnoreCase))
             {
                 var existingItems = DraftItems.Concat(items).ToArray();
-                var project = CreateDependencyProject(choice.Kind, choice.Version, choice.DisplayName);
+                var project = CreateDependencyProject(
+                    choice.Kind,
+                    choice.Version,
+                    choice.DisplayName,
+                    choice.IconUrl);
                 var optionalPlan = await _dependencyResolver.ResolveAsync(
                     new PackResolveRequest(
                         SelectedTarget.Target,
@@ -1143,6 +1202,7 @@ public sealed class PackBuilderViewModel : BindableBase
         if (explicitSelections.Length == 0)
         {
             DraftItems.Clear();
+            RefreshVisibleSearchResults();
             RefreshDraftState($"Removed {item.DisplayName}. The draft is now empty.");
             return true;
         }
@@ -1157,7 +1217,11 @@ public sealed class PackBuilderViewModel : BindableBase
                 var version = await _catalogService.GetVersionAsync(
                     selection.ProviderId,
                     selection.VersionId);
-                var project = CreateDependencyProject(selection.Kind, version, selection.DisplayName);
+                var project = CreateDependencyProject(
+                    selection.Kind,
+                    version,
+                    selection.DisplayName,
+                    selection.IconUrl);
                 var plan = await _dependencyResolver.ResolveAsync(
                     new PackResolveRequest(
                         SelectedTarget?.Target ?? PackBuildTarget.ClientAndServer,
@@ -1195,6 +1259,7 @@ public sealed class PackBuilderViewModel : BindableBase
                 DraftItems.Add(rebuiltItem);
             }
 
+            RefreshVisibleSearchResults();
             RefreshDraftState(
                 $"Removed {item.DisplayName}. Dependencies that are still needed by the remaining selections were kept.");
             return true;
@@ -1233,6 +1298,8 @@ public sealed class PackBuilderViewModel : BindableBase
             }
         }
 
+        RefreshVisibleSearchResults();
+        RefreshDraftDisplayItems();
         OnPropertyChanged(nameof(DraftCountText));
         var requiredCount = addedItems.Count(item => item.DependencyType == "required");
         var optionalCount = addedItems.Count(item => item.DependencyType == "optional");
@@ -1255,14 +1322,15 @@ public sealed class PackBuilderViewModel : BindableBase
     private static ServerContentProject CreateDependencyProject(
         ServerContentKind kind,
         ServerContentVersion version,
-        string displayName) => new(
+        string displayName,
+        string iconUrl) => new(
             version.ProviderId,
             version.ProjectId,
             version.ProjectId,
             displayName,
             string.Empty,
             version.ProviderId,
-            string.Empty,
+            iconUrl,
             0,
             kind,
             version.MinecraftVersions,
@@ -1271,6 +1339,7 @@ public sealed class PackBuilderViewModel : BindableBase
 
     private void RefreshDraftState(string message)
     {
+        RefreshDraftDisplayItems();
         OnPropertyChanged(nameof(DraftCountText));
         DraftStatusText = $"{message} Planning draft only — no files have been changed.";
         ClearDraftCommand.NotifyCanExecuteChanged();
@@ -1536,13 +1605,15 @@ public sealed class PackBuilderViewModel : BindableBase
 
             foreach (var item in page.Items)
             {
-                if (!SearchResults.Any(existing =>
+                if (!_loadedSearchResults.Any(existing =>
                     existing.ProviderId.Equals(item.ProviderId, StringComparison.OrdinalIgnoreCase)
                     && existing.ProjectId.Equals(item.ProjectId, StringComparison.OrdinalIgnoreCase)))
                 {
-                    SearchResults.Add(item);
+                    _loadedSearchResults.Add(item);
                 }
             }
+
+            RefreshVisibleSearchResults();
 
             _hasSearched = true;
             OnPropertyChanged(nameof(CanFindSimilar));
@@ -1554,7 +1625,9 @@ public sealed class PackBuilderViewModel : BindableBase
                 : (int)Math.Ceiling(page.MaximumProviderHits / (double)pageSize);
             RefreshSearchPageNumbers();
             StatusText = SearchResults.Count == 0
-                ? $"No compatible results. {page.ProviderSummary}. Try broader content filters or another platform."
+                ? _hiddenDraftSearchResultCount > 0
+                    ? $"Every compatible result on this page is already represented in the draft. {_hiddenDraftSearchResultCount:N0} duplicate listing{(_hiddenDraftSearchResultCount == 1 ? " was" : "s were")} hidden."
+                    : $"No compatible results. {page.ProviderSummary}. Try broader content filters or another platform."
                 : IsShowingSimilarContent
                     ? $"{SearchResults.Count:N0} related result{(SearchResults.Count == 1 ? string.Empty : "s")} loaded  •  {page.ProviderSummary}. Similarity is inferred from published categories and compatibility."
                     : $"{SearchResults.Count:N0} compatible result{(SearchResults.Count == 1 ? string.Empty : "s")} loaded  •  {page.ProviderSummary}.";
@@ -1989,6 +2062,7 @@ public sealed class PackBuilderViewModel : BindableBase
         if (DraftItems.Count > 0)
         {
             DraftItems.Clear();
+            RefreshDraftDisplayItems();
             OnPropertyChanged(nameof(DraftCountText));
             ClearDraftCommand.NotifyCanExecuteChanged();
             DraftStatusText = "The previous draft was cleared because its compatibility context changed.";
@@ -2001,7 +2075,9 @@ public sealed class PackBuilderViewModel : BindableBase
     private void ClearSearchSelection(bool preserveSearchContext = false)
     {
         Interlocked.Increment(ref _versionRequestId);
+        _loadedSearchResults.Clear();
         SearchResults.Clear();
+        _hiddenDraftSearchResultCount = 0;
         Versions.Clear();
         _selectedProject = null;
         _selectedVersion = null;
@@ -2028,6 +2104,176 @@ public sealed class PackBuilderViewModel : BindableBase
 
         NotifyCommandStates();
     }
+
+    private void RefreshVisibleSearchResults()
+    {
+        var visibleResults = _loadedSearchResults
+            .Where(project => !IsRepresentedInDraft(project))
+            .ToArray();
+        _hiddenDraftSearchResultCount = _loadedSearchResults.Count - visibleResults.Length;
+
+        if (SelectedProject is { } selected
+            && !visibleResults.Any(project =>
+                project.ProviderId.Equals(selected.ProviderId, StringComparison.OrdinalIgnoreCase)
+                && project.ProjectId.Equals(selected.ProjectId, StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedProject = null;
+        }
+
+        SearchResults.Clear();
+        foreach (var project in visibleResults)
+        {
+            SearchResults.Add(project);
+        }
+
+        OnPropertyChanged(nameof(SearchPageSummary));
+        OnPropertyChanged(nameof(CanShowMore));
+        ShowMoreCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RefreshDraftDisplayItems()
+    {
+        IReadOnlyList<PackDraftDisplayItem> displayItems = SelectedDraftSort.Id switch
+        {
+            "name" => DraftItems
+                .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .Select(item => new PackDraftDisplayItem(item, 0))
+                .ToArray(),
+            "selected-tree" => BuildDraftDependencyTree(dependenciesFirst: false),
+            "dependency-tree" => BuildDraftDependencyTree(dependenciesFirst: true),
+            "type" => DraftItems
+                .OrderBy(DraftTypeOrder)
+                .ThenBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .Select(item => new PackDraftDisplayItem(item, 0))
+                .ToArray(),
+            _ => DraftItems
+                .Select(item => new PackDraftDisplayItem(item, 0))
+                .ToArray()
+        };
+
+        DraftDisplayItems.Clear();
+        foreach (var item in displayItems)
+        {
+            DraftDisplayItems.Add(item);
+        }
+    }
+
+    private IReadOnlyList<PackDraftDisplayItem> BuildDraftDependencyTree(bool dependenciesFirst)
+    {
+        var items = DraftItems.ToArray();
+        var children = Enumerable.Range(0, items.Length)
+            .ToDictionary(index => index, _ => new List<int>());
+        var childIndexes = new HashSet<int>();
+        for (var index = 0; index < items.Length; index++)
+        {
+            var ownerName = GetDraftRelationshipOwner(items[index]);
+            if (ownerName.Length == 0)
+            {
+                continue;
+            }
+
+            var normalisedOwnerName = NormaliseProjectIdentity(ownerName);
+            var ownerIndex = Array.FindIndex(items, candidate =>
+                NormaliseProjectIdentity(candidate.DisplayName).Equals(
+                    normalisedOwnerName,
+                    StringComparison.Ordinal));
+            if (ownerIndex < 0 || ownerIndex == index)
+            {
+                continue;
+            }
+
+            var isRequiredRelationship = items[index].Reason.StartsWith(
+                "Required by ",
+                StringComparison.OrdinalIgnoreCase);
+            var parentIndex = dependenciesFirst && isRequiredRelationship ? index : ownerIndex;
+            var childIndex = dependenciesFirst && isRequiredRelationship ? ownerIndex : index;
+            if (!children[parentIndex].Contains(childIndex))
+            {
+                children[parentIndex].Add(childIndex);
+                childIndexes.Add(childIndex);
+            }
+        }
+
+        var ordered = new List<PackDraftDisplayItem>(items.Length);
+        var visited = new HashSet<int>();
+        void AddBranch(int index, int level)
+        {
+            if (!visited.Add(index))
+            {
+                return;
+            }
+
+            ordered.Add(new PackDraftDisplayItem(items[index], level));
+            foreach (var child in children[index]
+                         .OrderBy(childIndex => DraftTypeOrder(items[childIndex]))
+                         .ThenBy(childIndex => items[childIndex].DisplayName, StringComparer.CurrentCultureIgnoreCase))
+            {
+                AddBranch(child, level + 1);
+            }
+        }
+
+        foreach (var rootIndex in Enumerable.Range(0, items.Length)
+                     .Where(index => !childIndexes.Contains(index)))
+        {
+            AddBranch(rootIndex, 0);
+        }
+
+        foreach (var remainingIndex in Enumerable.Range(0, items.Length))
+        {
+            AddBranch(remainingIndex, 0);
+        }
+
+        return ordered;
+    }
+
+    private static int DraftTypeOrder(PackDraftItem item) => item.DependencyType switch
+    {
+        "selected" => 0,
+        "optional" => 1,
+        "required" => 2,
+        _ => 3
+    };
+
+    private static string GetDraftRelationshipOwner(PackDraftItem item)
+    {
+        const string requiredPrefix = "Required by ";
+        const string optionalPrefix = "Optional dependency selected for ";
+        if (item.Reason.StartsWith(requiredPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return item.Reason[requiredPrefix.Length..].Trim();
+        }
+
+        return item.Reason.StartsWith(optionalPrefix, StringComparison.OrdinalIgnoreCase)
+            ? item.Reason[optionalPrefix.Length..].Trim()
+            : string.Empty;
+    }
+
+    private bool IsRepresentedInDraft(ServerContentProject project)
+    {
+        var projectName = NormaliseProjectIdentity(project.Title);
+        var projectSlug = NormaliseProjectIdentity(project.Slug);
+        return DraftItems.Any(item =>
+            item.Kind == project.Kind
+            && (item.ProviderId.Equals(project.ProviderId, StringComparison.OrdinalIgnoreCase)
+                && item.ProjectId.Equals(project.ProjectId, StringComparison.OrdinalIgnoreCase)
+                || ProjectNamesMatch(projectName, projectSlug, item.DisplayName)));
+    }
+
+    private static bool ProjectNamesMatch(
+        string normalisedProjectName,
+        string normalisedProjectSlug,
+        string draftDisplayName)
+    {
+        var normalisedDraftName = NormaliseProjectIdentity(draftDisplayName);
+        return normalisedDraftName.Length >= 3
+            && (normalisedDraftName.Equals(normalisedProjectName, StringComparison.Ordinal)
+                || normalisedDraftName.Equals(normalisedProjectSlug, StringComparison.Ordinal));
+    }
+
+    private static string NormaliseProjectIdentity(string value) => new(
+        value.Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
 
     private void ClearSimilarSearchContext()
     {
@@ -2193,6 +2439,8 @@ public sealed class PackBuilderViewModel : BindableBase
     private Task ClearDraftAsync()
     {
         DraftItems.Clear();
+        RefreshVisibleSearchResults();
+        RefreshDraftDisplayItems();
         OnPropertyChanged(nameof(DraftCountText));
         DraftStatusText = "Draft cleared. No files were changed.";
         ClearDraftCommand.NotifyCanExecuteChanged();

@@ -111,3 +111,21 @@ public sealed record MinecraftLauncherInstallResult(
     string BackupPath,
     string ClientDirectory,
     string Message);
+
+public sealed record ManagedLauncherInstallRequest(
+    string PackName,
+    string MinecraftVersion,
+    string LoaderId,
+    string LoaderVersion,
+    string ClientDirectory,
+    string ManifestPath,
+    int? RecommendedJavaMajor);
+
+public sealed record ManagedLauncherInstallResult(
+    string InstanceId,
+    string InstanceDirectory,
+    string LauncherDirectory,
+    string LauncherVersion,
+    bool LauncherInstalledNow,
+    string ClientDirectory,
+    string Message);

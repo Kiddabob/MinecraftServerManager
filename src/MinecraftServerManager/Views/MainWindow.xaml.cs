@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.Storage.Pickers;
 using MinecraftServerManager.Models;
 using MinecraftServerManager.Services;
@@ -642,95 +643,105 @@ public sealed partial class MainWindow : Window
         string primaryButtonText,
         bool includeOptionalChoices)
     {
-        var content = new StackPanel { Spacing = 10 };
-        content.Children.Add(new TextBlock
+        var content = new StackPanel
         {
-            MaxWidth = 580,
-            Text = plan.SummaryText,
-            TextWrapping = TextWrapping.Wrap
+            Width = 640,
+            Spacing = 16
+        };
+        content.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = plan.Conflicts.Count > 0
+                ? InfoBarSeverity.Error
+                : InfoBarSeverity.Informational,
+            Title = plan.Conflicts.Count > 0 ? "Compatibility needs attention" : "Draft plan ready",
+            Message = plan.SummaryText
         });
+
+        content.Children.Add(CreateBuilderDialogSectionHeader(
+            "Items in this change",
+            $"{plan.Items.Count:N0} item{(plan.Items.Count == 1 ? string.Empty : "s")}"));
         foreach (var item in plan.Items)
         {
-            var requirement = item.DependencyType switch
-            {
-                "required" => "Required automatically",
-                "optional" => "Chosen optional dependency",
-                _ => "Selected mod or plugin"
-            };
-            content.Children.Add(new TextBlock
-            {
-                MaxWidth = 580,
-                FontFamily = new FontFamily("Cascadia Mono"),
-                FontSize = 12,
-                Text = $"• {item.DisplayName} {item.VersionNumber}\n  {requirement} • {item.PlacementText} — {item.Reason}",
-                TextWrapping = TextWrapping.Wrap
-            });
+            content.Children.Add(CreateBuilderPlanItemCard(item));
         }
 
         var optionalCheckBoxes = new List<(CheckBox CheckBox, PackOptionalDependencyChoice Choice)>();
         if (includeOptionalChoices && plan.OptionalDependencies.Count > 0)
         {
+            content.Children.Add(CreateBuilderDialogSectionHeader(
+                "Optional dependencies",
+                $"{plan.OptionalDependencies.Count:N0} available"));
             content.Children.Add(new TextBlock
             {
-                Margin = new Thickness(0, 6, 0, 0),
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                Text = "Optional dependencies",
-                TextWrapping = TextWrapping.Wrap
-            });
-            content.Children.Add(new TextBlock
-            {
-                MaxWidth = 580,
-                Text = "Choose any optional additions you want. They are unchecked by default; their own required dependencies will be resolved before the final confirmation.",
+                MaxWidth = 640,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 160, 160, 160)),
+                Text = "Choose only the extras you want. They start off, and any dependencies they require will be checked before the final confirmation.",
                 TextWrapping = TextWrapping.Wrap
             });
             foreach (var choice in plan.OptionalDependencies)
             {
-                var checkBox = new CheckBox
-                {
-                    MaxWidth = 580,
-                    Content = $"{choice.DisplayName}\n{choice.DetailsText}",
-                    IsChecked = false
-                };
+                var card = CreateBuilderOptionalDependencyCard(choice, out var checkBox);
                 optionalCheckBoxes.Add((checkBox, choice));
-                content.Children.Add(checkBox);
+                content.Children.Add(card);
             }
         }
 
         foreach (var warning in plan.Warnings)
         {
-            content.Children.Add(new TextBlock
+            content.Children.Add(new InfoBar
             {
-                MaxWidth = 580,
-                Foreground = new SolidColorBrush(Colors.Goldenrod),
-                Text = $"Review: {warning}",
-                TextWrapping = TextWrapping.Wrap
+                IsOpen = true,
+                IsClosable = false,
+                Severity = InfoBarSeverity.Warning,
+                Title = "Review before adding",
+                Message = warning
             });
         }
 
         foreach (var conflict in plan.Conflicts)
         {
-            content.Children.Add(new TextBlock
+            content.Children.Add(new InfoBar
             {
-                MaxWidth = 580,
-                Foreground = new SolidColorBrush(Colors.IndianRed),
-                Text = $"Conflict: {conflict}",
-                TextWrapping = TextWrapping.Wrap
+                IsOpen = true,
+                IsClosable = false,
+                Severity = InfoBarSeverity.Error,
+                Title = "Conflict",
+                Message = conflict
             });
         }
 
-        content.Children.Add(new TextBlock
+        var draftNote = new Grid
         {
-            MaxWidth = 580,
-            Text = "This adds entries to an in-memory draft only. No files will be downloaded, installed, or launched.",
-            TextWrapping = TextWrapping.Wrap
+            ColumnSpacing = 10,
+            Margin = new Thickness(4, 0, 4, 0)
+        };
+        draftNote.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        draftNote.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        draftNote.Children.Add(new FontIcon
+        {
+            Glyph = "\uE946",
+            FontSize = 16,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 128, 128, 128))
         });
+        var draftNoteText = new TextBlock
+        {
+            Text = "Draft only — no files are downloaded, installed, or launched from this review.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 150, 150, 150))
+        };
+        Grid.SetColumn(draftNoteText, 1);
+        draftNote.Children.Add(draftNoteText);
+        content.Children.Add(draftNote);
+
         var dialog = new ContentDialog
         {
             XamlRoot = RootGrid.XamlRoot,
             Title = title,
             Content = new ScrollViewer
             {
-                MaxHeight = 520,
+                MaxHeight = 620,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = content
@@ -739,6 +750,11 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Close
         };
+        // The WinUI template caps ContentDialog at 548 DIPs through theme
+        // resources. Override those resources locally so the cards, badges,
+        // and optional-dependency checkbox have room without clipping.
+        dialog.Resources["ContentDialogMinWidth"] = 680d;
+        dialog.Resources["ContentDialogMaxWidth"] = 760d;
         if (await dialog.ShowAsync() != ContentDialogResult.Primary
             || string.IsNullOrWhiteSpace(primaryButtonText))
         {
@@ -750,6 +766,251 @@ public sealed partial class MainWindow : Window
             .Select(option => option.Choice)
             .ToArray();
     }
+
+    private static Grid CreateBuilderDialogSectionHeader(string title, string countText)
+    {
+        var header = new Grid { ColumnSpacing = 12 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 16,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        var count = CreateBuilderBadge(
+            countText,
+            Color.FromArgb(255, 130, 130, 130));
+        Grid.SetColumn(count, 1);
+        header.Children.Add(count);
+        return header;
+    }
+
+    private static Border CreateBuilderPlanItemCard(PackDraftItem item)
+    {
+        var stateText = item.DependencyType switch
+        {
+            "required" => "Required",
+            "optional" => "Optional",
+            _ => "Selected"
+        };
+        var stateColour = item.DependencyType switch
+        {
+            "required" => Color.FromArgb(255, 72, 180, 112),
+            "optional" => Color.FromArgb(255, 218, 160, 45),
+            _ => Color.FromArgb(255, 84, 150, 230)
+        };
+        var details = CreateBuilderDependencyDetails(
+            item.DisplayName,
+            item.VersionNumber,
+            item.ProviderId,
+            item.Kind,
+            stateText,
+            stateColour,
+            item.PlacementText,
+            item.Reason);
+        return CreateBuilderDependencyCard(item.IconUrl, item.Kind, details, null);
+    }
+
+    private static Border CreateBuilderOptionalDependencyCard(
+        PackOptionalDependencyChoice choice,
+        out CheckBox checkBox)
+    {
+        checkBox = new CheckBox
+        {
+            IsChecked = false,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        ToolTipService.SetToolTip(checkBox, $"Include {choice.DisplayName} in this draft");
+        var details = CreateBuilderDependencyDetails(
+            choice.DisplayName,
+            choice.Version.VersionNumber,
+            choice.ProviderId,
+            choice.Kind,
+            "Optional",
+            Color.FromArgb(255, 218, 160, 45),
+            choice.Placement switch
+            {
+                PackContentPlacement.Client => "Client",
+                PackContentPlacement.Server => "Server",
+                PackContentPlacement.Both => "Client + server",
+                _ => "Needs review"
+            },
+            $"Suggested by {choice.OwnerName}");
+        return CreateBuilderDependencyCard(choice.IconUrl, choice.Kind, details, checkBox);
+    }
+
+    private static StackPanel CreateBuilderDependencyDetails(
+        string displayName,
+        string versionText,
+        string providerId,
+        ServerContentKind kind,
+        string stateText,
+        Color stateColour,
+        string placementText,
+        string reason)
+    {
+        var details = new StackPanel
+        {
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        details.Children.Add(new TextBlock
+        {
+            Text = displayName,
+            FontSize = 15,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            MaxLines = 2,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap
+        });
+        if (!string.IsNullOrWhiteSpace(versionText)
+            && !NormaliseBuilderLabel(versionText).Equals(
+                NormaliseBuilderLabel(displayName),
+                StringComparison.Ordinal))
+        {
+            details.Children.Add(new TextBlock
+            {
+                Text = versionText,
+                FontSize = 12,
+                MaxLines = 1,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 155, 155, 155))
+            });
+        }
+
+        var badges = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6
+        };
+        badges.Children.Add(CreateBuilderBadge(stateText, stateColour));
+        badges.Children.Add(CreateBuilderBadge(
+            placementText,
+            Color.FromArgb(255, 115, 145, 200)));
+        badges.Children.Add(CreateBuilderBadge(
+            kind == ServerContentKind.Mod ? "Mod" : "Plugin",
+            Color.FromArgb(255, 135, 135, 135)));
+        badges.Children.Add(CreateBuilderBadge(
+            ProviderDisplayName(providerId),
+            ProviderColour(providerId)));
+        details.Children.Add(badges);
+        details.Children.Add(new TextBlock
+        {
+            Text = reason,
+            FontSize = 12,
+            MaxLines = 2,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 155, 155, 155))
+        });
+        return details;
+    }
+
+    private static Border CreateBuilderDependencyCard(
+        string iconUrl,
+        ServerContentKind kind,
+        FrameworkElement details,
+        CheckBox? checkBox)
+    {
+        var layout = new Grid
+        {
+            ColumnSpacing = 12
+        };
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        if (checkBox is not null)
+        {
+            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        }
+
+        layout.Children.Add(CreateBuilderContentIcon(iconUrl, kind));
+        Grid.SetColumn(details, 1);
+        layout.Children.Add(details);
+        if (checkBox is not null)
+        {
+            Grid.SetColumn(checkBox, 2);
+            layout.Children.Add(checkBox);
+        }
+
+        return new Border
+        {
+            Padding = new Thickness(12),
+            Background = new SolidColorBrush(Color.FromArgb(18, 128, 128, 128)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(42, 128, 128, 128)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Child = layout
+        };
+    }
+
+    private static Border CreateBuilderContentIcon(string iconUrl, ServerContentKind kind)
+    {
+        var iconLayer = new Grid();
+        iconLayer.Children.Add(new FontIcon
+        {
+            Glyph = kind == ServerContentKind.Mod ? "\uE7FC" : "\uE943",
+            FontSize = 22,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 155, 155, 155)),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        if (Uri.TryCreate(iconUrl, UriKind.Absolute, out var iconUri)
+            && iconUri.Scheme == Uri.UriSchemeHttps)
+        {
+            iconLayer.Children.Add(new Image
+            {
+                Source = new BitmapImage(iconUri),
+                Stretch = Stretch.UniformToFill
+            });
+        }
+
+        return new Border
+        {
+            Width = 48,
+            Height = 48,
+            Background = new SolidColorBrush(Color.FromArgb(28, 128, 128, 128)),
+            CornerRadius = new CornerRadius(9),
+            Child = iconLayer,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+    }
+
+    private static Border CreateBuilderBadge(string text, Color colour) => new()
+    {
+        Padding = new Thickness(7, 2, 7, 2),
+        Background = new SolidColorBrush(Color.FromArgb(30, colour.R, colour.G, colour.B)),
+        BorderBrush = new SolidColorBrush(Color.FromArgb(70, colour.R, colour.G, colour.B)),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(9),
+        Child = new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(colour)
+        }
+    };
+
+    private static string ProviderDisplayName(string providerId) => providerId.Trim().ToLowerInvariant() switch
+    {
+        "curseforge" => "CurseForge",
+        "modrinth" => "Modrinth",
+        _ => providerId
+    };
+
+    private static Color ProviderColour(string providerId) => providerId.Trim().ToLowerInvariant() switch
+    {
+        "curseforge" => Color.FromArgb(255, 241, 100, 54),
+        "modrinth" => Color.FromArgb(255, 27, 217, 106),
+        _ => Color.FromArgb(255, 135, 135, 135)
+    };
+
+    private static string NormaliseBuilderLabel(string value) => new(
+        value.Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
 
     private async void RemoveBuilderDraftItem_Click(object sender, RoutedEventArgs args)
     {
@@ -841,10 +1102,10 @@ public sealed partial class MainWindow : Window
             Title = plan.PreparesServerBaseline ? "Runnable server baseline" : "Content-only output",
             Message = plan.PreparesServerBaseline
                 ? plan.Target == PackBuildTarget.ClientAndServer
-                    ? "The exact official server loader will be installed and the server will be added as the selected manager profile. The isolated Client folder will also be registered in Minecraft Launcher; close Minecraft and its launcher before continuing. The server EULA remains unaccepted until you explicitly review it."
+                    ? "The exact official server loader will be installed and the server will be added as the selected manager profile. Afterward, you can approve adding the isolated Client folder to the manager-owned launcher. The normal Minecraft Launcher remains untouched. The server EULA remains unaccepted until you explicitly review it."
                     : "The exact official server loader will be installed in the atomic staging folder and the completed server will be added as a profile. Java must already be available. The Minecraft EULA remains unaccepted until you explicitly review it in the app."
                 : plan.Target == PackBuildTarget.Client
-                    ? "This creates a verified, isolated Client game directory and registers the exact selected loader in Minecraft Launcher. Close Minecraft and its launcher before continuing. No account credentials are read or changed."
+                    ? "This creates a verified, isolated Client game directory. Afterward, you can approve installing the manager-owned portable launcher and adding the client as a separate instance. The normal Minecraft Launcher remains untouched."
                     : "This creates verified Client/Server mod and plugin folders plus a manifest. The selected platform does not yet have a safe runnable baseline installer here, and no Minecraft EULA is accepted."
         });
         var dialog = new ContentDialog
@@ -893,17 +1154,63 @@ public sealed partial class MainWindow : Window
 
             if (plan.Target is PackBuildTarget.Client or PackBuildTarget.ClientAndServer)
             {
-                var launcherResult = await ViewModel.Builder.RegisterLastClientWithLauncherAsync();
-                if (launcherResult is not null)
-                {
-                    await ShowMinecraftLauncherReadyDialogAsync(launcherResult);
-                }
+                await ConfirmAndAddClientToManagedLauncherAsync();
             }
         }
     }
 
-    private async Task ShowMinecraftLauncherReadyDialogAsync(
-        MinecraftLauncherInstallResult launcherResult)
+    private async Task ConfirmAndAddClientToManagedLauncherAsync()
+    {
+        var isInstalled = ViewModel.Builder.IsManagedLauncherInstalled;
+        var content = new StackPanel { MaxWidth = 590, Spacing = 10 };
+        content.Children.Add(new TextBlock
+        {
+            Text = isInstalled
+                ? "This copies the built client into a new instance in the manager-owned portable launcher. It will not overwrite an existing instance or saved worlds."
+                : $"This downloads the official Prism Launcher portable build into:\n{Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kidda.MinecraftServerManager", "Launcher", "Prism")}\n\nIts accounts, instances, libraries, and settings stay in that folder. Your normal Minecraft Launcher and %APPDATA%\\.minecraft will not be read or changed.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = "Prism Launcher is a third-party, open-source launcher licensed under GPL-3.0-only. You sign in to Microsoft inside Prism Launcher; Minecraft Server Manager never receives your password or account tokens.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        links.Children.Add(new HyperlinkButton
+        {
+            Content = "Prism Launcher website",
+            NavigateUri = new Uri("https://prismlauncher.org/")
+        });
+        links.Children.Add(new HyperlinkButton
+        {
+            Content = "Source and licence",
+            NavigateUri = new Uri("https://github.com/PrismLauncher/PrismLauncher")
+        });
+        content.Children.Add(links);
+
+        var consentDialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = isInstalled ? "Add client to managed launcher?" : "Install the managed launcher?",
+            Content = content,
+            PrimaryButtonText = isInstalled ? "Add client" : "Install and add client",
+            CloseButtonText = "Not now",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        if (await consentDialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var launcherResult = await ViewModel.Builder.RegisterLastClientWithManagedLauncherAsync();
+        if (launcherResult is not null)
+        {
+            await ShowManagedLauncherReadyDialogAsync(launcherResult);
+        }
+    }
+
+    private async Task ShowManagedLauncherReadyDialogAsync(
+        ManagedLauncherInstallResult launcherResult)
     {
         var dialog = new ContentDialog
         {
@@ -912,31 +1219,27 @@ public sealed partial class MainWindow : Window
             Content = new TextBlock
             {
                 MaxWidth = 560,
-                Text = $"{launcherResult.Message}\n\nMinecraft Launcher will download its normal game libraries the first time you press Play. The manager did not read or change your Microsoft account credentials.",
+                Text = $"{launcherResult.Message}\n\nThe managed launcher will download Minecraft's normal game libraries the first time you press Play. Sign in inside Prism Launcher when prompted; the manager does not read or change your Microsoft credentials.",
                 TextWrapping = TextWrapping.Wrap
             },
-            PrimaryButtonText = "Open Minecraft Launcher",
+            PrimaryButtonText = "Open managed launcher",
             CloseButtonText = "Later",
             DefaultButton = ContentDialogButton.Primary
         };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            ViewModel.Builder.TryOpenMinecraftLauncher();
+            ViewModel.Builder.TryOpenManagedLauncher();
         }
     }
 
-    private async void RegisterBuilderClientWithLauncher_Click(object sender, RoutedEventArgs args)
+    private async void RegisterBuilderClientWithManagedLauncher_Click(object sender, RoutedEventArgs args)
     {
-        var result = await ViewModel.Builder.RegisterLastClientWithLauncherAsync();
-        if (result is not null)
-        {
-            await ShowMinecraftLauncherReadyDialogAsync(result);
-        }
+        await ConfirmAndAddClientToManagedLauncherAsync();
     }
 
-    private void OpenMinecraftLauncher_Click(object sender, RoutedEventArgs args)
+    private void OpenManagedLauncher_Click(object sender, RoutedEventArgs args)
     {
-        ViewModel.Builder.TryOpenMinecraftLauncher();
+        ViewModel.Builder.TryOpenManagedLauncher();
     }
 
     private async void OpenBuilderOutputFolder_Click(object sender, RoutedEventArgs args)

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -44,27 +45,76 @@ internal static partial class JavaServerInstallerUtilities
         string expectedHost,
         IProgress<string>? progress,
         CancellationToken cancellationToken)
+        => await DownloadVerifiedInstallerAsync(
+            installerUri,
+            destinationPath,
+            expectedHost,
+            progress,
+            HttpClient,
+            cancellationToken);
+
+    internal static async Task DownloadVerifiedInstallerAsync(
+        Uri installerUri,
+        string destinationPath,
+        string expectedHost,
+        IProgress<string>? progress,
+        HttpClient httpClient,
+        CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(httpClient);
         EnsureOfficialUri(installerUri, expectedHost);
         var checksumUri = new Uri(installerUri.AbsoluteUri + ".sha256");
         progress?.Report("Retrieving the installer's published SHA-256 checksum…");
-        var checksumText = await DownloadSmallTextAsync(
-            checksumUri,
-            expectedHost,
-            MaximumChecksumBytes,
-            cancellationToken);
-        var match = Sha256Pattern().Match(checksumText);
-        if (!match.Success)
+        string checksumText;
+        HashAlgorithmName hashAlgorithm;
+        string hashLabel;
+        try
         {
-            throw new InvalidDataException("The installer repository returned an invalid SHA-256 checksum.");
+            checksumText = await DownloadSmallTextAsync(
+                checksumUri,
+                expectedHost,
+                MaximumChecksumBytes,
+                httpClient,
+                cancellationToken);
+            hashAlgorithm = HashAlgorithmName.SHA256;
+            hashLabel = "SHA-256";
+        }
+        catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            // Historical Forge releases commonly publish only a SHA-1 sidecar.
+            // Falling back is safe because the checksum is still obtained from the same
+            // allowlisted HTTPS Maven host and verified before the JAR is opened.
+            checksumUri = new Uri(installerUri.AbsoluteUri + ".sha1");
+            progress?.Report(
+                "This legacy loader has no SHA-256 sidecar; retrieving its published SHA-1 checksum…");
+            checksumText = await DownloadSmallTextAsync(
+                checksumUri,
+                expectedHost,
+                MaximumChecksumBytes,
+                httpClient,
+                cancellationToken);
+            hashAlgorithm = HashAlgorithmName.SHA1;
+            hashLabel = "SHA-1";
         }
 
-        await DownloadVerifiedInstallerAsync(
+        var match = hashAlgorithm == HashAlgorithmName.SHA256
+            ? Sha256Pattern().Match(checksumText)
+            : Sha1Pattern().Match(checksumText);
+        if (!match.Success)
+        {
+            throw new InvalidDataException(
+                $"The installer repository returned an invalid {hashLabel} checksum.");
+        }
+
+        await DownloadAndVerifyInstallerAsync(
             installerUri,
             destinationPath,
             expectedHost,
             match.Value,
+            hashAlgorithm,
+            hashLabel,
             progress,
+            httpClient,
             cancellationToken);
     }
 
@@ -76,16 +126,39 @@ internal static partial class JavaServerInstallerUtilities
         IProgress<string>? progress,
         CancellationToken cancellationToken)
     {
-        EnsureOfficialUri(installerUri, expectedHost);
         if (!Sha256ExactPattern().IsMatch(expectedSha256))
         {
             throw new InvalidDataException("The installer metadata contained an invalid SHA-256 checksum.");
         }
 
+        await DownloadAndVerifyInstallerAsync(
+            installerUri,
+            destinationPath,
+            expectedHost,
+            expectedSha256,
+            HashAlgorithmName.SHA256,
+            "SHA-256",
+            progress,
+            HttpClient,
+            cancellationToken);
+    }
+
+    private static async Task DownloadAndVerifyInstallerAsync(
+        Uri installerUri,
+        string destinationPath,
+        string expectedHost,
+        string expectedHash,
+        HashAlgorithmName hashAlgorithm,
+        string hashLabel,
+        IProgress<string>? progress,
+        HttpClient httpClient,
+        CancellationToken cancellationToken)
+    {
+        EnsureOfficialUri(installerUri, expectedHost);
         progress?.Report("Downloading and verifying the official loader installer…");
         try
         {
-            using var response = await HttpClient.GetAsync(
+            using var response = await httpClient.GetAsync(
                 installerUri,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
@@ -100,7 +173,9 @@ internal static partial class JavaServerInstallerUtilities
             await WriteVerifiedInstallerAsync(
                 source,
                 destinationPath,
-                expectedSha256,
+                expectedHash,
+                hashAlgorithm,
+                hashLabel,
                 cancellationToken);
         }
         catch
@@ -123,7 +198,24 @@ internal static partial class JavaServerInstallerUtilities
             throw new InvalidDataException("The installer metadata contained an invalid SHA-256 checksum.");
         }
 
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        await WriteVerifiedInstallerAsync(
+            source,
+            destinationPath,
+            expectedSha256,
+            HashAlgorithmName.SHA256,
+            "SHA-256",
+            cancellationToken);
+    }
+
+    private static async Task WriteVerifiedInstallerAsync(
+        Stream source,
+        string destinationPath,
+        string expectedHash,
+        HashAlgorithmName hashAlgorithm,
+        string hashLabel,
+        CancellationToken cancellationToken)
+    {
+        using var hash = IncrementalHash.CreateHash(hashAlgorithm);
         var buffer = new byte[81920];
         long completed = 0;
         int read;
@@ -151,9 +243,9 @@ internal static partial class JavaServerInstallerUtilities
         }
 
         var actualHash = Convert.ToHexString(hash.GetHashAndReset());
-        if (!actualHash.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+        if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("The loader installer failed SHA-256 verification.");
+            throw new InvalidDataException($"The loader installer failed {hashLabel} verification.");
         }
 
         ValidateInstallerJar(destinationPath);
@@ -335,10 +427,22 @@ internal static partial class JavaServerInstallerUtilities
         Uri uri,
         string expectedHost,
         int maximumBytes,
+        CancellationToken cancellationToken) => await DownloadSmallTextAsync(
+            uri,
+            expectedHost,
+            maximumBytes,
+            HttpClient,
+            cancellationToken);
+
+    private static async Task<string> DownloadSmallTextAsync(
+        Uri uri,
+        string expectedHost,
+        int maximumBytes,
+        HttpClient httpClient,
         CancellationToken cancellationToken)
     {
         EnsureOfficialUri(uri, expectedHost);
-        using var response = await HttpClient.GetAsync(
+        using var response = await httpClient.GetAsync(
             uri,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
@@ -475,4 +579,7 @@ internal static partial class JavaServerInstallerUtilities
 
     [GeneratedRegex(@"\A[0-9a-fA-F]{64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256ExactPattern();
+
+    [GeneratedRegex(@"\b[0-9a-fA-F]{40}\b", RegexOptions.CultureInvariant)]
+    private static partial Regex Sha1Pattern();
 }

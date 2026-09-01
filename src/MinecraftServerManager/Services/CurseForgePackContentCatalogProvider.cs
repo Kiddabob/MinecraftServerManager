@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using MinecraftServerManager.Models;
 
@@ -10,10 +12,13 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
     private const int BukkitPluginsClassId = 5;
     private const int MinecraftModsClassId = 6;
     private const int MaximumPageSize = 50;
+    private const int MaximumProjectMetadataBatchSize = 50;
     private const int MaximumVersionCount = 200;
     private readonly HttpClient _httpClient;
     private readonly ICurseForgeApiKeyService? _apiKeyService;
     private readonly string _injectedApiKey;
+    private readonly ConcurrentDictionary<string, CurseForgeProjectMetadata> _projectMetadataCache =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public CurseForgePackContentCatalogProvider(ICurseForgeApiKeyService apiKeyService)
         : this(CreateHttpClient(), apiKeyService)
@@ -69,11 +74,19 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
         using var response = await SendAsync(requestUri, cancellationToken);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        return ParseSearchResponse(
+        var page = ParseSearchResponse(
             document.RootElement,
             request.Kind,
             request.Categories,
             loaderTypes.Length > 1 ? loaderTypes : []);
+        foreach (var project in page.Items)
+        {
+            _projectMetadataCache[project.ProjectId] = new CurseForgeProjectMetadata(
+                project.Title,
+                project.IconUrl);
+        }
+
+        return page;
     }
 
     public async Task<IReadOnlyList<ServerContentVersion>> GetPackVersionsAsync(
@@ -127,12 +140,13 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
             }
         }
 
-        return versions.Values
+        var orderedVersions = versions.Values
             .Where(version => version.PrimaryFile is not null)
             .OrderBy(version => ReleaseChannelOrder(version.ReleaseChannel))
             .ThenByDescending(version => version.PublishedAt)
             .Take(MaximumVersionCount)
             .ToArray();
+        return await HydrateDependencyDisplayNamesAsync(orderedVersions, cancellationToken);
     }
 
     public async Task<ServerContentVersion> GetPackVersionAsync(
@@ -154,8 +168,9 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
             cancellationToken);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        return ParseFileResponse(document.RootElement)
+        var version = ParseFileResponse(document.RootElement)
             ?? throw new InvalidDataException("CurseForge returned invalid file metadata.");
+        return (await HydrateDependencyDisplayNamesAsync([version], cancellationToken)).Single();
     }
 
     public async Task<IReadOnlyList<string>> GetMinecraftVersionsAsync(
@@ -364,6 +379,36 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
             .ToArray();
     }
 
+    internal static IReadOnlyDictionary<string, CurseForgeProjectMetadata> ParseProjectMetadataResponse(
+        JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException("CurseForge returned invalid project metadata.");
+        }
+
+        var projects = new Dictionary<string, CurseForgeProjectMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in data.EnumerateArray())
+        {
+            var projectId = GetInt64(project, "id").ToString();
+            var name = GetString(project, "name");
+            if (projectId != "0" && name.Length > 0)
+            {
+                var logo = project.TryGetProperty("logo", out var logoValue)
+                    && logoValue.ValueKind == JsonValueKind.Object
+                        ? logoValue
+                        : default;
+                projects[projectId] = new CurseForgeProjectMetadata(
+                    name,
+                    GetTrustedAssetUrl(logo, "thumbnailUrl"));
+            }
+        }
+
+        return projects;
+    }
+
     internal static int? ToModLoaderType(string loaderId) => loaderId.Trim().ToLowerInvariant() switch
     {
         "forge" => 1,
@@ -436,27 +481,123 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
 
     private static IReadOnlyList<ServerContentDependency> ParseDependencies(JsonElement file) =>
         GetArray(file, "dependencies")
-            .Select(dependency => new ServerContentDependency(
-                string.Empty,
-                GetInt64(dependency, "modId").ToString(),
-                string.Empty,
-                GetInt32(dependency, "relationType") switch
-                {
-                    1 or 6 => "embedded",
-                    2 => "optional",
-                    3 => "required",
-                    5 => "incompatible",
-                    _ => string.Empty
-                }))
+            .Select(dependency => CreateDependency(
+                GetInt64(dependency, "modId"),
+                GetInt32(dependency, "relationType")))
             .Where(dependency => dependency.ProjectId != "0" && dependency.DependencyType.Length > 0)
             .ToArray();
 
+    private static ServerContentDependency CreateDependency(long projectId, int relationType)
+    {
+        var projectIdText = projectId.ToString();
+        return new ServerContentDependency(
+            string.Empty,
+            projectIdText,
+            string.Empty,
+            relationType switch
+            {
+                1 or 6 => "embedded",
+                2 => "optional",
+                3 => "required",
+                5 => "incompatible",
+                _ => string.Empty
+            },
+            DependencyFallbackName(projectIdText));
+    }
+
+    private async Task<IReadOnlyList<ServerContentVersion>> HydrateDependencyDisplayNamesAsync(
+        IReadOnlyList<ServerContentVersion> versions,
+        CancellationToken cancellationToken)
+    {
+        var dependencyProjectIds = versions
+            .SelectMany(version => version.Dependencies)
+            .Select(dependency => dependency.ProjectId)
+            .Where(projectId => long.TryParse(projectId, out var numericId) && numericId > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        await PopulateProjectNameCacheAsync(dependencyProjectIds, cancellationToken);
+
+        return versions
+            .Select(version => version with
+            {
+                Dependencies = version.Dependencies
+                    .Select(HydrateDependencyMetadata)
+                    .ToArray()
+            })
+            .ToArray();
+    }
+
+    private ServerContentDependency HydrateDependencyMetadata(ServerContentDependency dependency) =>
+        _projectMetadataCache.TryGetValue(dependency.ProjectId, out var metadata)
+            ? dependency with
+            {
+                DisplayName = metadata.DisplayName,
+                IconUrl = metadata.IconUrl
+            }
+            : dependency with
+            {
+                DisplayName = DependencyFallbackName(dependency.ProjectId)
+            };
+
+    private async Task PopulateProjectNameCacheAsync(
+        IReadOnlyList<string> projectIds,
+        CancellationToken cancellationToken)
+    {
+        var missingProjectIds = projectIds
+            .Where(projectId => !_projectMetadataCache.ContainsKey(projectId))
+            .ToArray();
+        foreach (var batch in missingProjectIds.Chunk(MaximumProjectMetadataBatchSize))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                using var content = JsonContent.Create(new
+                {
+                    modIds = batch.Select(long.Parse).ToArray(),
+                    filterPcOnly = false
+                });
+                using var response = await SendAsync(
+                    HttpMethod.Post,
+                    "v1/mods",
+                    content,
+                    cancellationToken);
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var document = await JsonDocument.ParseAsync(
+                    stream,
+                    cancellationToken: cancellationToken);
+                foreach (var (projectId, metadata) in ParseProjectMetadataResponse(document.RootElement))
+                {
+                    _projectMetadataCache[projectId] = metadata;
+                }
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException or IOException or InvalidDataException or JsonException
+                || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                // Dependency resolution can continue with a readable project-ID fallback if metadata is unavailable.
+            }
+        }
+    }
+
+    private static string DependencyFallbackName(string projectId) =>
+        $"CurseForge project #{projectId}";
+
     private async Task<HttpResponseMessage> SendAsync(
         string requestUri,
+        CancellationToken cancellationToken) =>
+        await SendAsync(HttpMethod.Get, requestUri, null, cancellationToken);
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpMethod method,
+        string requestUri,
+        HttpContent? content,
         CancellationToken cancellationToken)
     {
         var apiKey = GetApiKey();
-        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        using var request = new HttpRequestMessage(method, requestUri)
+        {
+            Content = content
+        };
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.TryAddWithoutValidation("x-api-key", apiKey);
         var response = await _httpClient.SendAsync(
@@ -624,4 +765,8 @@ public sealed class CurseForgePackContentCatalogProvider : IPackContentCatalogPr
         IReadOnlyList<ServerContentVersion> Items,
         int ResultCount,
         int TotalCount);
+
+    internal sealed record CurseForgeProjectMetadata(
+        string DisplayName,
+        string IconUrl);
 }

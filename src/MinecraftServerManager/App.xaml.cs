@@ -63,7 +63,7 @@ public partial class App : Application
         services.AddSingleton<IPackContentDownloadProvider, ModrinthPackContentDownloadProvider>();
         services.AddSingleton<IPackContentDownloadProvider, CurseForgePackContentDownloadProvider>();
         services.AddSingleton<IPackDraftOutputService, PackDraftOutputService>();
-        services.AddSingleton<IMinecraftLauncherIntegrationService, MinecraftLauncherIntegrationService>();
+        services.AddSingleton<IManagedMinecraftLauncherService, ManagedMinecraftLauncherService>();
         services.AddSingleton<IPackDependencyResolver, PackDependencyResolver>();
         services.AddSingleton<IPackPlatformCatalogService, PackPlatformCatalogService>();
         services.AddSingleton<IPackPlatformVersionService, PackPlatformVersionService>();

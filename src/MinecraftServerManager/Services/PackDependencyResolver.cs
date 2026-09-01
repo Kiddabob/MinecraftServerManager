@@ -23,6 +23,8 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
             request.RootIsDependency,
             request.RootDependencyType,
             request.RootReason,
+            string.Empty,
+            string.Empty,
             state,
             cancellationToken);
         ValidateIncompatibilities(state);
@@ -38,10 +40,13 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
         bool isDependency,
         string dependencyType,
         string reason,
+        string displayNameOverride,
+        string iconUrl,
         ResolutionState state,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var resolvedDisplayName = DisplayName(project, version, displayNameOverride);
         var identity = Identity(version.ProviderId, version.VersionId);
         if (!state.VisitedVersions.Add(identity))
         {
@@ -56,11 +61,11 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
             if (!existingProject.VersionId.Equals(version.VersionId, StringComparison.OrdinalIgnoreCase))
             {
                 state.Conflicts.Add(
-                    $"{DisplayName(project, version)} requires {version.VersionNumber}, but {existingProject.VersionNumber} is already in the draft.");
+                    $"{resolvedDisplayName} requires {version.VersionNumber}, but {existingProject.VersionNumber} is already in the draft.");
             }
             else if (!isDependency)
             {
-                state.Warnings.Add($"{DisplayName(project, version)} is already in the draft.");
+                state.Warnings.Add($"{resolvedDisplayName} is already in the draft.");
             }
 
             return;
@@ -73,7 +78,7 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
             if (!plannedProject.VersionId.Equals(version.VersionId, StringComparison.OrdinalIgnoreCase))
             {
                 state.Conflicts.Add(
-                    $"Two versions of {DisplayName(project, version)} are required: {plannedProject.VersionNumber} and {version.VersionNumber}.");
+                    $"Two versions of {resolvedDisplayName} are required: {plannedProject.VersionNumber} and {version.VersionNumber}.");
             }
 
             return;
@@ -82,7 +87,7 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
         if (!IsMinecraftCompatible(version, state.Request.MinecraftVersion))
         {
             state.Conflicts.Add(
-                $"{DisplayName(project, version)} {version.VersionNumber} does not declare Minecraft {state.Request.MinecraftVersion} compatibility.");
+                $"{resolvedDisplayName} {version.VersionNumber} does not declare Minecraft {state.Request.MinecraftVersion} compatibility.");
             return;
         }
 
@@ -97,26 +102,27 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
         if (placement is null)
         {
             state.Conflicts.Add(
-                $"{DisplayName(project, version)} {version.VersionNumber} does not match the selected client or server platform.");
+                $"{resolvedDisplayName} {version.VersionNumber} does not match the selected client or server platform.");
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(placementWarning))
         {
-            state.Warnings.Add($"{DisplayName(project, version)}: {placementWarning}");
+            state.Warnings.Add($"{resolvedDisplayName}: {placementWarning}");
         }
 
         var item = new PackDraftItem(
             version.ProviderId,
             version.ProjectId,
             version.VersionId,
-            DisplayName(project, version),
+            resolvedDisplayName,
             version.VersionNumber,
             contentKind,
             placement.Value,
             isDependency,
             reason)
         {
+            IconUrl = !string.IsNullOrWhiteSpace(project?.IconUrl) ? project.IconUrl : iconUrl,
             DependencyType = dependencyType,
             IsExplicitSelection = !isDependency || dependencyType == "optional"
         };
@@ -148,6 +154,8 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
                         true,
                         "required",
                         $"Required by {item.DisplayName}",
+                        dependency.DisplayName,
+                        dependency.IconUrl,
                         state,
                         cancellationToken);
                     break;
@@ -182,13 +190,13 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
                     if (optionalPlacement is null)
                     {
                         state.Warnings.Add(
-                            $"Optional dependency {DisplayName(null, optionalVersion)} does not match the selected client or server platform.");
+                            $"Optional dependency {DisplayName(null, optionalVersion, dependency.DisplayName)} does not match the selected client or server platform.");
                         break;
                     }
 
                     if (!string.IsNullOrWhiteSpace(optionalWarning))
                     {
-                        state.Warnings.Add($"{DisplayName(null, optionalVersion)}: {optionalWarning}");
+                        state.Warnings.Add($"{DisplayName(null, optionalVersion, dependency.DisplayName)}: {optionalWarning}");
                     }
 
                     if (!state.OptionalDependencies.Any(choice =>
@@ -199,7 +207,11 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
                             item.DisplayName,
                             optionalKind,
                             optionalVersion,
-                            optionalPlacement.Value));
+                            optionalPlacement.Value)
+                        {
+                            ProjectDisplayName = dependency.DisplayName,
+                            IconUrl = dependency.IconUrl
+                        });
                     }
 
                     break;
@@ -367,21 +379,28 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
     private static bool TargetIncludesServer(PackBuildTarget target) =>
         target is PackBuildTarget.Server or PackBuildTarget.ClientAndServer;
 
-    private static string DisplayName(ServerContentProject? project, ServerContentVersion version) =>
+    private static string DisplayName(
+        ServerContentProject? project,
+        ServerContentVersion version,
+        string displayNameOverride) =>
         !string.IsNullOrWhiteSpace(project?.Title)
             ? project.Title
-            : !string.IsNullOrWhiteSpace(version.Name)
-                ? version.Name
-                : version.ProjectId;
+            : !string.IsNullOrWhiteSpace(displayNameOverride)
+                ? displayNameOverride
+                : !string.IsNullOrWhiteSpace(version.Name)
+                    ? version.Name
+                    : version.ProjectId;
 
     private static string DependencyLabel(ServerContentDependency dependency) =>
-        !string.IsNullOrWhiteSpace(dependency.ProjectId)
-            ? dependency.ProjectId
-            : !string.IsNullOrWhiteSpace(dependency.VersionId)
+        !string.IsNullOrWhiteSpace(dependency.DisplayName)
+            ? dependency.DisplayName
+            : !string.IsNullOrWhiteSpace(dependency.FileName)
+                ? dependency.FileName
+                : !string.IsNullOrWhiteSpace(dependency.ProjectId)
+                    ? $"project {dependency.ProjectId}"
+                    : !string.IsNullOrWhiteSpace(dependency.VersionId)
                 ? dependency.VersionId
-                : !string.IsNullOrWhiteSpace(dependency.FileName)
-                    ? dependency.FileName
-                    : "an unspecified project";
+                : "an unspecified project";
 
     private static int ReleaseOrder(string releaseChannel) => releaseChannel switch
     {

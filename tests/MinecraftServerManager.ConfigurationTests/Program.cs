@@ -4,6 +4,7 @@ using MinecraftServerManager.ViewModels;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1149,7 +1150,7 @@ try
     AssertEqual(1, filteredModpacks.ProviderStatuses.Count, "combined modpack catalogue searches selected providers only");
     AssertEqual(1, filteredModpacks.TotalHits, "combined modpack catalogue reports its bounded result window");
 
-    using var curseForgeFilesDocument = JsonDocument.Parse("""
+    const string curseForgeFilesJson = """
         {
           "data": [{
             "id": 4800000,
@@ -1175,7 +1176,8 @@ try
             "totalCount": 1
           }
         }
-        """);
+        """;
+    using var curseForgeFilesDocument = JsonDocument.Parse(curseForgeFilesJson);
     var curseForgeFiles = CurseForgePackContentCatalogProvider.ParseFilesResponse(
         curseForgeFilesDocument.RootElement);
     var curseForgeVersion = curseForgeFiles.Items.Single();
@@ -1193,6 +1195,80 @@ try
         curseForgeVersion.Dependencies.Any(dependency =>
             dependency.ProjectId == "999999" && dependency.DependencyType == "optional"),
         "CurseForge optional dependency relation parsing");
+    AssertTrue(
+        curseForgeVersion.Dependencies.All(dependency =>
+            dependency.DisplayName == $"CurseForge project #{dependency.ProjectId}"),
+        "CurseForge dependency IDs have a readable fallback label before metadata hydration");
+
+    var curseForgeMetadataRequests = new List<string>();
+    using (var curseForgeMetadataHttpClient = new HttpClient(new StubHttpMessageHandler(request =>
+    {
+        curseForgeMetadataRequests.Add($"{request.Method} {request.RequestUri!.PathAndQuery}");
+        if (request.Method == HttpMethod.Get)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(curseForgeFilesJson, Encoding.UTF8, "application/json")
+            };
+        }
+
+        var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        AssertTrue(
+            body.Contains("885449", StringComparison.Ordinal)
+            && body.Contains("999999", StringComparison.Ordinal),
+            "CurseForge dependency metadata request contains referenced project IDs");
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = request,
+            Content = new StringContent(
+                """
+                {
+                  "data": [
+                    {
+                      "id": 885449,
+                      "name": "Cristel Lib",
+                      "logo": {
+                        "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/885/449/64/64/example.png"
+                      }
+                    },
+                    { "id": 999999, "name": "Optional Helper" }
+                  ]
+                }
+                """,
+                Encoding.UTF8,
+                "application/json")
+        };
+    })))
+    {
+        curseForgeMetadataHttpClient.BaseAddress = new Uri("https://api.curseforge.com/");
+        var metadataProvider = new CurseForgePackContentCatalogProvider(
+            curseForgeMetadataHttpClient,
+            "approved-test-key");
+        var hydratedVersions = await metadataProvider.GetPackVersionsAsync(
+            "415438",
+            "1.20.1",
+            ["forge"]);
+        AssertTrue(
+            hydratedVersions.Single().Dependencies.Any(dependency =>
+                dependency.ProjectId == "885449"
+                && dependency.DisplayName == "Cristel Lib"
+                && dependency.IconUrl == "https://media.forgecdn.net/avatars/thumbnails/885/449/64/64/example.png"),
+            "CurseForge required dependency ID is hydrated to its project name and icon");
+        AssertTrue(
+            hydratedVersions.Single().Dependencies.Any(dependency =>
+                dependency.ProjectId == "999999"
+                && dependency.DisplayName == "Optional Helper"),
+            "CurseForge optional dependency ID is hydrated to its project name");
+    }
+
+    AssertTrue(
+        curseForgeMetadataRequests.SequenceEqual(
+        [
+            "GET /v1/mods/415438/files?index=0&pageSize=50&gameVersion=1.20.1&modLoaderType=1",
+            "POST /v1/mods"
+        ]),
+        "CurseForge dependency names use one bulk project metadata request");
 
     var curseForgeApplicationText = CurseForgeApplicationTemplate.CreatePlainText();
     AssertTrue(
@@ -1783,6 +1859,55 @@ try
             "verified installer stream released before JAR validation");
     }
 
+    var legacyInstallerSha1 = Convert.ToHexString(SHA1.HashData(installerBytes));
+    var legacyInstallerPath = Path.Combine(testRoot, "legacy-forge-installer-verified.jar");
+    var legacyInstallerRequests = new List<string>();
+    using (var legacyInstallerHttpClient = new HttpClient(new StubHttpMessageHandler(request =>
+    {
+        legacyInstallerRequests.Add(request.RequestUri!.AbsolutePath);
+        if (request.RequestUri.AbsolutePath.EndsWith(".sha256", StringComparison.Ordinal))
+        {
+            return new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                RequestMessage = request
+            };
+        }
+
+        if (request.RequestUri.AbsolutePath.EndsWith(".sha1", StringComparison.Ordinal))
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(
+                    $"{legacyInstallerSha1.ToLowerInvariant()}  legacy-forge-installer.jar",
+                    Encoding.UTF8,
+                    "text/plain")
+            };
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = request,
+            Content = new ByteArrayContent(installerBytes)
+        };
+    })))
+    {
+        await JavaServerInstallerUtilities.DownloadVerifiedInstallerAsync(
+            new Uri(
+                "https://maven.minecraftforge.net/net/minecraftforge/forge/1.12.2-14.23.5.2864/forge-1.12.2-14.23.5.2864-installer.jar"),
+            legacyInstallerPath,
+            "maven.minecraftforge.net",
+            progress: null,
+            legacyInstallerHttpClient,
+            CancellationToken.None);
+    }
+
+    AssertTrue(File.Exists(legacyInstallerPath), "legacy Forge installer verified from SHA-1 sidecar");
+    AssertTrue(
+        legacyInstallerRequests.Any(path => path.EndsWith(".sha256", StringComparison.Ordinal))
+        && legacyInstallerRequests.Any(path => path.EndsWith(".sha1", StringComparison.Ordinal)),
+        "legacy Forge checksum falls back only after missing SHA-256 sidecar");
+
     AssertTrue(new ForgeServerBaselineInstaller(runtimeService).CanInstall("forge"), "Forge baseline routing");
     AssertTrue(
         new NeoForgeServerBaselineInstaller(runtimeService).CanInstall("neoforge"),
@@ -1890,7 +2015,7 @@ try
         "Root Project",
         "Builder resolver root",
         "Test author",
-        string.Empty,
+        "https://cdn.example.test/root-project.png",
         100,
         ServerContentKind.Mod,
         ["1.20.1"],
@@ -1905,8 +2030,20 @@ try
         "fabric",
         "client_and_server",
         [
-            new ServerContentDependency(string.Empty, "library-project", string.Empty, "required"),
-            new ServerContentDependency(string.Empty, "optional-project", string.Empty, "optional"),
+            new ServerContentDependency(
+                string.Empty,
+                "library-project",
+                string.Empty,
+                "required",
+                "Library Project",
+                "https://cdn.example.test/library-project.png"),
+            new ServerContentDependency(
+                string.Empty,
+                "optional-project",
+                string.Empty,
+                "optional",
+                "Optional Project",
+                "https://cdn.example.test/optional-project.png"),
             new ServerContentDependency(string.Empty, "incompatible-project", string.Empty, "incompatible")
         ]);
     var incompatibleNewestLibrary = MakePackVersion(
@@ -2013,21 +2150,54 @@ try
         readyPlan.Items.Any(item =>
             item.VersionId == "library-compatible"
             && item.Placement == PackContentPlacement.Client
-            && item.IsDependency),
-        "pack resolver selects compatible older dependency and keeps it client-only");
+            && item.IsDependency
+            && item.DisplayName == "Library Project"
+            && item.IconUrl == "https://cdn.example.test/library-project.png"),
+        "pack resolver selects compatible older dependency and carries its name and icon");
     AssertTrue(
         readyPlan.Items.Any(item =>
             item.VersionId == "root-version"
-            && item.Placement == PackContentPlacement.Both),
-        "pack resolver places shared content on both sides");
+            && item.Placement == PackContentPlacement.Both
+            && item.IconUrl == "https://cdn.example.test/root-project.png"),
+        "pack resolver places shared content on both sides and carries the selected project icon");
     AssertEqual(1, readyPlan.OptionalDependencies.Count, "pack resolver exposes optional dependency choices");
     AssertEqual(
         "optional-compatible",
         readyPlan.OptionalDependencies.Single().VersionId,
         "pack resolver selects a compatible optional dependency without auto-adding it");
     AssertTrue(
+        readyPlan.OptionalDependencies.Single().DisplayName == "Optional Project"
+        && readyPlan.OptionalDependencies.Single().IconUrl == "https://cdn.example.test/optional-project.png",
+        "pack resolver carries optional dependency name and icon into review");
+    AssertTrue(
         readyPlan.Items.All(item => item.VersionId != "optional-compatible"),
         "optional dependency stays out of the draft until selected");
+
+    var namedMissingDependencyVersion = packRootVersion with
+    {
+        Dependencies =
+        [
+            new ServerContentDependency(
+                string.Empty,
+                "858542",
+                string.Empty,
+                "required",
+                "Searchables")
+        ]
+    };
+    var namedMissingDependencyPlan = await resolver.ResolveAsync(new PackResolveRequest(
+        PackBuildTarget.ClientAndServer,
+        "1.20.1",
+        ["fabric"],
+        ["fabric"],
+        packRootProject,
+        namedMissingDependencyVersion,
+        []));
+    AssertTrue(
+        namedMissingDependencyPlan.Conflicts.Any(conflict =>
+            conflict.Contains("required dependency Searchables", StringComparison.Ordinal)
+            && !conflict.Contains("required dependency 858542", StringComparison.Ordinal)),
+        "pack dependency conflict uses hydrated project name instead of bare numeric ID");
 
     var rootOutputBytes = Encoding.UTF8.GetBytes("verified root content");
     var libraryOutputBytes = Encoding.UTF8.GetBytes("verified client library");
@@ -2217,6 +2387,138 @@ try
             playableManifest.RootElement.GetProperty("minecraftLauncherProfileId").GetString(),
             "launcher integration records the launcher profile in the audit manifest");
     }
+
+    byte[] managedLauncherArchive;
+    using (var archiveBuffer = new MemoryStream())
+    {
+        using (var archive = new ZipArchive(archiveBuffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            await using (var executable = archive.CreateEntry("prismlauncher.exe").Open())
+            {
+                await executable.WriteAsync("test-prism-executable"u8.ToArray());
+            }
+
+            await using (archive.CreateEntry("portable.txt").Open())
+            {
+            }
+
+            await using (var library = archive.CreateEntry("Qt6Core.dll").Open())
+            {
+                await library.WriteAsync("test-qt-library"u8.ToArray());
+            }
+        }
+
+        managedLauncherArchive = archiveBuffer.ToArray();
+    }
+
+    var managedLauncherSha256 = Convert.ToHexString(SHA256.HashData(managedLauncherArchive));
+    const string managedLauncherVersion = "99.1.0";
+    var managedLauncherAssetName =
+        $"PrismLauncher-Windows-MSVC-Portable-{managedLauncherVersion}.zip";
+    var managedLauncherReleaseJson = $$"""
+        {
+          "tag_name": "{{managedLauncherVersion}}",
+          "draft": false,
+          "prerelease": false,
+          "assets": [{
+            "name": "{{managedLauncherAssetName}}",
+            "size": {{managedLauncherArchive.LongLength}},
+            "digest": "sha256:{{managedLauncherSha256.ToLowerInvariant()}}",
+            "browser_download_url": "https://github.com/PrismLauncher/PrismLauncher/releases/download/{{managedLauncherVersion}}/{{managedLauncherAssetName}}"
+          }]
+        }
+        """;
+    var managedLauncherRoot = Path.Combine(testRoot, "managed-prism-launcher");
+    var managedClientRoot = Path.Combine(testRoot, "managed-prism-client");
+    Directory.CreateDirectory(Path.Combine(managedClientRoot, "mods"));
+    Directory.CreateDirectory(Path.Combine(managedClientRoot, "config"));
+    await File.WriteAllTextAsync(Path.Combine(managedClientRoot, "mods", "example.jar"), "mod");
+    await File.WriteAllTextAsync(Path.Combine(managedClientRoot, "config", "example.cfg"), "setting=true");
+    var managedPackManifest = Path.Combine(testRoot, "managed-prism-pack.json");
+    await File.WriteAllTextAsync(managedPackManifest, """{ "clientPlayable": false }""");
+    var untouchedNormalLauncher = Path.Combine(testRoot, "normal-minecraft-launcher");
+    Directory.CreateDirectory(untouchedNormalLauncher);
+    var untouchedNormalLauncherSentinel = Path.Combine(untouchedNormalLauncher, "sentinel.txt");
+    await File.WriteAllTextAsync(untouchedNormalLauncherSentinel, "do not change");
+    var managedLauncherRequests = new List<string>();
+    string? openedManagedInstance = null;
+    using (var managedLauncherHttpClient = new HttpClient(new StubHttpMessageHandler(request =>
+    {
+        managedLauncherRequests.Add(request.RequestUri!.AbsoluteUri);
+        return request.RequestUri.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase)
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(managedLauncherReleaseJson, Encoding.UTF8, "application/json")
+            }
+            : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new ByteArrayContent(managedLauncherArchive)
+            };
+    })))
+    {
+        var managedLauncher = new ManagedMinecraftLauncherService(
+            managedLauncherRoot,
+            managedLauncherHttpClient,
+            Architecture.X64,
+            (executable, instanceId) =>
+            {
+                AssertEqual(
+                    Path.Combine(managedLauncherRoot, "prismlauncher.exe"),
+                    executable,
+                    "managed launcher opens only its private executable");
+                openedManagedInstance = instanceId;
+                return true;
+            });
+        var managedInstall = await managedLauncher.InstallPackAsync(
+            new ManagedLauncherInstallRequest(
+                "Example Built Pack",
+                "1.20.1",
+                "forge",
+                "47.3.0",
+                managedClientRoot,
+                managedPackManifest,
+                17));
+        AssertTrue(managedInstall.LauncherInstalledNow, "managed launcher is installed on demand");
+        AssertTrue(managedLauncher.IsInstalled, "managed portable launcher files are detected");
+        AssertTrue(
+            File.Exists(Path.Combine(managedInstall.InstanceDirectory, "minecraft", "mods", "example.jar"))
+            && File.Exists(Path.Combine(managedInstall.InstanceDirectory, "minecraft", "config", "example.cfg")),
+            "managed launcher instance receives the isolated client files");
+        using (var managedPack = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(managedInstall.InstanceDirectory, "mmc-pack.json"))))
+        {
+            var components = managedPack.RootElement.GetProperty("components");
+            AssertEqual("net.minecraft", components[0].GetProperty("uid").GetString(), "managed instance Minecraft component");
+            AssertEqual("1.20.1", components[0].GetProperty("version").GetString(), "managed instance Minecraft version");
+            AssertEqual("net.minecraftforge", components[1].GetProperty("uid").GetString(), "managed instance Forge component");
+            AssertEqual("47.3.0", components[1].GetProperty("version").GetString(), "managed instance Forge version");
+        }
+
+        using (var managedManifest = JsonDocument.Parse(File.ReadAllText(managedPackManifest)))
+        {
+            AssertTrue(
+                managedManifest.RootElement.GetProperty("clientPlayable").GetBoolean(),
+                "managed launcher marks client output playable");
+            AssertEqual(
+                managedInstall.InstanceId,
+                managedManifest.RootElement.GetProperty("managedLauncherInstanceId").GetString(),
+                "managed launcher instance is recorded in audit manifest");
+        }
+
+        AssertTrue(
+            managedLauncher.TryOpenLauncher(managedInstall.InstanceId, out _)
+            && openedManagedInstance == managedInstall.InstanceId,
+            "managed launcher opens the newly created instance");
+    }
+
+    AssertEqual("do not change", File.ReadAllText(untouchedNormalLauncherSentinel), "normal launcher data stays untouched");
+    AssertTrue(
+        managedLauncherRequests.Count == 2
+        && managedLauncherRequests.Any(uri => uri.StartsWith("https://api.github.com/", StringComparison.Ordinal))
+        && managedLauncherRequests.Any(uri => uri.StartsWith("https://github.com/", StringComparison.Ordinal)),
+        "managed launcher uses only official release metadata and asset endpoints");
 
     var blockedLauncherIntegration = new MinecraftLauncherIntegrationService(
         launcherRoot,
@@ -2513,7 +2815,7 @@ try
         runtimeService,
         new StubCurseForgeApiKeyService(),
         new StubPackDraftOutputService(),
-        new StubMinecraftLauncherIntegrationService(),
+        new StubManagedMinecraftLauncherService(),
         new ModpackInstallLocationService(Path.Combine(testRoot, "builder-local-app-data")));
     builderViewModel.SelectedMinecraftVersion = "1.6.4";
     AssertEqual("forge-client", builderViewModel.SelectedClientPlatform!.Id, "legacy client fallback");
@@ -2620,7 +2922,7 @@ try
         runtimeService,
         new StubCurseForgeApiKeyService(),
         new StubPackDraftOutputService(),
-        new StubMinecraftLauncherIntegrationService(),
+        new StubManagedMinecraftLauncherService(),
         new ModpackInstallLocationService(Path.Combine(testRoot, "alternative-builder-local-app-data")));
     alternativeBuilder.SelectedMinecraftVersion = "1.12.2";
     alternativeBuilder.SearchText = "Create";
@@ -2658,6 +2960,66 @@ try
         builderViewModel.DraftStatusText.Contains("required dependency automatically", StringComparison.OrdinalIgnoreCase),
         "builder explains automatic required dependency addition");
 
+    var mirroredRootProject = packRootProject with
+    {
+        ProviderId = "mirror",
+        ProjectId = "mirrored-root-project",
+        Slug = "root-project-mirror"
+    };
+    var mirroredProvider = new StubPackContentCatalogProvider(
+        "mirror",
+        [mirroredRootProject],
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(),
+        new Dictionary<string, ServerContentVersion>());
+    var draftDisplayCatalog = new PackContentCatalogService([packProvider, mirroredProvider]);
+    var draftDisplayBuilder = new PackBuilderViewModel(
+        draftDisplayCatalog,
+        new PackDependencyResolver(draftDisplayCatalog),
+        platformCatalog,
+        new StubPackPlatformVersionService(),
+        runtimeService,
+        new StubCurseForgeApiKeyService(),
+        new StubPackDraftOutputService(),
+        new StubManagedMinecraftLauncherService(),
+        new ModpackInstallLocationService(Path.Combine(testRoot, "draft-display-builder-local-app-data")));
+    draftDisplayBuilder.ProviderFilters.Clear();
+    draftDisplayBuilder.ProviderFilters.Add(new ModpackFilterOption("stub", "Stub", true));
+    draftDisplayBuilder.ProviderFilters.Add(new ModpackFilterOption("mirror", "Mirror", true));
+    draftDisplayBuilder.SelectedMinecraftVersion = "1.20.1";
+    draftDisplayBuilder.SearchText = "Root Project";
+    await draftDisplayBuilder.SearchFromStartAsync();
+    AssertEqual(2, draftDisplayBuilder.SearchResults.Count, "cross-provider duplicate projects initially appear in search");
+    draftDisplayBuilder.CommitPlan(readyPlan);
+    AssertEqual(0, draftDisplayBuilder.SearchResults.Count, "drafted project and obvious cross-provider duplicate are hidden from search");
+    AssertTrue(
+        draftDisplayBuilder.SearchPageSummary.Contains("2 already in draft hidden", StringComparison.Ordinal),
+        "builder explains why duplicate search results disappeared");
+    AssertTrue(
+        draftDisplayBuilder.DraftDisplayItems.All(item => !string.IsNullOrWhiteSpace(item.IconUrl)),
+        "draft display carries project artwork for selected and required items");
+
+    draftDisplayBuilder.SelectedDraftSort = draftDisplayBuilder.DraftSortOptions.Single(option =>
+        option.Id == "selected-tree");
+    AssertTrue(
+        draftDisplayBuilder.DraftDisplayItems[0].Item.VersionId == "root-version"
+        && draftDisplayBuilder.DraftDisplayItems[0].IndentLevel == 0
+        && draftDisplayBuilder.DraftDisplayItems[1].Item.VersionId == "library-compatible"
+        && draftDisplayBuilder.DraftDisplayItems[1].IndentLevel == 1,
+        "draft selected-first tree indents required dependencies beneath their selected mod");
+    draftDisplayBuilder.SelectedDraftSort = draftDisplayBuilder.DraftSortOptions.Single(option =>
+        option.Id == "dependency-tree");
+    AssertTrue(
+        draftDisplayBuilder.DraftDisplayItems[0].Item.VersionId == "library-compatible"
+        && draftDisplayBuilder.DraftDisplayItems[0].IndentLevel == 0
+        && draftDisplayBuilder.DraftDisplayItems[1].Item.VersionId == "root-version"
+        && draftDisplayBuilder.DraftDisplayItems[1].IndentLevel == 1,
+        "draft dependency-first tree places the base library above the mod that uses it");
+    AssertTrue(
+        await draftDisplayBuilder.RemoveDraftItemAsync(
+            draftDisplayBuilder.DraftItems.Single(item => item.VersionId == "root-version"))
+        && draftDisplayBuilder.SearchResults.Count == 2,
+        "removing a selected draft item restores its catalogue listings");
+
     var dependencyBuilder = new PackBuilderViewModel(
         packCatalog,
         resolver,
@@ -2666,7 +3028,7 @@ try
         runtimeService,
         new StubCurseForgeApiKeyService(),
         new StubPackDraftOutputService(),
-        new StubMinecraftLauncherIntegrationService(),
+        new StubManagedMinecraftLauncherService(),
         new ModpackInstallLocationService(Path.Combine(testRoot, "dependency-builder-local-app-data")));
     dependencyBuilder.SelectedMinecraftVersion = "1.20.1";
     var reviewedOptionalPlan = await dependencyBuilder.PrepareOptionalDependenciesAsync(
@@ -3718,6 +4080,25 @@ sealed class StubMinecraftLauncherIntegrationService : IMinecraftLauncherIntegra
         throw new NotSupportedException();
 
     public bool TryOpenLauncher(out string message)
+    {
+        message = "Not opened in configuration tests.";
+        return false;
+    }
+}
+
+sealed class StubManagedMinecraftLauncherService : IManagedMinecraftLauncherService
+{
+    public string LauncherDirectory => string.Empty;
+
+    public bool IsInstalled => false;
+
+    public Task<ManagedLauncherInstallResult> InstallPackAsync(
+        ManagedLauncherInstallRequest request,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public bool TryOpenLauncher(string? instanceId, out string message)
     {
         message = "Not opened in configuration tests.";
         return false;

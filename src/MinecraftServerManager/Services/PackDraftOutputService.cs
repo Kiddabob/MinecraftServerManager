@@ -532,7 +532,7 @@ public sealed class PackDraftOutputService : IPackDraftOutputService
             ? "No runnable server baseline was prepared for this platform."
             : $"A runnable {plan.ServerLoaderId} {plan.ServerLoaderVersion} server baseline was prepared in Server\\ using {baselineResult.LauncherFileName}.";
         var clientState = plan.Target is PackBuildTarget.Client or PackBuildTarget.ClientAndServer
-            ? "The Client folder is an isolated game directory. Minecraft Server Manager can register it as a custom installation in the official Minecraft Launcher; account authentication remains entirely inside Minecraft Launcher."
+            ? "The Client folder is an isolated game directory. Minecraft Server Manager can copy it into its manager-owned portable launcher as a separate instance; the normal Minecraft Launcher remains untouched and account authentication stays inside the managed launcher."
             : "No client output was requested.";
         return $"""
         Minecraft Server Manager content bundle

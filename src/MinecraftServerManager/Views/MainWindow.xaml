@@ -3063,6 +3063,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Spacing="3">
                                             <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="3. Pack draft" />
@@ -3070,24 +3071,55 @@
                                                 Style="{StaticResource BodySecondaryTextStyle}"
                                                 Text="{Binding Builder.DraftCountText, Mode=OneWay}" />
                                         </StackPanel>
-                                        <Button
+                                        <ComboBox
                                             Grid.Column="1"
+                                            MinWidth="230"
+                                            Header="Sort draft"
+                                            DisplayMemberPath="DisplayName"
+                                            ItemsSource="{Binding Builder.DraftSortOptions, Mode=OneWay}"
+                                            SelectedItem="{Binding Builder.SelectedDraftSort, Mode=TwoWay}" />
+                                        <Button
+                                            Grid.Column="2"
                                             Command="{Binding Builder.ClearDraftCommand}"
                                             Content="Clear draft" />
                                     </Grid>
                                     <ListView
                                         MaxHeight="360"
-                                        ItemsSource="{Binding Builder.DraftItems, Mode=OneWay}"
+                                        ItemsSource="{Binding Builder.DraftDisplayItems, Mode=OneWay}"
                                         SelectionMode="None">
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid MinHeight="66" Padding="8" ColumnSpacing="12">
+                                                <Grid MinHeight="76" Padding="8" ColumnSpacing="12">
                                                     <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="48" />
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <StackPanel Spacing="2">
+                                                    <Border Width="{Binding IndentWidth}">
+                                                        <Border
+                                                            Width="1"
+                                                            Margin="0,4,2,4"
+                                                            HorizontalAlignment="Right"
+                                                            Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                                    </Border>
+                                                    <Border
+                                                        Grid.Column="1"
+                                                        Width="44"
+                                                        Height="44"
+                                                        VerticalAlignment="Top"
+                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                        CornerRadius="8">
+                                                        <Grid>
+                                                            <FontIcon
+                                                                FontSize="20"
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                Glyph="&#xE7FC;" />
+                                                            <Image Stretch="UniformToFill" Source="{Binding IconUrl}" />
+                                                        </Grid>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="2" Spacing="3">
                                                         <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
                                                         <TextBlock
                                                             FontSize="12"
@@ -3098,7 +3130,7 @@
                                                             Style="{StaticResource BodySecondaryTextStyle}"
                                                             Text="{Binding Reason}" />
                                                     </StackPanel>
-                                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="2">
+                                                    <StackPanel Grid.Column="3" HorizontalAlignment="Right" Spacing="2">
                                                         <TextBlock
                                                             HorizontalAlignment="Right"
                                                             Foreground="{StaticResource AppAccentBrush}"
@@ -3110,11 +3142,11 @@
                                                             Text="{Binding DetailsText}" />
                                                     </StackPanel>
                                                     <Button
-                                                        Grid.Column="2"
+                                                        Grid.Column="4"
                                                         Margin="10,0,0,0"
                                                         VerticalAlignment="Center"
                                                         Click="RemoveBuilderDraftItem_Click"
-                                                        CommandParameter="{Binding}"
+                                                        CommandParameter="{Binding Item}"
                                                         Content="Remove"
                                                         IsEnabled="{Binding CanRemove}"
                                                         ToolTipService.ToolTip="Required dependencies are removed automatically when no selected item needs them" />
@@ -3160,14 +3192,14 @@
                                             Spacing="8"
                                             Visibility="{Binding Builder.HasLastClientOutput, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <Button
-                                                Click="RegisterBuilderClientWithLauncher_Click"
-                                                Content="Add client to Minecraft Launcher"
+                                                Click="RegisterBuilderClientWithManagedLauncher_Click"
+                                                Content="{Binding Builder.ManagedLauncherActionText, Mode=OneWay}"
                                                 IsEnabled="{Binding Builder.CanRegisterLastClientOutput, Mode=OneWay}"
                                                 Style="{StaticResource AppAccentButtonStyle}" />
                                             <Button
-                                                Click="OpenMinecraftLauncher_Click"
-                                                Content="Open Minecraft Launcher"
-                                                Visibility="{Binding Builder.HasLauncherProfile, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                Click="OpenManagedLauncher_Click"
+                                                Content="Open managed launcher"
+                                                Visibility="{Binding Builder.HasManagedLauncherInstance, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             <ProgressRing
                                                 Width="18"
                                                 Height="18"
