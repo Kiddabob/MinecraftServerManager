@@ -430,7 +430,7 @@ public sealed partial class MainWindow : Window
         content.Children.Add(new TextBlock
         {
             FontSize = 12,
-            Text = "The key is validated directly with CurseForge, then stored in Windows Credential Manager for this Windows account. It is never added to a server profile, installer, GitHub repository, or application log.",
+            Text = "This personal override is validated directly with CurseForge, then stored in Windows Credential Manager for this Windows account. It is never added to a server profile, installer, GitHub repository, or application log.",
             TextWrapping = TextWrapping.Wrap
         });
         content.Children.Add(passwordBox);
@@ -439,8 +439,10 @@ public sealed partial class MainWindow : Window
         {
             XamlRoot = RootGrid.XamlRoot,
             Title = ViewModel.Builder.IsCurseForgeApiKeyStored
-                ? "Replace CurseForge developer key?"
-                : "Connect CurseForge developer access",
+                ? "Replace personal CurseForge key?"
+                : ViewModel.Builder.UsesApplicationCurseForgeKey
+                    ? "Use a personal CurseForge key instead?"
+                    : "Connect CurseForge developer access",
             Content = content,
             PrimaryButtonText = "Validate and save",
             CloseButtonText = "Cancel",
@@ -471,15 +473,15 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = RootGrid.XamlRoot,
-            Title = "Disconnect CurseForge?",
-            Content = "This removes the developer API key from Windows Credential Manager. Modrinth and other available sources will continue to work.",
-            PrimaryButtonText = "Disconnect",
+            Title = "Remove personal CurseForge key?",
+            Content = "This removes only the personal override from Windows Credential Manager. If this official build has app-specific access, the app will return to it automatically; other sources remain available either way.",
+            PrimaryButtonText = "Remove personal key",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close
         };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            ViewModel.Builder.RemoveCurseForgeConnection();
+            await ViewModel.Builder.RemoveCurseForgeConnectionAsync();
         }
     }
 
@@ -602,17 +604,39 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var selectedOptionalDependencies = await ShowBuilderPlanDialogAsync(
+        var canChoosePlacement = plan.Conflicts.Count == 0
+            && plan.Items.Any(item => item.Placement == PackContentPlacement.Review);
+        var canUseRecommendation = !plan.IsReady
+            && !canChoosePlacement
+            && ViewModel.Builder.HasRecommendedVersion;
+        var review = await ShowBuilderPlanDialogAsync(
             plan,
             plan.Conflicts.Count > 0 ? "Compatibility needs attention" : "Review dependencies",
-            plan.IsReady ? "Add to draft" : string.Empty,
+            plan.IsReady
+                ? "Add to draft"
+                : canChoosePlacement
+                    ? "Add with chosen placement"
+                : canUseRecommendation
+                    ? "Use suggested version"
+                    : string.Empty,
             includeOptionalChoices: true);
-        if (selectedOptionalDependencies is null || !plan.IsReady)
+        if (review is null)
         {
             return;
         }
 
-        if (selectedOptionalDependencies.Count == 0)
+        plan = review.Plan;
+        if (!plan.IsReady)
+        {
+            if (canUseRecommendation)
+            {
+                ViewModel.Builder.UseRecommendedVersion();
+            }
+
+            return;
+        }
+
+        if (review.SelectedOptionalDependencies.Count == 0)
         {
             ViewModel.Builder.CommitPlan(plan);
             return;
@@ -620,24 +644,72 @@ public sealed partial class MainWindow : Window
 
         var finalPlan = await ViewModel.Builder.PrepareOptionalDependenciesAsync(
             plan,
-            selectedOptionalDependencies);
+            review.SelectedOptionalDependencies);
         if (finalPlan is null)
         {
             return;
         }
 
+        var finalNeedsPlacement = finalPlan.Conflicts.Count == 0
+            && finalPlan.Items.Any(item => item.Placement == PackContentPlacement.Review);
         var confirmed = await ShowBuilderPlanDialogAsync(
             finalPlan,
-            finalPlan.IsReady ? "Confirm draft additions" : "Dependency conflict",
-            finalPlan.IsReady ? "Add reviewed items" : string.Empty,
+            finalPlan.Conflicts.Count > 0 ? "Dependency conflict" : "Confirm draft additions",
+            finalPlan.IsReady
+                ? "Add reviewed items"
+                : finalNeedsPlacement
+                    ? "Add with chosen placement"
+                    : string.Empty,
             includeOptionalChoices: false);
-        if (confirmed is not null && finalPlan.IsReady)
+        if (confirmed?.Plan.IsReady == true)
         {
-            ViewModel.Builder.CommitPlan(finalPlan);
+            ViewModel.Builder.CommitPlan(confirmed.Plan);
         }
     }
 
-    private async Task<IReadOnlyList<PackOptionalDependencyChoice>?> ShowBuilderPlanDialogAsync(
+    private async void StartSelectedProfiles_Click(object sender, RoutedEventArgs args)
+    {
+        var profiles = ViewModel.GetStartSelectedProfiles();
+        if (profiles.Count == 0)
+        {
+            return;
+        }
+
+        if (profiles.Count > 1)
+        {
+            var names = string.Join("\n", profiles.Take(8).Select(profile => $"• {profile.DisplayName}"));
+            if (profiles.Count > 8)
+            {
+                names += $"\n• and {profiles.Count - 8:N0} more";
+            }
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = $"Start {profiles.Count:N0} servers?",
+                Content = new TextBlock
+                {
+                    MaxWidth = 520,
+                    Text = $"Each included profile starts its own Java process. Confirm that you want to start all of these servers now:\n\n{names}",
+                    TextWrapping = TextWrapping.Wrap
+                },
+                PrimaryButtonText = "Start all",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+        }
+
+        await ViewModel.StartSelectedProfilesAsync();
+    }
+
+    private void UseBuilderRecommendedVersion_Click(object sender, RoutedEventArgs args) =>
+        ViewModel.Builder.UseRecommendedVersion();
+
+    private async Task<BuilderPlanDialogResult?> ShowBuilderPlanDialogAsync(
         PackResolutionPlan plan,
         string title,
         string primaryButtonText,
@@ -655,16 +727,42 @@ public sealed partial class MainWindow : Window
             Severity = plan.Conflicts.Count > 0
                 ? InfoBarSeverity.Error
                 : InfoBarSeverity.Informational,
-            Title = plan.Conflicts.Count > 0 ? "Compatibility needs attention" : "Draft plan ready",
+            Title = plan.Conflicts.Count > 0
+                ? "Compatibility needs attention"
+                : plan.Items.Any(item => item.Placement == PackContentPlacement.Review)
+                    ? "Choose installation placement"
+                    : "Draft plan ready",
             Message = plan.SummaryText
         });
+
+        if (!plan.IsReady && ViewModel.Builder.HasRecommendedVersion)
+        {
+            content.Children.Add(new InfoBar
+            {
+                IsOpen = true,
+                IsClosable = false,
+                Severity = InfoBarSeverity.Success,
+                Title = ViewModel.Builder.RecommendedVersionTitle,
+                Message = ViewModel.Builder.RecommendedVersionSummary
+            });
+        }
 
         content.Children.Add(CreateBuilderDialogSectionHeader(
             "Items in this change",
             $"{plan.Items.Count:N0} item{(plan.Items.Count == 1 ? string.Empty : "s")}"));
+        var placementSelectors = new List<(PackDraftItem Item, ComboBox Selector)>();
         foreach (var item in plan.Items)
         {
-            content.Children.Add(CreateBuilderPlanItemCard(item));
+            var card = CreateBuilderPlanItemCard(
+                item,
+                ViewModel.Builder.SelectedTarget?.Target ?? PackBuildTarget.ClientAndServer,
+                out var placementSelector);
+            if (placementSelector is not null)
+            {
+                placementSelectors.Add((item, placementSelector));
+            }
+
+            content.Children.Add(card);
         }
 
         var optionalCheckBoxes = new List<(CheckBox CheckBox, PackOptionalDependencyChoice Choice)>();
@@ -755,16 +853,41 @@ public sealed partial class MainWindow : Window
         // and optional-dependency checkbox have room without clipping.
         dialog.Resources["ContentDialogMinWidth"] = 680d;
         dialog.Resources["ContentDialogMaxWidth"] = 760d;
+        void UpdatePrimaryButtonState() =>
+            dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(primaryButtonText)
+                && placementSelectors.All(entry => entry.Selector.SelectedItem is BuilderPlacementOption);
+
+        foreach (var entry in placementSelectors)
+        {
+            entry.Selector.SelectionChanged += (_, _) => UpdatePrimaryButtonState();
+        }
+
+        UpdatePrimaryButtonState();
         if (await dialog.ShowAsync() != ContentDialogResult.Primary
             || string.IsNullOrWhiteSpace(primaryButtonText))
         {
             return null;
         }
 
-        return optionalCheckBoxes
+        var reviewedItems = plan.Items
+            .Select(item =>
+            {
+                var entry = placementSelectors.FirstOrDefault(candidate => ReferenceEquals(candidate.Item, item));
+                return entry.Selector?.SelectedItem is BuilderPlacementOption selectedPlacement
+                    ? item with
+                    {
+                        Placement = selectedPlacement.Placement,
+                        PlacementWasReviewed = true
+                    }
+                    : item;
+            })
+            .ToArray();
+        var reviewedPlan = plan with { Items = reviewedItems };
+        var selectedOptionalDependencies = optionalCheckBoxes
             .Where(option => option.CheckBox.IsChecked == true)
             .Select(option => option.Choice)
             .ToArray();
+        return new BuilderPlanDialogResult(reviewedPlan, selectedOptionalDependencies);
     }
 
     private static Grid CreateBuilderDialogSectionHeader(string title, string countText)
@@ -787,7 +910,10 @@ public sealed partial class MainWindow : Window
         return header;
     }
 
-    private static Border CreateBuilderPlanItemCard(PackDraftItem item)
+    private static Border CreateBuilderPlanItemCard(
+        PackDraftItem item,
+        PackBuildTarget target,
+        out ComboBox? placementSelector)
     {
         var stateText = item.DependencyType switch
         {
@@ -810,7 +936,45 @@ public sealed partial class MainWindow : Window
             stateColour,
             item.PlacementText,
             item.Reason);
-        return CreateBuilderDependencyCard(item.IconUrl, item.Kind, details, null);
+        placementSelector = null;
+        if (item.Placement == PackContentPlacement.Review)
+        {
+            placementSelector = new ComboBox
+            {
+                Width = 164,
+                Header = "Install on",
+                PlaceholderText = "Choose placement",
+                DisplayMemberPath = nameof(BuilderPlacementOption.DisplayName),
+                ItemsSource = GetBuilderPlacementOptions(item.Kind, target)
+            };
+            ToolTipService.SetToolTip(
+                placementSelector,
+                $"Choose where {item.DisplayName} should be installed");
+        }
+
+        return CreateBuilderDependencyCard(item.IconUrl, item.Kind, details, placementSelector);
+    }
+
+    private static IReadOnlyList<BuilderPlacementOption> GetBuilderPlacementOptions(
+        ServerContentKind kind,
+        PackBuildTarget target)
+    {
+        if (kind == ServerContentKind.Plugin || target == PackBuildTarget.Server)
+        {
+            return [new(PackContentPlacement.Server, "Server only")];
+        }
+
+        if (target == PackBuildTarget.Client)
+        {
+            return [new(PackContentPlacement.Client, "Client only")];
+        }
+
+        return
+        [
+            new(PackContentPlacement.Both, "Client and server"),
+            new(PackContentPlacement.Client, "Client only"),
+            new(PackContentPlacement.Server, "Server only")
+        ];
     }
 
     private static Border CreateBuilderOptionalDependencyCard(
@@ -913,7 +1077,7 @@ public sealed partial class MainWindow : Window
         string iconUrl,
         ServerContentKind kind,
         FrameworkElement details,
-        CheckBox? checkBox)
+        FrameworkElement? trailingControl)
     {
         var layout = new Grid
         {
@@ -921,7 +1085,7 @@ public sealed partial class MainWindow : Window
         };
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        if (checkBox is not null)
+        if (trailingControl is not null)
         {
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         }
@@ -929,10 +1093,10 @@ public sealed partial class MainWindow : Window
         layout.Children.Add(CreateBuilderContentIcon(iconUrl, kind));
         Grid.SetColumn(details, 1);
         layout.Children.Add(details);
-        if (checkBox is not null)
+        if (trailingControl is not null)
         {
-            Grid.SetColumn(checkBox, 2);
-            layout.Children.Add(checkBox);
+            Grid.SetColumn(trailingControl, 2);
+            layout.Children.Add(trailingControl);
         }
 
         return new Border
@@ -2103,4 +2267,12 @@ public sealed partial class MainWindow : Window
             Close();
         }
     }
+
+    private sealed record BuilderPlacementOption(
+        PackContentPlacement Placement,
+        string DisplayName);
+
+    private sealed record BuilderPlanDialogResult(
+        PackResolutionPlan Plan,
+        IReadOnlyList<PackOptionalDependencyChoice> SelectedOptionalDependencies);
 }

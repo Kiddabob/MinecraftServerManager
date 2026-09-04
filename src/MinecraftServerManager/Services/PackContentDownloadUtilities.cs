@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using MinecraftServerManager.Models;
@@ -32,7 +33,9 @@ internal static class PackContentDownloadUtilities
         HashAlgorithmName hashAlgorithm,
         string expectedHash,
         Action<long>? reportDownloadedBytes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Uri, bool>? isAllowedRedirect = null,
+        int maximumRedirects = 0)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ValidateCommonFile(file);
@@ -41,66 +44,112 @@ internal static class PackContentDownloadUtilities
             throw new InvalidDataException($"{file.FileName} does not provide a supported verification hash.");
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, file.DownloadUri);
-        using var response = await httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength is { } contentLength
-            && contentLength != file.Size)
-        {
-            throw new InvalidDataException($"{file.FileName} has a different size than its provider declared.");
-        }
-
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using var output = new FileStream(
-            destinationPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 128 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        using var hash = IncrementalHash.CreateHash(hashAlgorithm);
-        var buffer = ArrayPool<byte>.Shared.Rent(128 * 1024);
-        long downloaded = 0;
+        var currentUri = file.DownloadUri;
+        HttpResponseMessage? response = null;
         try
         {
-            while (true)
+            for (var redirectCount = 0; ; redirectCount++)
             {
-                var count = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
-                if (count == 0)
+                using var request = new HttpRequestMessage(HttpMethod.Get, currentUri);
+                response = await httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+                if (!IsRedirect(response.StatusCode))
                 {
                     break;
                 }
 
-                downloaded += count;
-                if (downloaded > file.Size || downloaded > MaximumFileBytes)
+                if (redirectCount >= maximumRedirects)
                 {
-                    throw new InvalidDataException($"{file.FileName} exceeded its declared size.");
+                    throw new InvalidDataException(
+                        $"{file.FileName} exceeded the permitted provider redirect count.");
                 }
 
-                hash.AppendData(buffer, 0, count);
-                await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
-                reportDownloadedBytes?.Invoke(downloaded);
+                var location = response.Headers.Location
+                    ?? throw new InvalidDataException(
+                        $"{file.FileName} received a provider redirect without a destination.");
+                var nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+                if (nextUri.Scheme != Uri.UriSchemeHttps
+                    || isAllowedRedirect is null
+                    || !isAllowedRedirect(nextUri))
+                {
+                    throw new InvalidDataException(
+                        $"{file.FileName} was redirected outside its trusted provider download hosts.");
+                }
+
+                response.Dispose();
+                response = null;
+                currentUri = nextUri;
+            }
+
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength is { } contentLength
+                && contentLength != file.Size)
+            {
+                throw new InvalidDataException($"{file.FileName} has a different size than its provider declared.");
+            }
+
+            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var output = new FileStream(
+                destinationPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 128 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            using var hash = IncrementalHash.CreateHash(hashAlgorithm);
+            var buffer = ArrayPool<byte>.Shared.Rent(128 * 1024);
+            long downloaded = 0;
+            try
+            {
+                while (true)
+                {
+                    var count = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+                    if (count == 0)
+                    {
+                        break;
+                    }
+
+                    downloaded += count;
+                    if (downloaded > file.Size || downloaded > MaximumFileBytes)
+                    {
+                        throw new InvalidDataException($"{file.FileName} exceeded its declared size.");
+                    }
+
+                    hash.AppendData(buffer, 0, count);
+                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                    reportDownloadedBytes?.Invoke(downloaded);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            if (downloaded != file.Size)
+            {
+                throw new InvalidDataException($"{file.FileName} did not match its declared size.");
+            }
+
+            var actualHash = Convert.ToHexString(hash.GetHashAndReset());
+            if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"{file.FileName} failed {hashAlgorithm.Name} verification.");
             }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-
-        if (downloaded != file.Size)
-        {
-            throw new InvalidDataException($"{file.FileName} did not match its declared size.");
-        }
-
-        var actualHash = Convert.ToHexString(hash.GetHashAndReset());
-        if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException($"{file.FileName} failed {hashAlgorithm.Name} verification.");
+            response?.Dispose();
         }
     }
+
+    private static bool IsRedirect(HttpStatusCode statusCode) => statusCode is
+        HttpStatusCode.MovedPermanently or
+        HttpStatusCode.Found or
+        HttpStatusCode.SeeOther or
+        HttpStatusCode.TemporaryRedirect or
+        HttpStatusCode.PermanentRedirect;
 
     internal static HttpClient CreateHttpClient()
     {

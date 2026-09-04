@@ -51,6 +51,8 @@ public sealed class PackBuilderViewModel : BindableBase
     private PackDraftSortOption _selectedDraftSort;
     private ServerContentProject? _selectedProject;
     private ServerContentVersion? _selectedVersion;
+    private ServerContentVersion? _recommendedVersion;
+    private string _recommendedVersionSummary = string.Empty;
     private string _searchText = string.Empty;
     private string _statusText = "Choose what to build, then select a Minecraft version and platform.";
     private string _versionStatusText = "Select a search result to inspect all compatible published versions.";
@@ -74,6 +76,7 @@ public sealed class PackBuilderViewModel : BindableBase
     private string? _managedLauncherInstanceId;
     private bool _isCurseForgeConnectionBusy;
     private bool _isCurseForgeApiKeyStored;
+    private bool _usesApplicationCurseForgeKey;
     private bool _isResolvingPlatformVersions;
     private bool _isLoaded;
     private bool _isCurseForgeConnectionLoaded;
@@ -84,7 +87,7 @@ public sealed class PackBuilderViewModel : BindableBase
     private int _currentSearchPage = 1;
     private int _totalSearchHits;
     private int _totalSearchPages = 1;
-    private int _hiddenDraftSearchResultCount;
+    private int _draftedSearchResultCount;
     private bool _hasSearched;
     private string _activeSearchQuery = string.Empty;
     private bool _isShowingSimilarContent;
@@ -447,6 +450,7 @@ public sealed class PackBuilderViewModel : BindableBase
                 return;
             }
 
+            ClearVersionRecommendation();
             Versions.Clear();
             _selectedVersion = null;
             OnPropertyChanged(nameof(SelectedVersion));
@@ -466,6 +470,7 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             if (SetProperty(ref _selectedVersion, value))
             {
+                ClearVersionRecommendation();
                 OnPropertyChanged(nameof(HasSelectedVersion));
                 OnPropertyChanged(nameof(SelectedVersionDetails));
                 NotifyCommandStates();
@@ -611,8 +616,32 @@ public sealed class PackBuilderViewModel : BindableBase
     public bool IsCurseForgeApiKeyStored
     {
         get => _isCurseForgeApiKeyStored;
-        private set => SetProperty(ref _isCurseForgeApiKeyStored, value);
+        private set
+        {
+            if (SetProperty(ref _isCurseForgeApiKeyStored, value))
+            {
+                OnPropertyChanged(nameof(CurseForgeApiKeyActionText));
+            }
+        }
     }
+
+    public bool UsesApplicationCurseForgeKey
+    {
+        get => _usesApplicationCurseForgeKey;
+        private set
+        {
+            if (SetProperty(ref _usesApplicationCurseForgeKey, value))
+            {
+                OnPropertyChanged(nameof(CurseForgeApiKeyActionText));
+            }
+        }
+    }
+
+    public string CurseForgeApiKeyActionText => IsCurseForgeApiKeyStored
+        ? "Replace personal key"
+        : UsesApplicationCurseForgeKey
+            ? "Use a personal key instead"
+            : "Add approved key";
 
     public bool IsResolvingPlatformVersions
     {
@@ -702,15 +731,31 @@ public sealed class PackBuilderViewModel : BindableBase
     public string SearchPageSummary => TotalSearchHits == 0
         ? "No matching catalogue entries"
         : $"{SearchResults.Count:N0} shown  •  page {CurrentSearchPage:N0} of {TotalSearchPages:N0}  •  {TotalSearchHits:N0} across the responding sources"
-            + (_hiddenDraftSearchResultCount == 0
+            + (_draftedSearchResultCount == 0
                 ? string.Empty
-                : $"  •  {_hiddenDraftSearchResultCount:N0} already in draft hidden");
+                : $"  •  {_draftedSearchResultCount:N0} already in draft");
 
     public bool HasSelectedProject => SelectedProject is not null;
 
     public bool HasSelectedVersion => SelectedVersion is not null;
 
-    public bool CanReviewAdd => SelectedProject is not null && SelectedVersion is not null && !IsBusy;
+    public bool CanReviewAdd => SelectedProject is { IsInDraft: false }
+        && SelectedVersion is not null
+        && !IsBusy;
+
+    public string AddToDraftButtonText => SelectedProject?.IsInDraft == true
+        ? "Already in draft"
+        : "Add to draft";
+
+    public ServerContentVersion? RecommendedVersion => _recommendedVersion;
+
+    public bool HasRecommendedVersion => RecommendedVersion is not null;
+
+    public string RecommendedVersionTitle => RecommendedVersion is null
+        ? string.Empty
+        : $"Compatible version available: {RecommendedVersion.VersionNumber}";
+
+    public string RecommendedVersionSummary => _recommendedVersionSummary;
 
     public bool CanCreateOutput => (DraftItems.Count > 0 || CanBuildEmptyServerBaseline)
         && DraftItems.All(item => item.Placement != PackContentPlacement.Review)
@@ -835,13 +880,13 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             var status = await _curseForgeApiKeyService.ValidateAndStoreAsync(apiKey);
             ApplyCurseForgeStatus(status);
-            if (status.IsValid)
+            if (status.PersonalKeyWasStored)
             {
                 ProviderStatuses.Clear();
                 StatusText = "CurseForge is connected. Search again to include it with every other available provider.";
             }
 
-            return status.IsValid;
+            return status.PersonalKeyWasStored;
         }
         catch (Exception exception) when (
             exception is ArgumentException or HttpRequestException or InvalidOperationException
@@ -886,6 +931,13 @@ public sealed class PackBuilderViewModel : BindableBase
         OutputStatusText = "Refreshing provider metadata and validating the output plan…";
         try
         {
+            var dependencyPreflightFailure = await ValidateDraftDependencyGraphAsync();
+            if (dependencyPreflightFailure is not null)
+            {
+                OutputStatusText = $"Final dependency preflight stopped the build: {dependencyPreflightFailure}";
+                return null;
+            }
+
             var plan = await _outputService.CreatePlanAsync(new PackOutputRequest(
                 PackName,
                 SelectedTarget.Target,
@@ -914,6 +966,91 @@ public sealed class PackBuilderViewModel : BindableBase
             EndBusy();
         }
     }
+
+    private async Task<string?> ValidateDraftDependencyGraphAsync()
+    {
+        if (DraftItems.Count == 0)
+        {
+            return null;
+        }
+
+        var explicitSelections = DraftItems
+            .Where(item => item.IsExplicitSelection)
+            .ToArray();
+        if (explicitSelections.Length == 0)
+        {
+            return "The draft has no user-selected root item from which its dependencies can be verified.";
+        }
+
+        var rebuilt = new List<PackDraftItem>();
+        foreach (var selection in explicitSelections)
+        {
+            var existingProject = rebuilt.FirstOrDefault(item =>
+                item.ProviderId.Equals(selection.ProviderId, StringComparison.OrdinalIgnoreCase)
+                && item.ProjectId.Equals(selection.ProjectId, StringComparison.OrdinalIgnoreCase));
+            if (existingProject is not null)
+            {
+                if (!existingProject.VersionId.Equals(
+                        selection.VersionId,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{selection.DisplayName} now resolves to two incompatible versions.";
+                }
+
+                continue;
+            }
+
+            var version = await _catalogService.GetVersionAsync(
+                selection.ProviderId,
+                selection.VersionId);
+            var project = CreateDependencyProject(
+                selection.Kind,
+                version,
+                selection.DisplayName,
+                selection.IconUrl);
+            var plan = await _dependencyResolver.ResolveAsync(new PackResolveRequest(
+                SelectedTarget?.Target ?? PackBuildTarget.ClientAndServer,
+                SelectedMinecraftVersion ?? string.Empty,
+                GetClientLoaderIds(),
+                GetServerLoaderIds(selection.Kind),
+                project,
+                version,
+                rebuilt.ToArray())
+            {
+                RootIsDependency = selection.IsDependency,
+                RootDependencyType = selection.DependencyType,
+                RootReason = selection.Reason
+            });
+            plan = RestoreReviewedPlacements(plan, DraftItems);
+            if (!plan.IsReady)
+            {
+                return $"{selection.DisplayName} no longer has the reviewed dependency chain. {plan.SummaryText}";
+            }
+
+            foreach (var item in plan.Items)
+            {
+                if (!rebuilt.Any(existing =>
+                        existing.ProviderId.Equals(item.ProviderId, StringComparison.OrdinalIgnoreCase)
+                        && existing.VersionId.Equals(item.VersionId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    rebuilt.Add(item);
+                }
+            }
+        }
+
+        var reviewedIdentities = DraftItems
+            .Select(CreateDependencyPreflightIdentity)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var refreshedIdentities = rebuilt
+            .Select(CreateDependencyPreflightIdentity)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return reviewedIdentities.SetEquals(refreshedIdentities)
+            ? null
+            : "Provider metadata changed after the draft was reviewed. Remove and add the affected selection again so the revised dependencies are visible before download.";
+    }
+
+    private static string CreateDependencyPreflightIdentity(PackDraftItem item) =>
+        $"{item.ProviderId}\u001f{item.ProjectId}\u001f{item.VersionId}\u001f{(int)item.Placement}";
 
     public async Task<PackOutputResult?> CreateOutputAsync(PackOutputPlan plan)
     {
@@ -1032,31 +1169,37 @@ public sealed class PackBuilderViewModel : BindableBase
         return opened;
     }
 
-    public bool RemoveCurseForgeConnection()
+    public async Task<bool> RemoveCurseForgeConnectionAsync()
     {
         if (IsCurseForgeConnectionBusy)
         {
             return false;
         }
 
+        IsCurseForgeConnectionBusy = true;
         try
         {
             _curseForgeApiKeyService.Remove();
-            ApplyCurseForgeStatus(new CurseForgeApiKeyStatus(
-                false,
-                false,
-                "CurseForge was disconnected and its key was removed from Windows Credential Manager."));
+            var status = await _curseForgeApiKeyService.ValidateStoredAsync();
+            ApplyCurseForgeStatus(status);
             ClearSearchSelection();
             ProviderStatuses.Clear();
-            StatusText = "CurseForge was disconnected. Modrinth remains available without an account.";
+            StatusText = status.IsValid
+                ? "The personal CurseForge key was removed. This official build's app-specific access is active again."
+                : "CurseForge was disconnected. Modrinth remains available without an account.";
             return true;
         }
         catch (Exception exception) when (
-            exception is InvalidOperationException or UnauthorizedAccessException or IOException
+            exception is HttpRequestException or InvalidOperationException or UnauthorizedAccessException or IOException
+            or TaskCanceledException
             or System.ComponentModel.Win32Exception or PlatformNotSupportedException)
         {
             CurseForgeConnectionStatusText = $"The stored key could not be removed: {exception.Message}";
             return false;
+        }
+        finally
+        {
+            IsCurseForgeConnectionBusy = false;
         }
     }
 
@@ -1072,6 +1215,7 @@ public sealed class PackBuilderViewModel : BindableBase
 
         BeginBusy();
         DraftStatusText = "Resolving required dependencies and checking side placement…";
+        ClearVersionRecommendation();
         try
         {
             var plan = await _dependencyResolver.ResolveAsync(new PackResolveRequest(
@@ -1082,6 +1226,12 @@ public sealed class PackBuilderViewModel : BindableBase
                 project,
                 version,
                 DraftItems.ToArray()));
+            if (!plan.IsReady
+                && !plan.Items.Any(item => item.Placement == PackContentPlacement.Review))
+            {
+                await FindCompatibleVersionRecommendationAsync(project, version, target);
+            }
+
             DraftStatusText = plan.SummaryText;
             return plan;
         }
@@ -1096,6 +1246,29 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             EndBusy();
         }
+    }
+
+    public bool UseRecommendedVersion()
+    {
+        var recommendation = RecommendedVersion;
+        if (recommendation is null)
+        {
+            return false;
+        }
+
+        var matchingVersion = Versions.FirstOrDefault(version =>
+            version.ProviderId.Equals(recommendation.ProviderId, StringComparison.OrdinalIgnoreCase)
+            && version.VersionId.Equals(recommendation.VersionId, StringComparison.OrdinalIgnoreCase));
+        if (matchingVersion is null)
+        {
+            ClearVersionRecommendation();
+            return false;
+        }
+
+        var versionNumber = matchingVersion.VersionNumber;
+        SelectedVersion = matchingVersion;
+        DraftStatusText = $"Selected compatible version {versionNumber}. Review it before adding anything to the draft.";
+        return true;
     }
 
     public async Task<PackResolutionPlan?> PrepareOptionalDependenciesAsync(
@@ -1236,6 +1409,7 @@ public sealed class PackBuilderViewModel : BindableBase
                         RootDependencyType = selection.DependencyType,
                         RootReason = selection.Reason
                     });
+                plan = RestoreReviewedPlacements(plan, DraftItems);
                 if (!plan.IsReady)
                 {
                     DraftStatusText = $"{item.DisplayName} was not removed because the remaining draft could not be rebuilt safely: {plan.SummaryText}";
@@ -1319,6 +1493,45 @@ public sealed class PackBuilderViewModel : BindableBase
         NotifyCommandStates();
     }
 
+    internal static PackResolutionPlan RestoreReviewedPlacements(
+        PackResolutionPlan plan,
+        IEnumerable<PackDraftItem> reviewedItems)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(reviewedItems);
+
+        var reviewed = reviewedItems
+            .Where(item => item.PlacementWasReviewed && item.Placement != PackContentPlacement.Review)
+            .ToArray();
+        if (reviewed.Length == 0 || !plan.Items.Any(item => item.Placement == PackContentPlacement.Review))
+        {
+            return plan;
+        }
+
+        var restoredItems = plan.Items
+            .Select(item =>
+            {
+                if (item.Placement != PackContentPlacement.Review)
+                {
+                    return item;
+                }
+
+                var prior = reviewed.FirstOrDefault(candidate =>
+                    candidate.ProviderId.Equals(item.ProviderId, StringComparison.OrdinalIgnoreCase)
+                    && candidate.ProjectId.Equals(item.ProjectId, StringComparison.OrdinalIgnoreCase)
+                    && candidate.VersionId.Equals(item.VersionId, StringComparison.OrdinalIgnoreCase));
+                return prior is null
+                    ? item
+                    : item with
+                    {
+                        Placement = prior.Placement,
+                        PlacementWasReviewed = true
+                    };
+            })
+            .ToArray();
+        return plan with { Items = restoredItems };
+    }
+
     private static ServerContentProject CreateDependencyProject(
         ServerContentKind kind,
         ServerContentVersion version,
@@ -1399,7 +1612,7 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             try
             {
-                IsCurseForgeApiKeyStored = !string.IsNullOrWhiteSpace(_curseForgeApiKeyService.GetApiKey());
+                IsCurseForgeApiKeyStored = _curseForgeApiKeyService.HasStoredOverride();
             }
             catch
             {
@@ -1420,6 +1633,7 @@ public sealed class PackBuilderViewModel : BindableBase
     private void ApplyCurseForgeStatus(CurseForgeApiKeyStatus status)
     {
         IsCurseForgeApiKeyStored = status.HasStoredKey;
+        UsesApplicationCurseForgeKey = status.UsesApplicationKey;
         CurseForgeConnectionStatusText = status.Message;
     }
 
@@ -1625,9 +1839,7 @@ public sealed class PackBuilderViewModel : BindableBase
                 : (int)Math.Ceiling(page.MaximumProviderHits / (double)pageSize);
             RefreshSearchPageNumbers();
             StatusText = SearchResults.Count == 0
-                ? _hiddenDraftSearchResultCount > 0
-                    ? $"Every compatible result on this page is already represented in the draft. {_hiddenDraftSearchResultCount:N0} duplicate listing{(_hiddenDraftSearchResultCount == 1 ? " was" : "s were")} hidden."
-                    : $"No compatible results. {page.ProviderSummary}. Try broader content filters or another platform."
+                ? $"No compatible results. {page.ProviderSummary}. Try broader content filters or another platform."
                 : IsShowingSimilarContent
                     ? $"{SearchResults.Count:N0} related result{(SearchResults.Count == 1 ? string.Empty : "s")} loaded  •  {page.ProviderSummary}. Similarity is inferred from published categories and compatibility."
                     : $"{SearchResults.Count:N0} compatible result{(SearchResults.Count == 1 ? string.Empty : "s")} loaded  •  {page.ProviderSummary}.";
@@ -1685,6 +1897,79 @@ public sealed class PackBuilderViewModel : BindableBase
         {
             EndBusy();
         }
+    }
+
+    private async Task FindCompatibleVersionRecommendationAsync(
+        ServerContentProject project,
+        ServerContentVersion selectedVersion,
+        PackBuildTargetOption target)
+    {
+        var selectedIndex = Versions.IndexOf(selectedVersion);
+        var candidates = Versions
+            .Select((version, index) => new { Version = version, Index = index })
+            .Where(candidate => !candidate.Version.VersionId.Equals(
+                selectedVersion.VersionId,
+                StringComparison.OrdinalIgnoreCase))
+            .OrderBy(candidate => candidate.Version.ReleaseChannel.Equals(
+                selectedVersion.ReleaseChannel,
+                StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(candidate => selectedIndex < 0
+                ? candidate.Index
+                : Math.Abs(candidate.Index - selectedIndex))
+            .ThenByDescending(candidate => candidate.Version.PublishedAt)
+            .Select(candidate => candidate.Version)
+            .ToArray();
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var candidatePlan = await _dependencyResolver.ResolveAsync(new PackResolveRequest(
+                    target.Target,
+                    SelectedMinecraftVersion ?? string.Empty,
+                    GetClientLoaderIds(),
+                    GetServerLoaderIds(project.Kind),
+                    project,
+                    candidate,
+                    DraftItems.ToArray()));
+                if (!candidatePlan.IsReady)
+                {
+                    continue;
+                }
+
+                _recommendedVersion = candidate;
+                _recommendedVersionSummary =
+                    $"{candidate.VersionNumber} resolves its required dependencies for Minecraft {SelectedMinecraftVersion} "
+                    + $"and the selected loader, while {selectedVersion.VersionNumber} does not. "
+                    + "Use it explicitly, then review the resulting draft additions.";
+                OnPropertyChanged(nameof(RecommendedVersion));
+                OnPropertyChanged(nameof(HasRecommendedVersion));
+                OnPropertyChanged(nameof(RecommendedVersionTitle));
+                OnPropertyChanged(nameof(RecommendedVersionSummary));
+                return;
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException or IOException or InvalidDataException
+                or InvalidOperationException or JsonException or TaskCanceledException)
+            {
+                // A failed candidate must not hide the original compatibility result.
+            }
+        }
+    }
+
+    private void ClearVersionRecommendation()
+    {
+        if (_recommendedVersion is null && _recommendedVersionSummary.Length == 0)
+        {
+            return;
+        }
+
+        _recommendedVersion = null;
+        _recommendedVersionSummary = string.Empty;
+        OnPropertyChanged(nameof(RecommendedVersion));
+        OnPropertyChanged(nameof(HasRecommendedVersion));
+        OnPropertyChanged(nameof(RecommendedVersionTitle));
+        OnPropertyChanged(nameof(RecommendedVersionSummary));
     }
 
     private bool CanSearch()
@@ -2077,8 +2362,9 @@ public sealed class PackBuilderViewModel : BindableBase
         Interlocked.Increment(ref _versionRequestId);
         _loadedSearchResults.Clear();
         SearchResults.Clear();
-        _hiddenDraftSearchResultCount = 0;
+        _draftedSearchResultCount = 0;
         Versions.Clear();
+        ClearVersionRecommendation();
         _selectedProject = null;
         _selectedVersion = null;
         OnPropertyChanged(nameof(SelectedProject));
@@ -2107,27 +2393,29 @@ public sealed class PackBuilderViewModel : BindableBase
 
     private void RefreshVisibleSearchResults()
     {
-        var visibleResults = _loadedSearchResults
-            .Where(project => !IsRepresentedInDraft(project))
-            .ToArray();
-        _hiddenDraftSearchResultCount = _loadedSearchResults.Count - visibleResults.Length;
-
-        if (SelectedProject is { } selected
-            && !visibleResults.Any(project =>
-                project.ProviderId.Equals(selected.ProviderId, StringComparison.OrdinalIgnoreCase)
-                && project.ProjectId.Equals(selected.ProjectId, StringComparison.OrdinalIgnoreCase)))
+        foreach (var project in _loadedSearchResults)
         {
-            SelectedProject = null;
+            project.IsInDraft = IsRepresentedInDraft(project);
         }
 
-        SearchResults.Clear();
-        foreach (var project in visibleResults)
+        _draftedSearchResultCount = _loadedSearchResults.Count(project => project.IsInDraft);
+        var searchResultsMatchLoaded = SearchResults.Count == _loadedSearchResults.Count
+            && SearchResults.Select((project, index) => ReferenceEquals(
+                project,
+                _loadedSearchResults[index])).All(matches => matches);
+        if (!searchResultsMatchLoaded)
         {
-            SearchResults.Add(project);
+            SearchResults.Clear();
+            foreach (var project in _loadedSearchResults)
+            {
+                SearchResults.Add(project);
+            }
         }
 
         OnPropertyChanged(nameof(SearchPageSummary));
         OnPropertyChanged(nameof(CanShowMore));
+        OnPropertyChanged(nameof(AddToDraftButtonText));
+        NotifyCommandStates();
         ShowMoreCommand.NotifyCanExecuteChanged();
     }
 

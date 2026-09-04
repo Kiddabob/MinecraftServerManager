@@ -39,6 +39,38 @@ public sealed class ServerConfigurationEditorService : IServerConfigurationEdito
         @"(?<=[a-z0-9])(?=[A-Z])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly IReadOnlyList<ServerConfigurationFieldDefinition> StandardServerPropertiesDefinitions =
+    [
+        IntegerDefinition("server-port", "Server port", 1, 65_535,
+            "The network port used by Minecraft clients."),
+        IntegerDefinition("query.port", "Query port", 1, 65_535,
+            "The network port used by the GameSpy query listener."),
+        IntegerDefinition("rcon.port", "RCON port", 1, 65_535,
+            "The network port used by remote console clients."),
+        IntegerDefinition("max-players", "Maximum players", 1, int.MaxValue,
+            "The greatest number of players allowed online at once."),
+        IntegerDefinition("view-distance", "View distance", 3, 32,
+            "The server-side chunk radius sent to each player."),
+        IntegerDefinition("simulation-distance", "Simulation distance", 3, 32,
+            "The chunk radius in which entities and game ticks are simulated."),
+        IntegerDefinition("spawn-protection", "Spawn protection radius", 0, int.MaxValue,
+            "The protected radius around world spawn. Use 0 to disable it."),
+        IntegerDefinition("player-idle-timeout", "Idle timeout", 0, int.MaxValue,
+            "Minutes before an idle player is removed. Use 0 to disable it."),
+        IntegerDefinition("max-world-size", "Maximum world size", 1, 29_999_984,
+            "The maximum world radius, measured in blocks."),
+        IntegerDefinition("op-permission-level", "Operator permission level", 1, 4,
+            "The command permission level granted to server operators."),
+        IntegerDefinition("function-permission-level", "Function permission level", 1, 4,
+            "The command permission level used by functions."),
+        IntegerDefinition("entity-broadcast-range-percentage", "Entity broadcast range", 10, 1_000,
+            "Percentage multiplier applied to the normal entity broadcast range."),
+        IntegerDefinition("network-compression-threshold", "Network compression threshold", -1, int.MaxValue,
+            "Packet size in bytes before compression is used. Use -1 to disable compression."),
+        IntegerDefinition("rate-limit", "Connection rate limit", 0, int.MaxValue,
+            "Maximum packets per second before a connection is removed. Use 0 to disable it.")
+    ];
+
     public ServerConfigurationFriendlyDocument Parse(
         ServerProfile profile,
         ServerConfigurationFile file,
@@ -137,7 +169,7 @@ public sealed class ServerConfigurationEditorService : IServerConfigurationEdito
             ? $" The first {MaximumFriendlyFields:N0} settings are shown to keep the editor responsive."
             : string.Empty;
         var schemaSuffix = definitions.Count > 0
-            ? " Profile guidance is combined with limits declared in file comments."
+            ? " Known server guidance is combined with limits declared in file comments."
             : " Limits are shown only when the file declares them; other values are marked as having no declared limit.";
         return new ServerConfigurationFriendlyDocument(
             content,
@@ -361,6 +393,16 @@ public sealed class ServerConfigurationEditorService : IServerConfigurationEdito
         ServerProfile profile,
         ServerConfigurationFile file)
     {
+        var definitions = new Dictionary<string, ServerConfigurationFieldDefinition>(
+            StringComparer.OrdinalIgnoreCase);
+        if (file.Name.Equals("server.properties", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var definition in StandardServerPropertiesDefinitions)
+            {
+                definitions[definition.Key] = definition;
+            }
+        }
+
         var normalizedRelativePath = file.RelativePath.Replace('\\', '/');
         var schema = profile.ConfigurationSchemas.FirstOrDefault(candidate =>
             !string.IsNullOrWhiteSpace(candidate.FilePattern)
@@ -369,12 +411,32 @@ public sealed class ServerConfigurationEditorService : IServerConfigurationEdito
                     candidate.FilePattern.Replace('\\', '/'),
                     normalizedRelativePath,
                     ignoreCase: true)));
-        return schema?.Fields
-            .Where(field => !string.IsNullOrWhiteSpace(field.Key))
-            .GroupBy(field => field.Key, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase)
-            ?? new Dictionary<string, ServerConfigurationFieldDefinition>(StringComparer.OrdinalIgnoreCase);
+        if (schema is not null)
+        {
+            foreach (var definition in schema.Fields.Where(field => !string.IsNullOrWhiteSpace(field.Key)))
+            {
+                definitions[definition.Key] = definition;
+            }
+        }
+
+        return definitions;
     }
+
+    private static ServerConfigurationFieldDefinition IntegerDefinition(
+        string key,
+        string displayName,
+        double minimum,
+        double maximum,
+        string description) => new()
+        {
+            Key = key,
+            DisplayName = displayName,
+            Description = description,
+            Kind = "Integer",
+            Minimum = minimum,
+            Maximum = maximum,
+            Step = 1
+        };
 
     private static ServerConfigurationFieldDefinition? FindDefinition(
         IReadOnlyDictionary<string, ServerConfigurationFieldDefinition> definitions,

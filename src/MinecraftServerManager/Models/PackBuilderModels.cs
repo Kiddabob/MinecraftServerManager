@@ -169,6 +169,8 @@ public sealed record PackDraftItem(
 
     public bool IsExplicitSelection { get; init; } = !IsDependency;
 
+    public bool PlacementWasReviewed { get; init; }
+
     public string PlacementText => Placement switch
     {
         PackContentPlacement.Client => "Client",
@@ -251,6 +253,8 @@ public sealed record PackResolutionPlan(
 
     public string SummaryText => Conflicts.Count > 0
         ? $"Resolve {Conflicts.Count:N0} conflict{(Conflicts.Count == 1 ? string.Empty : "s")} before adding this item."
+        : Items.Count(item => item.Placement == PackContentPlacement.Review) is var reviewCount && reviewCount > 0
+            ? $"Choose installation placement for {reviewCount:N0} item{(reviewCount == 1 ? string.Empty : "s")} before adding this change."
         : CreateReadySummary();
 
     private string CreateReadySummary()

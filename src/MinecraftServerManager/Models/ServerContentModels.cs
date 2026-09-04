@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace MinecraftServerManager.Models;
 
 public enum ServerContentKind
@@ -98,8 +101,33 @@ public sealed record ServerContentProject(
     ServerContentKind Kind,
     IReadOnlyList<string> MinecraftVersions,
     IReadOnlyList<string> Categories,
-    IReadOnlyList<string> Environments)
+    IReadOnlyList<string> Environments) : INotifyPropertyChanged
 {
+    private bool _isInDraft;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool IsInDraft
+    {
+        get => _isInDraft;
+        set
+        {
+            if (_isInDraft == value)
+            {
+                return;
+            }
+
+            _isInDraft = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsNotInDraft));
+            OnPropertyChanged(nameof(DraftStateText));
+        }
+    }
+
+    public bool IsNotInDraft => !IsInDraft;
+
+    public string DraftStateText => IsInDraft ? "\u2713 In draft" : string.Empty;
+
     public string KindText => Kind == ServerContentKind.Mod ? "Mod" : "Plugin";
 
     public string MetadataText => $"{KindText} by {Author}  •  {Downloads:N0} downloads";
@@ -107,6 +135,9 @@ public sealed record ServerContentProject(
     public string CompatibilityText => MinecraftVersions.Count == 0
         ? "Minecraft versions not supplied"
         : $"Minecraft {string.Join(", ", MinecraftVersions.Take(4))}{(MinecraftVersions.Count > 4 ? "…" : string.Empty)}";
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
 
 public sealed record ServerContentFile(

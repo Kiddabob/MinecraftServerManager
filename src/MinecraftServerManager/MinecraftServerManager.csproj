@@ -17,7 +17,12 @@
     <StartupObject>MinecraftServerManager.Program</StartupObject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <CurseForgeApiKey Condition="'$(CurseForgeApiKey)' == ''">$(CURSEFORGE_API_KEY)</CurseForgeApiKey>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(CurseForgeApiKey)' != ''">
+    <AssemblyMetadata Include="CurseForgeApiKey" Value="$(CurseForgeApiKey)" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />

@@ -102,6 +102,36 @@ public sealed class JsonPlayerPlaytimeService : IPlayerPlaytimeService
         }
     }
 
+    public void UpdateProfileDisplayName(string profileId, string displayName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+
+        var changed = false;
+        lock (_syncRoot)
+        {
+            if (!_profiles.TryGetValue(profileId, out var profile))
+            {
+                return;
+            }
+
+            var trimmedDisplayName = displayName.Trim();
+            if (profile.DisplayName.Equals(trimmedDisplayName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            profile.DisplayName = trimmedDisplayName;
+            QueueSaveLocked(profileId);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public void CloseSessions(string profileId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
@@ -321,7 +351,7 @@ public sealed class JsonPlayerPlaytimeService : IPlayerPlaytimeService
     {
         public string Id { get; } = id;
 
-        public string DisplayName { get; } = displayName;
+        public string DisplayName { get; set; } = displayName;
 
         public Dictionary<string, PlayerState> Players { get; } =
             new(StringComparer.OrdinalIgnoreCase);

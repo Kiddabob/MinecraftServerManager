@@ -57,6 +57,8 @@ public partial class App : Application
         services.AddSingleton<IPackContentCatalogProvider>(provider =>
             provider.GetRequiredService<ModrinthServerContentCatalogService>());
         services.AddSingleton<ICurseForgeApiKeyStore, WindowsCredentialManagerApiKeyStore>();
+        services.AddSingleton<ICurseForgeApplicationApiKeyProvider,
+            AssemblyMetadataCurseForgeApplicationApiKeyProvider>();
         services.AddSingleton<ICurseForgeApiKeyService, CurseForgeApiKeyService>();
         services.AddSingleton<IPackContentCatalogProvider, CurseForgePackContentCatalogProvider>();
         services.AddSingleton<IPackContentCatalogService, PackContentCatalogService>();

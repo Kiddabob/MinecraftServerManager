@@ -330,7 +330,7 @@ public sealed class PackDependencyResolver : IPackDependencyResolver
         if (!knownEnvironment)
         {
             warning = "The provider did not declare a recognised side. Confirm its placement before installation.";
-            if (target == PackBuildTarget.ClientAndServer && (clientMatches || serverMatches))
+            if (target == PackBuildTarget.ClientAndServer && clientMatches && serverMatches)
             {
                 return PackContentPlacement.Review;
             }

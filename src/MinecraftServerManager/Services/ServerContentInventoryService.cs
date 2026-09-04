@@ -104,6 +104,12 @@ public sealed partial class ServerContentInventoryService : IServerContentInvent
             || type.Equals("Plugin server", StringComparison.OrdinalIgnoreCase)
             || type.Equals("Hybrid", StringComparison.OrdinalIgnoreCase);
 
+        // Imported servers are not always labelled accurately. Treat actual content as
+        // authoritative so a Forge profile with Bukkit-compatible plugin files (or the
+        // reverse) exposes both managers without changing its launch profile.
+        supportsMods |= ContainsInstalledContent(serverRoot, "mods");
+        supportsPlugins |= ContainsInstalledContent(serverRoot, "plugins");
+
         var targets = new List<ServerContentTarget>();
         if (supportsMods)
         {
@@ -122,6 +128,25 @@ public sealed partial class ServerContentInventoryService : IServerContentInvent
         }
 
         return targets;
+    }
+
+    private static bool ContainsInstalledContent(string serverRoot, string directoryName)
+    {
+        var directory = Path.Combine(serverRoot, directoryName);
+        if (!Directory.Exists(directory))
+        {
+            return false;
+        }
+
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            ReturnSpecialDirectories = false,
+            AttributesToSkip = FileAttributes.ReparsePoint
+        };
+        return Directory.EnumerateFiles(directory, "*", options)
+            .Any(path => IsContentFileName(Path.GetFileName(path)));
     }
 
     private static IReadOnlyList<string> DetectModLoaders(

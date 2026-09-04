@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="CurseForgeApiKey" Value="configuration-test-app-key" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\..\src\MinecraftServerManager\Infrastructure\AsyncRelayCommand.cs" Link="Infrastructure\AsyncRelayCommand.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Infrastructure\BindableBase.cs" Link="Infrastructure\BindableBase.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Models\ServerConfigurationModels.cs" Link="Models\ServerConfigurationModels.cs" />
@@ -93,6 +97,8 @@
     <Compile Include="..\..\src\MinecraftServerManager\Services\MinecraftLauncherIntegrationService.cs" Link="Services\MinecraftLauncherIntegrationService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ManagedMinecraftLauncherService.cs" Link="Services\ManagedMinecraftLauncherService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyStore.cs" Link="Services\ICurseForgeApiKeyStore.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApplicationApiKeyProvider.cs" Link="Services\ICurseForgeApplicationApiKeyProvider.cs" />
+    <Compile Include="..\..\src\MinecraftServerManager\Services\AssemblyMetadataCurseForgeApplicationApiKeyProvider.cs" Link="Services\AssemblyMetadataCurseForgeApplicationApiKeyProvider.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\ICurseForgeApiKeyService.cs" Link="Services\ICurseForgeApiKeyService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\CurseForgeApiKeyService.cs" Link="Services\CurseForgeApiKeyService.cs" />
     <Compile Include="..\..\src\MinecraftServerManager\Services\WindowsCredentialManagerApiKeyStore.cs" Link="Services\WindowsCredentialManagerApiKeyStore.cs" />

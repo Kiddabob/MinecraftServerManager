@@ -1337,6 +1337,7 @@
                                     <Button
                                         Grid.Column="4"
                                         VerticalAlignment="Center"
+                                        AutomationProperties.Name="Refresh server map"
                                         Command="{Binding Map.RefreshCommand}"
                                         Content="Refresh now"
                                         Style="{StaticResource AppAccentButtonStyle}" />
@@ -1355,6 +1356,7 @@
                                         <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Live refresh" />
                                         <ToggleSwitch
                                             VerticalAlignment="Center"
+                                            AutomationProperties.Name="Automatically refresh the server map"
                                             IsOn="{Binding Map.IsLiveRefreshEnabled, Mode=TwoWay}" />
                                         <ComboBox
                                             Width="160"
@@ -1523,7 +1525,11 @@
                             </Border>
 
                             <Border Grid.Column="1" Padding="16" Style="{StaticResource AppCardStyle}">
-                                <Grid RowSpacing="8">
+                                <ScrollViewer
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollBarVisibility="Auto"
+                                    VerticalScrollMode="Enabled">
+                                <Grid MinWidth="232" RowSpacing="8">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
@@ -1640,6 +1646,7 @@
                                                     Grid.Column="1"
                                                     MinWidth="0"
                                                     VerticalAlignment="Center"
+                                                    AutomationProperties.Name="Follow the selected player"
                                                     IsOn="{Binding Map.FollowSelectedPlayer, Mode=TwoWay}"
                                                     OffContent=""
                                                     OnContent="" />
@@ -1744,6 +1751,7 @@
                                             ToolTipService.ToolTip="{Binding Map.StatusText, Mode=OneWay}" />
                                     </StackPanel>
                                 </Grid>
+                                </ScrollViewer>
                             </Border>
                         </Grid>
                     </Grid>
@@ -1773,12 +1781,14 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Button
+                                AutomationProperties.Name="Go up one server folder"
                                 Command="{Binding NavigateUpCommand}"
                                 ToolTipService.ToolTip="Up one folder">
                                 <FontIcon Glyph="&#xE74A;" />
                             </Button>
                             <Button
                                 Grid.Column="1"
+                                AutomationProperties.Name="Refresh server files"
                                 Command="{Binding RefreshFilesCommand}"
                                 ToolTipService.ToolTip="Refresh">
                                 <FontIcon Glyph="&#xE72C;" />
@@ -2613,12 +2623,12 @@
                                                     <TextBlock FontWeight="SemiBold" Text="CurseForge developer access" />
                                                     <TextBlock
                                                         Style="{StaticResource BodySecondaryTextStyle}"
-                                                        Text="This connects an API key issued for your own approved developer application. It is not a CurseForge account login and does not expose a personal CurseForge library."
+                                                        Text="Official builds can use an app-specific API key issued for Minecraft Server Manager, following the same application-key pattern used by Prism Launcher. You can still supply your own approved key as a private override. This is not a CurseForge account login and does not expose a personal library."
                                                         TextWrapping="Wrap" />
                                                     <TextBlock
                                                         FontSize="12"
                                                         Style="{StaticResource BodySecondaryTextStyle}"
-                                                        Text="Prepare a personal application before opening Overwolf's official form. The app does not collect your contact details, accept the terms, or submit anything on your behalf."
+                                                        Text="An official build includes CurseForge access only when Overwolf has approved the application key and the release workflow is configured with it. Personal overrides remain in Windows Credential Manager and are never packaged."
                                                         TextWrapping="Wrap" />
                                                 </StackPanel>
                                                 <Grid ColumnSpacing="8">
@@ -2650,12 +2660,12 @@
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                                         <Button
                                                             Click="AddCurseForgeApiKey_Click"
-                                                            Content="Add approved key"
+                                                            Content="{Binding Builder.CurseForgeApiKeyActionText, Mode=OneWay}"
                                                             IsEnabled="{Binding Builder.IsCurseForgeConnectionNotBusy, Mode=OneWay}"
                                                             Style="{StaticResource AppAccentButtonStyle}" />
                                                         <Button
                                                             Click="RemoveCurseForgeApiKey_Click"
-                                                            Content="Disconnect"
+                                                            Content="Remove personal key"
                                                             IsEnabled="{Binding Builder.IsCurseForgeConnectionNotBusy, Mode=OneWay}"
                                                             Visibility="{Binding Builder.IsCurseForgeApiKeyStored, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                     </StackPanel>
@@ -2948,10 +2958,29 @@
                                                                 Style="{StaticResource BodySecondaryTextStyle}"
                                                                 Text="{Binding Description}"
                                                                 TextTrimming="CharacterEllipsis" />
-                                                            <TextBlock
-                                                                FontSize="12"
-                                                                Foreground="{StaticResource AppAccentBrush}"
-                                                                Text="{Binding ProviderId}" />
+                                                            <Grid ColumnSpacing="8">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock
+                                                                    FontSize="12"
+                                                                    Foreground="{StaticResource AppAccentBrush}"
+                                                                    Text="{Binding ProviderId}" />
+                                                                <Border
+                                                                    Grid.Column="1"
+                                                                    Padding="8,2"
+                                                                    BorderBrush="{StaticResource AppAccentBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="10"
+                                                                    Visibility="{Binding IsInDraft, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <TextBlock
+                                                                        FontSize="11"
+                                                                        FontWeight="SemiBold"
+                                                                        Foreground="{StaticResource AppAccentBrush}"
+                                                                        Text="{Binding DraftStateText}" />
+                                                                </Border>
+                                                            </Grid>
                                                         </StackPanel>
                                                     </Grid>
                                                 </DataTemplate>
@@ -3042,9 +3071,29 @@
                                                 Text="{Binding Builder.SelectedVersionDetails, Mode=OneWay}"
                                                 TextWrapping="Wrap" />
                                         </Border>
+                                        <Border
+                                            Padding="12"
+                                            BorderBrush="{StaticResource AppAccentBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Visibility="{Binding Builder.HasRecommendedVersion, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding Builder.RecommendedVersionTitle, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Style="{StaticResource BodySecondaryTextStyle}"
+                                                    Text="{Binding Builder.RecommendedVersionSummary, Mode=OneWay}"
+                                                    TextWrapping="Wrap" />
+                                                <Button
+                                                    Click="UseBuilderRecommendedVersion_Click"
+                                                    Content="Use suggested version"
+                                                    HorizontalAlignment="Left" />
+                                            </StackPanel>
+                                        </Border>
                                         <Button
                                             Click="ReviewBuilderItem_Click"
-                                            Content="Add to draft"
+                                            Content="{Binding Builder.AddToDraftButtonText, Mode=OneWay}"
                                             HorizontalAlignment="Stretch"
                                             IsEnabled="{Binding Builder.CanReviewAdd, Mode=OneWay}"
                                             Style="{StaticResource AppAccentButtonStyle}" />
@@ -3316,8 +3365,9 @@
                                         </StackPanel>
                                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                                             <Button
-                                                Command="{Binding StartSelectedCommand}"
+                                                Click="StartSelectedProfiles_Click"
                                                 Content="Start selected"
+                                                IsEnabled="{Binding CanStartSelectedProfiles, Mode=OneWay}"
                                                 Style="{StaticResource AppAccentButtonStyle}" />
                                             <Button
                                                 Command="{Binding StopSelectedCommand}"

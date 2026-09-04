@@ -567,7 +567,7 @@ public sealed class MainViewModel : BindableBase
                 return;
             }
 
-            selected.IsSelectedForBulk = true;
+            SelectOnlyForBulk(selected);
             SetSelectedProfileWithoutCallback(selected);
             CurrentFilesPath = selected.ServerDirectory;
             await Dashboard.SelectProfileAsync(selected);
@@ -740,8 +740,15 @@ public sealed class MainViewModel : BindableBase
             PlayerScopeOptions.Add(new PlayerScopeOption(result.Profile.Id, result.Profile.DisplayName));
             OnPropertyChanged(nameof(ProfileCountText));
         }
+        else if (!profile.DisplayName.Equals(result.Profile.DisplayName, StringComparison.Ordinal))
+        {
+            profile.Profile.DisplayName = result.Profile.DisplayName;
+            profile.RefreshProfile();
+        }
 
-        profile.IsSelectedForBulk = true;
+        SelectOnlyForBulk(profile);
+        _playerPlaytimeService.UpdateProfileDisplayName(profile.Id, profile.DisplayName);
+        UpdatePlayerScopeDisplayName(profile.Id, profile.DisplayName);
         SetSelectedProfileWithoutCallback(profile);
         CurrentFilesPath = profile.ServerDirectory;
         await Dashboard.SelectProfileAsync(profile);
@@ -1090,6 +1097,8 @@ public sealed class MainViewModel : BindableBase
         try
         {
             await _profileService.SaveAsync(profile);
+            _playerPlaytimeService.UpdateProfileDisplayName(profile.Id, profile.DisplayName);
+            UpdatePlayerScopeDisplayName(profile.Id, profile.DisplayName);
             session.RefreshProfile();
             await Dashboard.SelectProfileAsync(session);
             await Content.SelectProfileAsync(session);
@@ -1224,6 +1233,38 @@ public sealed class MainViewModel : BindableBase
         return session;
     }
 
+    private void SelectOnlyForBulk(ServerSessionViewModel selectedProfile)
+    {
+        foreach (var profile in Profiles)
+        {
+            profile.IsSelectedForBulk = ReferenceEquals(profile, selectedProfile);
+        }
+    }
+
+    private void UpdatePlayerScopeDisplayName(string profileId, string displayName)
+    {
+        var current = PlayerScopeOptions.FirstOrDefault(scope =>
+            scope.Id.Equals(profileId, StringComparison.OrdinalIgnoreCase));
+        if (current is null)
+        {
+            return;
+        }
+
+        if (current.DisplayName.Equals(displayName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var scopeIndex = PlayerScopeOptions.IndexOf(current);
+        var replacement = new PlayerScopeOption(profileId, displayName);
+        var wasSelected = ReferenceEquals(SelectedPlayerScope, current);
+        PlayerScopeOptions[scopeIndex] = replacement;
+        if (wasSelected)
+        {
+            SelectedPlayerScope = replacement;
+        }
+    }
+
     private void SetSelectedProfileWithoutCallback(ServerSessionViewModel profile)
     {
         _changingProfile = true;
@@ -1234,6 +1275,14 @@ public sealed class MainViewModel : BindableBase
     }
 
     private bool CanStartSelected() => Profiles.Any(profile => profile.IsSelectedForBulk && profile.CanStart);
+
+    public bool CanStartSelectedProfiles => CanStartSelected();
+
+    public IReadOnlyList<ServerSessionViewModel> GetStartSelectedProfiles() => Profiles
+        .Where(profile => profile.IsSelectedForBulk && profile.CanStart)
+        .ToArray();
+
+    public Task StartSelectedProfilesAsync() => StartSelectedAsync();
 
     private bool CanStopSelected() => Profiles.Any(profile => profile.IsSelectedForBulk && profile.CanStop);
 
@@ -1403,6 +1452,7 @@ public sealed class MainViewModel : BindableBase
                 OnPropertyChanged(nameof(CanDuplicateSelectedProfile));
             }
             StartSelectedCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(CanStartSelectedProfiles));
             StopSelectedCommand.NotifyCanExecuteChanged();
         }
 

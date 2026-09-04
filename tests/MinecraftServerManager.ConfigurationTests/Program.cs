@@ -367,10 +367,11 @@ try
         ServerDirectory = testRoot
     });
     AssertTrue(forgeOnlyInventory.SupportsMods, "Forge content inventory supports mods");
-    AssertTrue(!forgeOnlyInventory.SupportsPlugins, "stray plugins folder does not make Forge hybrid");
+    AssertTrue(forgeOnlyInventory.SupportsPlugins, "installed plugin content promotes a Forge profile to hybrid management");
     AssertTrue(
-        forgeOnlyInventory.Items.All(item => item.Kind == ServerContentKind.Mod),
-        "Forge inventory excludes unrelated plugin-folder files");
+        forgeOnlyInventory.Items.Any(item => item.Kind == ServerContentKind.Mod)
+        && forgeOnlyInventory.Items.Any(item => item.Kind == ServerContentKind.Plugin),
+        "hybrid inventory includes both mod and plugin-folder files");
 
     var service = new ServerConfigurationService(Path.Combine(testRoot, "backups"));
     var discovery = await service.DiscoverAsync(profile);
@@ -456,6 +457,25 @@ try
         "1",
         reopenedProperties.Fields.Single(field => field.Key == "gamemode").SelectedOption!.Value,
         "choice value survives friendly editor rebuild");
+
+    var genericProfile = new ServerProfile
+    {
+        Id = "generic-properties-guidance",
+        DisplayName = "Generic properties guidance",
+        ServerDirectory = testRoot
+    };
+    var genericProperties = editor.Parse(
+        genericProfile,
+        propertiesFile,
+        "server-port=25565\nview-distance=10\nmax-players=20\n");
+    AssertEqual(1d, genericProperties.Fields.Single(field => field.Key == "server-port").DeclaredMinimum!.Value,
+        "generic server port minimum guidance");
+    AssertEqual(65535d, genericProperties.Fields.Single(field => field.Key == "server-port").DeclaredMaximum!.Value,
+        "generic server port maximum guidance");
+    AssertEqual(32d, genericProperties.Fields.Single(field => field.Key == "view-distance").DeclaredMaximum!.Value,
+        "generic view distance maximum guidance");
+    AssertEqual((double)int.MaxValue, genericProperties.Fields.Single(field => field.Key == "max-players").DeclaredMaximum!.Value,
+        "generic player limit guidance");
 
     var unschematizedPropertiesFile = propertiesFile with
     {
@@ -1275,10 +1295,11 @@ try
         CurseForgeApplicationTemplate.ProjectName.Length <= 30,
         "CurseForge application project name remains form friendly");
     AssertTrue(
-        curseForgeApplicationText.Contains("applicant's own local installation", StringComparison.Ordinal)
+        curseForgeApplicationText.Contains("app-specific CurseForge API key", StringComparison.Ordinal)
         && curseForgeApplicationText.Contains("no central API proxy", StringComparison.Ordinal)
+        && curseForgeApplicationText.Contains("can be extracted", StringComparison.Ordinal)
         && curseForgeApplicationText.Contains("Windows Credential Manager", StringComparison.Ordinal),
-        "CurseForge application template explains the per-installation key boundary");
+        "CurseForge application template transparently explains app-build and personal-override key boundaries");
     AssertTrue(
         curseForgeApplicationText.Contains("No monetization and no business model", StringComparison.Ordinal)
         && curseForgeApplicationText.Contains("does not collect or save", StringComparison.Ordinal)
@@ -1290,6 +1311,10 @@ try
         "CurseForge application template requests approval for retained local metadata");
 
     var curseForgeKeyStore = new InMemoryCurseForgeApiKeyStore();
+    AssertEqual(
+        "configuration-test-app-key",
+        new AssemblyMetadataCurseForgeApplicationApiKeyProvider().GetApiKey(),
+        "CurseForge app key provider reads only the release-injected assembly metadata value");
     var curseForgeValidationHandler = new StubHttpMessageHandler(request =>
     {
         AssertEqual("v1/games/432", request.RequestUri!.PathAndQuery.TrimStart('/'), "CurseForge key validation endpoint");
@@ -1307,10 +1332,46 @@ try
         });
     var connectedCurseForge = await curseForgeKeyService.ValidateAndStoreAsync(" approved-test-key ");
     AssertTrue(
-        connectedCurseForge.HasStoredKey && connectedCurseForge.IsValid,
+        connectedCurseForge.HasStoredKey
+        && connectedCurseForge.IsValid
+        && connectedCurseForge.PersonalKeyWasStored,
         "approved CurseForge key is validated before storage");
     AssertEqual("approved-test-key", curseForgeKeyStore.Value, "approved CurseForge key storage normalization");
     AssertEqual("approved-test-key", curseForgeKeyService.GetApiKey(), "stored CurseForge key retrieval");
+
+    var applicationKeyHeaders = new List<string>();
+    var applicationKeyStore = new InMemoryCurseForgeApiKeyStore();
+    var applicationKeyService = new CurseForgeApiKeyService(
+        applicationKeyStore,
+        new StubCurseForgeApplicationApiKeyProvider("official-build-test-key"),
+        new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            applicationKeyHeaders.Add(request.Headers.GetValues("x-api-key").Single());
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }))
+        {
+            BaseAddress = new Uri("https://api.curseforge.com/")
+        });
+    var applicationKeyStatus = await applicationKeyService.ValidateStoredAsync();
+    AssertTrue(
+        applicationKeyStatus.IsValid
+        && applicationKeyStatus.UsesApplicationKey
+        && !applicationKeyStatus.HasStoredKey
+        && applicationKeyHeaders.SequenceEqual(["official-build-test-key"]),
+        "official build can use its app-specific CurseForge key without a per-user credential");
+    applicationKeyStore.Value = "personal-override-test-key";
+    var personalOverrideStatus = await applicationKeyService.ValidateStoredAsync();
+    AssertTrue(
+        personalOverrideStatus.IsValid
+        && !personalOverrideStatus.UsesApplicationKey
+        && personalOverrideStatus.HasStoredKey
+        && applicationKeyHeaders[^1] == "personal-override-test-key",
+        "personal CurseForge credential takes precedence over the app-specific build key");
+    applicationKeyService.Remove();
+    AssertEqual(
+        "official-build-test-key",
+        applicationKeyService.GetApiKey(),
+        "removing a personal CurseForge override restores app-specific build access");
 
     var rejectedKeyStore = new InMemoryCurseForgeApiKeyStore { Value = "existing-approved-key" };
     var rejectedKeyService = new CurseForgeApiKeyService(
@@ -2666,6 +2727,56 @@ try
     AssertTrue(
         File.ReadAllBytes(curseForgeDownloadPath).SequenceEqual(curseForgeDownloadBytes),
         "CurseForge builder download verifies SHA-1 content from a trusted host");
+    var curseForgeRedirectRequests = new List<string>();
+    var redirectedCurseForgeProvider = new CurseForgePackContentDownloadProvider(
+        new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            curseForgeRedirectRequests.Add(request.RequestUri!.AbsoluteUri);
+            if (request.RequestUri.Host.Equals("edge.forgecdn.net", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(HttpStatusCode.Found)
+                {
+                    Headers =
+                    {
+                        Location = new Uri(
+                            "https://mediafilez.forgecdn.net/files/1234/567/curseforge-test.jar")
+                    }
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(curseForgeDownloadBytes)
+            };
+        })));
+    var redirectedCurseForgePath = Path.Combine(testRoot, "curseforge-redirect-download-test.jar");
+    await redirectedCurseForgeProvider.DownloadAndVerifyAsync(
+        curseForgeDownloadFile,
+        redirectedCurseForgePath);
+    AssertTrue(
+        curseForgeRedirectRequests.SequenceEqual(
+        [
+            "https://edge.forgecdn.net/files/1234/567/curseforge-test.jar",
+            "https://mediafilez.forgecdn.net/files/1234/567/curseforge-test.jar"
+        ])
+        && File.ReadAllBytes(redirectedCurseForgePath).SequenceEqual(curseForgeDownloadBytes),
+        "CurseForge builder follows only the expected bounded provider CDN redirect");
+
+    var forbiddenRedirectProvider = new CurseForgePackContentDownloadProvider(
+        new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.Found)
+            {
+                Headers = { Location = new Uri("https://example.com/curseforge-test.jar") }
+            })));
+    var forbiddenRedirectPath = Path.Combine(testRoot, "curseforge-forbidden-redirect-test.jar");
+    await AssertThrowsAsync<InvalidDataException>(
+        () => forbiddenRedirectProvider.DownloadAndVerifyAsync(
+            curseForgeDownloadFile,
+            forbiddenRedirectPath),
+        "CurseForge builder refuses redirects outside approved provider hosts");
+    AssertTrue(
+        !File.Exists(forbiddenRedirectPath),
+        "forbidden CurseForge redirect creates no output file");
     AssertThrows<InvalidDataException>(
         () => curseForgeDownloadProvider.ValidateFile(curseForgeDownloadFile with
         {
@@ -2990,10 +3101,16 @@ try
     await draftDisplayBuilder.SearchFromStartAsync();
     AssertEqual(2, draftDisplayBuilder.SearchResults.Count, "cross-provider duplicate projects initially appear in search");
     draftDisplayBuilder.CommitPlan(readyPlan);
-    AssertEqual(0, draftDisplayBuilder.SearchResults.Count, "drafted project and obvious cross-provider duplicate are hidden from search");
+    AssertEqual(2, draftDisplayBuilder.SearchResults.Count, "drafted project listings remain in their existing search positions");
     AssertTrue(
-        draftDisplayBuilder.SearchPageSummary.Contains("2 already in draft hidden", StringComparison.Ordinal),
-        "builder explains why duplicate search results disappeared");
+        draftDisplayBuilder.SearchResults.All(project => project.IsInDraft)
+        && draftDisplayBuilder.SearchPageSummary.Contains("2 already in draft", StringComparison.Ordinal),
+        "builder clearly marks selected and obvious cross-provider duplicates as already represented");
+    draftDisplayBuilder.SelectedProject = draftDisplayBuilder.SearchResults[0];
+    AssertTrue(
+        !draftDisplayBuilder.CanReviewAdd
+        && draftDisplayBuilder.AddToDraftButtonText == "Already in draft",
+        "builder prevents an already represented search result from being added twice");
     AssertTrue(
         draftDisplayBuilder.DraftDisplayItems.All(item => !string.IsNullOrWhiteSpace(item.IconUrl)),
         "draft display carries project artwork for selected and required items");
@@ -3017,8 +3134,108 @@ try
     AssertTrue(
         await draftDisplayBuilder.RemoveDraftItemAsync(
             draftDisplayBuilder.DraftItems.Single(item => item.VersionId == "root-version"))
-        && draftDisplayBuilder.SearchResults.Count == 2,
-        "removing a selected draft item restores its catalogue listings");
+        && draftDisplayBuilder.SearchResults.Count == 2
+        && draftDisplayBuilder.SearchResults.All(project => !project.IsInDraft),
+        "removing a selected draft item restores its catalogue actions without moving the results");
+
+    var brokenRecommendedVersion = packRootVersion with
+    {
+        VersionId = "root-broken-newest",
+        Name = "Root Project 2.0",
+        VersionNumber = "2.0.0",
+        Dependencies =
+        [
+            new ServerContentDependency(
+                string.Empty,
+                "missing-required-project",
+                string.Empty,
+                "required",
+                "Missing Required Project")
+        ]
+    };
+    var supportedRecommendedVersion = packRootVersion with
+    {
+        VersionId = "root-supported-older",
+        Name = "Root Project 1.5",
+        VersionNumber = "1.5.0",
+        Dependencies = []
+    };
+    var recommendationVersionsByProject =
+        new Dictionary<string, IReadOnlyList<ServerContentVersion>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["root-project"] = [brokenRecommendedVersion, supportedRecommendedVersion]
+        };
+    var recommendationVersionsById =
+        new Dictionary<string, ServerContentVersion>(StringComparer.OrdinalIgnoreCase)
+        {
+            [brokenRecommendedVersion.VersionId] = brokenRecommendedVersion,
+            [supportedRecommendedVersion.VersionId] = supportedRecommendedVersion
+        };
+    var recommendationProvider = new StubPackContentCatalogProvider(
+        "stub",
+        [packRootProject],
+        recommendationVersionsByProject,
+        recommendationVersionsById);
+    var recommendationCatalog = new PackContentCatalogService([recommendationProvider]);
+    var recommendationBuilder = new PackBuilderViewModel(
+        recommendationCatalog,
+        new PackDependencyResolver(recommendationCatalog),
+        platformCatalog,
+        new StubPackPlatformVersionService(),
+        runtimeService,
+        new StubCurseForgeApiKeyService(),
+        new StubPackDraftOutputService(),
+        new StubManagedMinecraftLauncherService(),
+        new ModpackInstallLocationService(Path.Combine(testRoot, "recommendation-builder-local-app-data")));
+    recommendationBuilder.ProviderFilters.Clear();
+    recommendationBuilder.ProviderFilters.Add(new ModpackFilterOption("stub", "Stub", true));
+    recommendationBuilder.SelectedMinecraftVersion = "1.20.1";
+    recommendationBuilder.SelectedClientPlatform = recommendationBuilder.ClientPlatforms.Single(option =>
+        option.Id == "fabric-client");
+    recommendationBuilder.SelectedServerPlatform = recommendationBuilder.ServerPlatforms.Single(option =>
+        option.Id == "fabric-server");
+    recommendationBuilder.SearchText = "Root Project";
+    await recommendationBuilder.SearchFromStartAsync();
+    recommendationBuilder.SelectedProject = recommendationBuilder.SearchResults.Single();
+    AssertEqual(
+        "root-broken-newest",
+        recommendationBuilder.SelectedVersion?.VersionId,
+        "builder initially keeps the provider-preferred compatible project version");
+    var brokenRecommendationPlan = await recommendationBuilder.PrepareAddAsync();
+    AssertTrue(
+        brokenRecommendationPlan is { IsReady: false }
+        && recommendationBuilder.HasRecommendedVersion
+        && recommendationBuilder.RecommendedVersion?.VersionId == "root-supported-older",
+        "builder checks other published versions and suggests one with a resolvable dependency chain");
+    AssertTrue(
+        recommendationBuilder.UseRecommendedVersion()
+        && recommendationBuilder.SelectedVersion?.VersionId == "root-supported-older",
+        "compatible version suggestion is applied only after an explicit user action");
+    var supportedRecommendationPlan = await recommendationBuilder.PrepareAddAsync();
+    AssertTrue(
+        supportedRecommendationPlan?.IsReady == true,
+        "suggested project version produces a ready dependency plan");
+    recommendationBuilder.CommitPlan(supportedRecommendationPlan!);
+    recommendationVersionsById[supportedRecommendedVersion.VersionId] = supportedRecommendedVersion with
+    {
+        Dependencies =
+        [
+            new ServerContentDependency(
+                string.Empty,
+                "new-missing-required-project",
+                string.Empty,
+                "required",
+                "New Missing Required Project")
+        ]
+    };
+    var staleDependencyOutput = await recommendationBuilder.PrepareOutputAsync(
+        Path.Combine(testRoot, "stale-dependency-preflight-output"));
+    AssertTrue(
+        staleDependencyOutput is null
+        && recommendationBuilder.OutputStatusText.Contains(
+            "Final dependency preflight stopped the build",
+            StringComparison.Ordinal),
+        "builder refuses a stale draft when fresh provider metadata changes its required dependency chain");
 
     var dependencyBuilder = new PackBuilderViewModel(
         packCatalog,
@@ -3103,6 +3320,39 @@ try
     AssertTrue(
         undeclaredWarning.Contains("placement", StringComparison.OrdinalIgnoreCase),
         "undeclared side metadata explains review requirement");
+    var placementReviewItem = new PackDraftItem(
+        "stub",
+        "placement-review-project",
+        "placement-review-version",
+        "Placement Review Project",
+        "1.0.0",
+        ServerContentKind.Mod,
+        PackContentPlacement.Review,
+        false,
+        "Selected by the user");
+    var placementReviewPlan = new PackResolutionPlan([placementReviewItem], [], []);
+    AssertTrue(
+        !placementReviewPlan.IsReady
+        && placementReviewPlan.SummaryText.Contains("Choose installation placement", StringComparison.Ordinal),
+        "undeclared side plan asks for an explicit installation placement");
+    var restoredPlacementPlan = PackBuilderViewModel.RestoreReviewedPlacements(
+        placementReviewPlan,
+        [placementReviewItem with
+        {
+            Placement = PackContentPlacement.Both,
+            PlacementWasReviewed = true
+        }]);
+    AssertTrue(
+        restoredPlacementPlan.IsReady
+        && restoredPlacementPlan.Items.Single().Placement == PackContentPlacement.Both
+        && restoredPlacementPlan.Items.Single().PlacementWasReviewed,
+        "explicit placement survives dependency preflight rebuilds");
+    var unconfirmedPlacementPlan = PackBuilderViewModel.RestoreReviewedPlacements(
+        placementReviewPlan,
+        [placementReviewItem with { Placement = PackContentPlacement.Both }]);
+    AssertTrue(
+        !unconfirmedPlacementPlan.IsReady,
+        "automatic placement is not mistaken for an explicit placement review");
 
     var mapServerRoot = Path.Combine(testRoot, "legacy-map-server");
     var mapWorldRoot = Path.Combine(mapServerRoot, "mapworld");
@@ -4219,6 +4469,8 @@ sealed class StubCurseForgeApiKeyService : ICurseForgeApiKeyService
 
     public string? GetApiKey() => _apiKey;
 
+    public bool HasStoredOverride() => _apiKey is not null;
+
     public Task<CurseForgeApiKeyStatus> ValidateStoredAsync(
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new CurseForgeApiKeyStatus(
@@ -4231,10 +4483,19 @@ sealed class StubCurseForgeApiKeyService : ICurseForgeApiKeyService
         CancellationToken cancellationToken = default)
     {
         _apiKey = apiKey.Trim();
-        return Task.FromResult(new CurseForgeApiKeyStatus(true, true, "Connected."));
+        return Task.FromResult(new CurseForgeApiKeyStatus(true, true, "Connected.")
+        {
+            PersonalKeyWasStored = true
+        });
     }
 
     public void Remove() => _apiKey = null;
+}
+
+sealed class StubCurseForgeApplicationApiKeyProvider(string? apiKey)
+    : ICurseForgeApplicationApiKeyProvider
+{
+    public string? GetApiKey() => apiKey;
 }
 
 sealed class StubHttpMessageHandler : HttpMessageHandler

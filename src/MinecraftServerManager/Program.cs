@@ -11,9 +11,11 @@ public static class Program
     {
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
+#if !DEBUG
         VelopackApp.Build()
             .SetAutoApplyOnStartup(true)
             .Run();
+#endif
 
         Application.Start(callbackParameters =>
         {

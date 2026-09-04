@@ -44,8 +44,13 @@ public sealed class CurseForgePackContentDownloadProvider : IPackContentDownload
             HashAlgorithmName.SHA1,
             file.Sha1,
             reportDownloadedBytes,
-            cancellationToken);
+            cancellationToken,
+            IsTrustedRedirect,
+            maximumRedirects: 3);
     }
+
+    private static bool IsTrustedRedirect(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps && IsTrustedHost(uri.Host);
 
     private static bool IsTrustedHost(string host) =>
         host.Equals("curseforge.com", StringComparison.OrdinalIgnoreCase)

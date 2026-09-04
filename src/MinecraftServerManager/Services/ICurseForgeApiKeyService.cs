@@ -4,6 +4,8 @@ public interface ICurseForgeApiKeyService
 {
     string? GetApiKey();
 
+    bool HasStoredOverride();
+
     Task<CurseForgeApiKeyStatus> ValidateStoredAsync(
         CancellationToken cancellationToken = default);
 
@@ -17,4 +19,9 @@ public interface ICurseForgeApiKeyService
 public sealed record CurseForgeApiKeyStatus(
     bool HasStoredKey,
     bool IsValid,
-    string Message);
+    string Message)
+{
+    public bool UsesApplicationKey { get; init; }
+
+    public bool PersonalKeyWasStored { get; init; }
+}

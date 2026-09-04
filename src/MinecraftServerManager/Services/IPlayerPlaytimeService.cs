@@ -12,6 +12,8 @@ public interface IPlayerPlaytimeService
 
     void RecordConnection(string profileId, PlayerConnectionChange change);
 
+    void UpdateProfileDisplayName(string profileId, string displayName);
+
     void CloseSessions(string profileId);
 
     IReadOnlyList<PlayerPlaytimeSnapshot> GetSnapshots();
